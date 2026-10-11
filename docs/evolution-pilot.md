@@ -20,7 +20,7 @@ First back up using the existing image, then pull. Stop if any command fails.
 ```bash
 cd /opt/max-travel-crm
 install -d -o 1000 -g 1000 -m 700 backups
-docker compose -f compose.vps.yaml --profile maintenance run --rm backup
+docker compose -f compose.vps.yaml --profile maintenance run --interactive=false --rm backup
 git status --short
 git pull --ff-only origin main
 bash deploy/setup-evolution.sh
@@ -52,7 +52,7 @@ would revert the app to manual mode.
 
 ```bash
 cd /opt/max-travel-crm
-docker compose --profile maintenance run --rm backup
+docker compose --profile maintenance run --interactive=false --rm backup
 git pull --ff-only origin main
 docker compose up -d --build --wait --wait-timeout 180 app worker
 docker compose ps

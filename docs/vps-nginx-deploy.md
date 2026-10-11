@@ -61,7 +61,7 @@ records for this demo. Do not send customer passports or financial records over 
 ```bash
 cd /opt/max-travel-crm
 install -d -o 1000 -g 1000 -m 700 backups
-docker compose -f compose.vps.yaml --profile maintenance run --rm backup
+docker compose -f compose.vps.yaml --profile maintenance run --interactive=false --rm backup
 ```
 
 Run during a quiet window without document changes. Copy encrypted backups off the
@@ -78,7 +78,7 @@ The update restarts only this project's app; allow a short maintenance window.
 
 ```bash
 cd /opt/max-travel-crm
-docker compose -f compose.vps.yaml --profile maintenance run --rm backup
+docker compose -f compose.vps.yaml --profile maintenance run --interactive=false --rm backup
 git status --short
 git rev-parse HEAD
 git pull --ff-only origin main
