@@ -13,7 +13,7 @@ fs.mkdirSync(runtime,{recursive:true});
 const password=`Test-${randomBytes(15).toString("hex")}!`, secret=randomBytes(32).toString("hex"), key=randomBytes(32).toString("hex");
 const freePort=()=>new Promise(resolve=>{const s=net.createServer().listen(0,"127.0.0.1",()=>{const port=s.address().port;s.close(()=>resolve(port));});});
 const port=await freePort(), providerPort=await freePort(), base=`http://127.0.0.1:${port}`;
-const env={...process.env,DATABASE_URL:`file:${path.join(runtime,"test.db").replaceAll("\\","/")}`,JWT_SECRET:randomBytes(32).toString("hex"),UPLOAD_ROOT:path.join(runtime,"uploads"),EVOLUTION_BASE_URL:`http://127.0.0.1:${providerPort}`,EVOLUTION_API_KEY:key,EVOLUTION_INSTANCE:"max travel",WA_WEBHOOK_SECRET:secret,WA_WORKER_SECRET:secret};
+const env={...process.env,APP_ORIGIN:base,DATABASE_URL:`file:${path.join(runtime,"test.db").replaceAll("\\","/")}`,JWT_SECRET:randomBytes(32).toString("hex"),UPLOAD_ROOT:path.join(runtime,"uploads"),EVOLUTION_BASE_URL:`http://127.0.0.1:${providerPort}`,EVOLUTION_API_KEY:key,EVOLUTION_INSTANCE:"max travel",WA_WEBHOOK_SECRET:secret,WA_WORKER_SECRET:secret};
 const db=new PrismaClient({datasources:{db:{url:env.DATABASE_URL}}});
 const auth={Authorization:`Bearer ${secret}`};
 let state="open", sendMode="success", sends=0, sent=[], count=0, browser;
@@ -153,6 +153,47 @@ try {
   const payment=await ok("/api/payments",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:5,mode:"UPI"},cookie);
   const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:PAYMENT_RECEIVED:${payment.payment.id}`}});assert(row.body.includes(`Balance for ${confirmedBooking.bookingNo}: ₹65.`),row.body);
   await ok("/api/whatsapp/settings",{paymentTemplate:null},cookie);assert.equal(await db.settings.findUnique({where:{key:"whatsapp.template.PAYMENT_RECEIVED"}}),null);
+ });
+ let collectionCase, collectionLink;
+ const checklist=await ok("/api/checklists",{country:"Collection test",visaType:"Visitor",applicantType:"STANDARD",items:[{name:"Passport copy",required:true,fileTypes:"pdf,jpg,png",maxSizeMb:1}]},cookie);
+ const createCollection=()=>ok("/api/visa/cases",{customerId:alice.id,travellerIds:[traveller.id],destination:"Collection test",visaType:"Visitor",checklistId:checklist.checklist.id},cookie);
+ await check("Document collection requires its rule, customer consent and pending checklist documents",async()=>{
+  const before=await db.uploadLink.count();await createCollection();assert.equal(await db.uploadLink.count(),before);
+  await ok("/api/whatsapp/settings",{rules:["BOOKING_CREATED","TICKET_CONFIRMED","PAYMENT_RECEIVED","DOC_REQUEST"]},cookie);
+  await ok("/api/whatsapp/settings",{customerId:alice.id,optIn:false},cookie);await createCollection();assert.equal(await db.uploadLink.count(),before);
+  await ok("/api/whatsapp/settings",{customerId:alice.id,optIn:true},cookie);
+  await ok("/api/visa/cases",{customerId:alice.id,travellerIds:[traveller.id],destination:"No checklist",visaType:"Visitor"},cookie);assert.equal(await db.uploadLink.count(),before);
+ });
+ await check("Creating a visa case queues a private seven-day case-specific document link",async()=>{
+  collectionCase=await createCollection();collectionLink=await db.uploadLink.findFirstOrThrow({where:{visaCaseId:collectionCase.caseId}});
+  assert.equal(collectionLink.customerId,alice.id);assert.equal(collectionLink.travellerId,null);assert(collectionLink.token.length>=32);assert(collectionLink.expiresAt>new Date(Date.now()+6*86400000));
+  const row=await db.whatsAppMessage.findFirstOrThrow({where:{automation:"DOC_REQUEST",requestKey:{endsWith:`:${collectionCase.caseId}`}}});
+  assert.equal(row.status,"QUEUED");assert(row.body.includes(collectionCase.caseNo));assert(row.body.includes("Passport copy"));assert(row.body.includes(`${base}/upload/${collectionLink.token}`));
+  // A different case must never leak into this case's portal.
+  const other=await createCollection();await db.document.updateMany({where:{visaCaseId:other.caseId},data:{docType:"Private-other-case-document"}});
+  const page=await (await fetch(base+`/upload/${collectionLink.token}`)).text();assert(page.includes("Passport copy"));assert(!page.includes("Private-other-case-document"));
+ });
+ await check("Document requests send immediately and repeated worker polls do not duplicate",async()=>{
+  await ok("/api/whatsapp/process",{},"",auth);const row=await db.whatsAppMessage.findFirstOrThrow({where:{automation:"DOC_REQUEST",requestKey:{endsWith:`:${collectionCase.caseId}`}}});assert.equal(row.status,"READ");
+  const n=sends;await ok("/api/whatsapp/process",{},"",auth);assert.equal(sends,n);
+ });
+ await check("Entering a document stage includes the existing private link without duplicate same-stage saves",async()=>{
+  const stage=await db.visaStage.findFirstOrThrow({where:{name:{contains:"Document"}}});
+  await ok(`/api/visa/cases/${collectionCase.caseId}/stage`,{stageId:stage.id},cookie);await ok(`/api/visa/cases/${collectionCase.caseId}/stage`,{stageId:stage.id},cookie);
+  assert.equal(await db.uploadLink.count({where:{visaCaseId:collectionCase.caseId}}),1);
+  const rows=await db.whatsAppMessage.findMany({where:{automation:"DOC_REQUEST",thread:{customerId:alice.id},body:{contains:collectionCase.caseNo}}});assert.equal(rows.length,2);assert(rows.every(row=>row.body.includes(collectionLink.token)));
+  await db.uploadLink.update({where:{id:collectionLink.id},data:{revoked:true}});await ok("/api/whatsapp/process",{},"",auth);
+  assert.equal((await db.whatsAppMessage.findFirstOrThrow({where:{automation:"DOC_REQUEST",body:{contains:collectionCase.caseNo},status:"CANCELLED"}})).status,"CANCELLED");
+ });
+ await check("Expired, completed and closed-case document requests are cancelled before sending",async()=>{
+  for(const reason of ["expired","complete","closed"]) {
+    const vc=await createCollection();const link=await db.uploadLink.findFirstOrThrow({where:{visaCaseId:vc.caseId}});
+    if(reason==="expired")await db.uploadLink.update({where:{id:link.id},data:{expiresAt:new Date(Date.now()-1000)}});
+    if(reason==="complete")await db.document.updateMany({where:{visaCaseId:vc.caseId},data:{status:"RECEIVED"}});
+    if(reason==="closed")await db.visaCase.update({where:{id:vc.caseId},data:{closedAt:new Date()}});
+    const n=sends;await ok("/api/whatsapp/process",{},"",auth);assert.equal(sends,n);
+    assert.equal((await db.whatsAppMessage.findFirstOrThrow({where:{automation:"DOC_REQUEST",requestKey:{endsWith:`:${vc.caseId}`}}})).status,"CANCELLED");
+  }
  });
  await check("Configured inbox renders staff attribution, consent and connection controls",async()=>{
   browser=await chromium.launch({headless:true});const context=await browser.newContext();await context.addCookies([{name:"tos_session",value:cookie.split("=")[1],url:base}]);const page=await context.newPage();await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});assert(await page.getByRole("button",{name:"Send WhatsApp message",exact:true}).isVisible());assert(await page.getByText("Customer agreed to automatic WhatsApp updates").isVisible());await page.getByText("Automatic messages and unmatched replies",{exact:true}).click();assert(await page.getByLabel("Payment received acknowledgement").isChecked());

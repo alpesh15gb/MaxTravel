@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { DEFAULT_PAYMENT_TEMPLATE, PAYMENT_TOKENS, PAYMENT_PREVIEW, paymentTemplateError, renderPaymentTemplate } from "@/lib/whatsapp-templates";
 import { useRouter } from "next/navigation";
-const RULE_LABELS: Record<string,string> = { BOOKING_CREATED: "Booking created acknowledgement", TICKET_CONFIRMED: "Ticket confirmation after ticket numbers are recorded", PAYMENT_RECEIVED: "Payment received acknowledgement", STATUS_UPDATE: "Visa stage changes", DOC_REQUEST: "Document requests when entering a document stage", APPOINTMENT_REMINDER: "Appointments within 24 hours", PNR_EXPIRY: "Ticketing deadlines within 24 hours", PAYMENT_REMINDER: "One reminder per overdue invoice due date" };
+const RULE_LABELS: Record<string,string> = { BOOKING_CREATED: "Booking created acknowledgement", TICKET_CONFIRMED: "Ticket confirmation after ticket numbers are recorded", PAYMENT_RECEIVED: "Payment received acknowledgement", STATUS_UPDATE: "Visa stage changes", DOC_REQUEST: "Document upload links for new cases and document stages", APPOINTMENT_REMINDER: "Appointments within 24 hours", PNR_EXPIRY: "Ticketing deadlines within 24 hours", PAYMENT_REMINDER: "One reminder per overdue invoice due date" };
 export default function MessagingControls({ paymentTemplate, configured, canManage, rules, unmatched, customers }: {
   paymentTemplate: string; configured: boolean; canManage: boolean; rules: string[];
   unmatched: { id: string; phone: string; body: string; reason: string }[];
@@ -34,7 +34,7 @@ export default function MessagingControls({ paymentTemplate, configured, canMana
       <p className="mt-1 text-xs leading-5">{!configured?"Log messages here, then open WhatsApp to send. Delivery is not verified.":"Messages are queued on the server. Delivery and read status depend on provider receipts. Queued messages wait while disconnected. Media replies appear as notices; open WhatsApp to view attachments."}</p>
     </div>
     {configured&&canManage&&<details className="panel p-4"><summary className="cursor-pointer text-sm font-semibold">Automatic messages and unmatched replies</summary>
-      <p className="my-3 text-xs leading-5 text-slate-600">Automatic messages require customer consent. Booking, ticket and payment confirmations send immediately; other updates send between 09:00 and 20:00 India time. Sending STOP withdraws consent. New rules start disabled; review them before enabling.</p>
+      <p className="my-3 text-xs leading-5 text-slate-600">Automatic messages require customer consent. Booking, ticket, payment confirmations and document requests send immediately; other updates send between 09:00 and 20:00 India time. Sending STOP withdraws consent. New rules start disabled; review them before enabling.</p>
       <div className="space-y-3">{Object.entries(RULE_LABELS).map(([key,label])=><label key={key} className="flex items-center gap-3 text-sm"><input type="checkbox" checked={enabled.includes(key)} disabled={busy} onChange={async e=>{const next=e.target.checked?[...enabled,key]:enabled.filter(x=>x!==key);if(await save({rules:next}))setEnabled(next);}}/>{label}</label>)}</div>
       <div className="mt-5 border-t border-slate-200 pt-4">
         <label htmlFor="payment-template" className="text-sm font-semibold">Payment acknowledgement template</label>

@@ -89,13 +89,13 @@ because the provider may already have sent the message. Check WhatsApp before ma
 resending. An interrupted send is treated the same way after restart.
 
 Automatic rules start off and require a recorded customer opt-in. Booking creation,
-ticket confirmation and payment acknowledgements send immediately, including outside
+ticket confirmation, document requests and payment acknowledgements send immediately, including outside
 reminder hours. Booking creation does not claim a ticket has been issued. A ticket
 confirmation is queued only when valid ticket numbers are recorded and the booking
 becomes ticketed. A payment acknowledgement is queued in the payment transaction,
 so a rejected or rolled-back payment never sends a receipt. An incoming STOP,
 UNSUBSCRIBE or CANCEL MESSAGES withdraws it. Rules cover visa stage changes, document
-requests on entering a document stage, appointments and unticketed PNR deadlines within
+requests on new cases with checklist requirements and on entering a document stage, appointments and unticketed PNR deadlines within
 24 hours, and one reminder per overdue invoice due date in the last 30 days. Scheduling
 scans up to 200 candidates per rule per cycle; this pilot targets the single office.
 Do not use it for bulk campaigns.
@@ -116,6 +116,15 @@ Queued automation is rechecked against customer consent, current dates, stages,
 invoice balances, booking status and recipient phone. Obsolete reminders are cancelled.
 Messages more than 48 hours old are cancelled. Scheduled updates use quiet hours;
 transactional confirmations and manual staff sends are not restricted by those hours.
+Document requests include a private case-scoped upload link, generated with the public
+APP_ORIGIN address, valid for seven days (or an existing case-wide link with more than
+48 hours remaining). No new token is created when consent/rules are off or no pending
+documents exist. Select a checklist when creating the case so the customer has document
+requirements to upload against. Requests send immediately and are cancelled when the
+case closes, the link is revoked/expires or the requested documents change. Existing
+cases are not sent retrospectively: use Customer workspace > Share upload link and
+send the generated link manually from WhatsApp desk, or enter a document stage with
+pending requirements and the document rule enabled.
 Old backlog is not imported.
 Delivery/read receipts are monotonic; absence of a receipt never implies delivery.
 
@@ -142,11 +151,12 @@ verification; it is not a configuration-only switch.
 
 - Production Next.js build and TypeScript/ESLint checks passed.
 - Existing CRM regression suite: 190 checks passed.
-- Evolution integration: 32 checks against a local mock provider, including restricted
+- Evolution integration: 37 checks against a local mock provider, including restricted
   staff access, instance isolation, idempotency, disconnects, receipt races, opt-out,
   rate-limit backoff, ambiguous sends, scheduling, booking/ticket/payment confirmations,
   rejected payments, duplicate prevention, partial/full and refunded balances,
-  editable payment templates and desktop/phone inbox rendering.
+  editable payment templates, case-specific document upload links, expired/revoked
+  link cancellation and desktop/phone inbox rendering.
 - Accessibility gate: no findings; UI metrics: 21 routes at desktop and phone widths.
 - Linux Docker image built and passed migration/setup/login, 20 concurrent reads,
   restart persistence, backup/restore, static branding and packaged worker checks.

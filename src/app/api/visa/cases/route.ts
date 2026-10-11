@@ -1,3 +1,4 @@
+import { queueDocumentRequest } from "@/lib/whatsapp-queue";
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { prisma } from "@/lib/db";
 import { customerFor, travellersFor, optionalId, nextReference, money, date, transactionAudit } from "@/lib/transactions";
@@ -26,6 +27,7 @@ export async function POST(req: Request) {
       }
       await transactionAudit(tx,user,"CREATE","VisaCase",record.id,record.caseNo);
       await tx.activity.create({data:{customerId,actorId:user.id,type:"VISA",summary:`Visa case ${record.caseNo} created for ${destination}`,link:`/visa/${record.id}`}});
+      await queueDocumentRequest(tx, record.id, record.id);
       return record;
     },{timeout:20000});
     return Response.json({ok:true,caseId:vc.id,caseNo:vc.caseNo});

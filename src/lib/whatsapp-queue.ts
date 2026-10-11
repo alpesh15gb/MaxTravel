@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+import { publicOrigin } from "./config";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import { evolutionConfig, evolutionState, evolutionSend, EvolutionError, providerKey, whatsappPhone } from "./evolution";
@@ -7,7 +9,7 @@ import { netOfRefundTotal } from "./receivables";
 import { DEFAULT_PAYMENT_TEMPLATE, PAYMENT_TEMPLATE_KEY, paymentTemplateError, renderPaymentTemplate } from "./whatsapp-templates";
 
 export const RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "PAYMENT_RECEIVED", "STATUS_UPDATE", "DOC_REQUEST", "APPOINTMENT_REMINDER", "PNR_EXPIRY", "PAYMENT_REMINDER"] as const;
-const IMMEDIATE_RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "PAYMENT_RECEIVED"];
+const IMMEDIATE_RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "PAYMENT_RECEIVED", "DOC_REQUEST"];
 export type AutomationRule = typeof RULES[number];
 export async function automationRules(tx: Prisma.TransactionClient = prisma): Promise<AutomationRule[]> {
   const row = await tx.settings.findUnique({ where: { key: "whatsapp.automation" } });
@@ -35,12 +37,26 @@ export async function queueStageUpdate(tx: Prisma.TransactionClient, customerId:
   const agency = (await tx.settings.findUnique({ where: { key: "agency.name" } }))?.value ?? "Your agency";
   await queueAutomation(tx, customerId, "STATUS_UPDATE", historyId,
     `Hello ${vc.customer.name}, your visa case ${vc.caseNo} is now at ${stage}. Please contact ${agency} if you need help.`);
-  // Document requests carry only document names; files remain behind the private upload portal.
-  if (stage.toLowerCase().includes("document")) {
-    const docs = await tx.document.findMany({ where: { visaCaseId: caseId, status: { in: ["REQUIRED", "REQUESTED", "REJECTED", "REUPLOAD_REQUESTED"] } } });
-    if (docs.length) await queueAutomation(tx, customerId, "DOC_REQUEST", historyId,
-      `Hello ${vc.customer.name}, please provide these outstanding documents for ${vc.caseNo}: ${Array.from(new Set(docs.map(d=>d.docType))).join(", ")}. Contact ${agency} for your private upload link.`);
-  }
+  if (stage.toLowerCase().includes("document")) await queueDocumentRequest(tx, caseId, historyId);
+
+}
+
+const PENDING_DOCUMENTS = ["REQUIRED", "REQUESTED", "REJECTED", "REUPLOAD_REQUESTED"];
+const documentNames = (docs: { docType: string }[]) => Array.from(new Set(docs.map(d=>d.docType))).join(", ").slice(0,1500);
+
+export async function queueDocumentRequest(tx: Prisma.TransactionClient, caseId: string, eventId: string) {
+  const origin = publicOrigin();
+  if (!evolutionConfig() || !origin || !(await automationRules(tx)).includes("DOC_REQUEST")) return;
+  const vc = await tx.visaCase.findUniqueOrThrow({ where: { id: caseId }, include: { customer: true } });
+  if (vc.closedAt || !vc.customer.whatsappOptIn || vc.customer.status === "INACTIVE" || !whatsappPhone(vc.customer.phone)) return;
+  const docs = await tx.document.findMany({ where: { visaCaseId: caseId, status: { in: PENDING_DOCUMENTS } }, orderBy: { createdAt: "asc" } });
+  if (!docs.length || await tx.whatsAppMessage.findFirst({ where: { automation: "DOC_REQUEST", requestKey: { endsWith: `:${eventId}` } } })) return;
+  // A case-wide token sees this case's applicants only. Keep queued links usable for at least 48 hours.
+  let link = await tx.uploadLink.findFirst({ where: { customerId: vc.customerId, visaCaseId: caseId, travellerId: null, revoked: false, expiresAt: { gt: new Date(Date.now()+48*3600000) } }, orderBy: { createdAt: "desc" } });
+  if (!link) link = await tx.uploadLink.create({ data: { token: randomBytes(24).toString("base64url"), customerId: vc.customerId, visaCaseId: caseId, expiresAt: new Date(Date.now()+7*86400000), note: "Please upload the outstanding documents listed below. Your agency will review them." } });
+  const agency = (await tx.settings.findUnique({ where: { key: "agency.name" } }))?.value ?? "Your agency";
+  await queueAutomation(tx, vc.customerId, "DOC_REQUEST", `${link.id}:${eventId}`,
+    `Hello ${vc.customer.name}, please provide these outstanding documents for ${vc.caseNo}: ${documentNames(docs)}. Upload privately: ${origin}/upload/${link.token} . Link expires ${dateTimeLabel(link.expiresAt)}. Please keep this link private. Contact ${agency} if you need help.`);
 }
 
 export async function queueBookingConfirmation(tx: Prisma.TransactionClient, bookingId: string, ticketed = false) {
@@ -169,6 +185,12 @@ async function reminderIsCurrent(rule: string, key: string, body: string) {
     const inv = await prisma.invoice.findUnique({ where: { id }, include: { booking: true } });
     return Boolean(inv && ["UNPAID","PARTIAL"].includes(inv.status) && inv.amount > inv.amountPaid && inv.dueDate?.toISOString() === when &&
       body.includes(`${inrAmount(inv.amount-inv.amountPaid)} remains due`) && (!inv.booking || !["CANCELLED","VOID","REFUNDED"].includes(inv.booking.status)));
+  }
+  if (rule === "DOC_REQUEST" && when) {
+    const link = await prisma.uploadLink.findUnique({ where: { id }, include: { visaCase: true } });
+    if (!link || link.revoked || link.expiresAt <= new Date() || !link.visaCase || link.visaCase.closedAt || !body.includes(`/upload/${link.token}`)) return false;
+    const docs = await prisma.document.findMany({ where: { visaCaseId: link.visaCaseId, status: { in: PENDING_DOCUMENTS } }, orderBy: { createdAt: "asc" } });
+    return Boolean(docs.length && body.includes(`: ${documentNames(docs)}. Upload privately:`));
   }
   const history = await prisma.visaCaseStatus.findUnique({ where: { id }, include: { case: true } });
   if (!history || history.case.stageId !== history.stageId) return false;
