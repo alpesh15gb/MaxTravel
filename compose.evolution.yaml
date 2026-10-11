@@ -1,0 +1,37 @@
+# Use together with compose.vps.yaml. This network is explicitly attached only to
+# the existing Evolution container and this CRM; no Evolution restart is needed.
+services:
+  app:
+    environment:
+      EVOLUTION_BASE_URL: http://evolution-crm-gateway:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:?Set the max travel instance API key}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-max travel}
+      WA_WEBHOOK_SECRET: ${WA_WEBHOOK_SECRET:?Set WA_WEBHOOK_SECRET}
+      WA_WORKER_SECRET: ${WA_WORKER_SECRET:?Set WA_WORKER_SECRET}
+    networks:
+      default:
+      messaging:
+        aliases: [max-travel-crm-webhook]
+  worker:
+    image: max-travel-crm:local
+    entrypoint: [node, scripts/whatsapp-worker.mjs]
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 260s
+    environment:
+      WA_WORKER_SECRET: ${WA_WORKER_SECRET:?Set WA_WORKER_SECRET}
+      WA_WORKER_URL: http://app:3000/api/whatsapp/process
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+networks:
+  messaging:
+    external: true
+    name: max-travel-messaging

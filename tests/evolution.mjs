@@ -1,0 +1,89 @@
+// End-to-end provider integration with a local fake Evolution server. Never contacts WhatsApp.
+import assert from "node:assert/strict";
+import http from "node:http";
+import net from "node:net";
+import path from "node:path";
+import fs from "node:fs";
+import { randomBytes } from "node:crypto";
+import { spawn, execFileSync } from "node:child_process";
+import { PrismaClient } from "@prisma/client";
+import { chromium } from "./browser.mjs";
+const ROOT=process.cwd(), runtime=path.join(ROOT,"tests/.runtime",`evolution-${Date.now()}`);
+fs.mkdirSync(runtime,{recursive:true});
+const password=`Test-${randomBytes(15).toString("hex")}!`, secret=randomBytes(32).toString("hex"), key=randomBytes(32).toString("hex");
+const freePort=()=>new Promise(resolve=>{const s=net.createServer().listen(0,"127.0.0.1",()=>{const port=s.address().port;s.close(()=>resolve(port));});});
+const port=await freePort(), providerPort=await freePort(), base=`http://127.0.0.1:${port}`;
+const env={...process.env,DATABASE_URL:`file:${path.join(runtime,"test.db").replaceAll("\\","/")}`,JWT_SECRET:randomBytes(32).toString("hex"),UPLOAD_ROOT:path.join(runtime,"uploads"),EVOLUTION_BASE_URL:`http://127.0.0.1:${providerPort}`,EVOLUTION_API_KEY:key,EVOLUTION_INSTANCE:"max travel",WA_WEBHOOK_SECRET:secret,WA_WORKER_SECRET:secret};
+const db=new PrismaClient({datasources:{db:{url:env.DATABASE_URL}}});
+const auth={Authorization:`Bearer ${secret}`};
+let state="open", sendMode="success", sends=0, sent=[], count=0, browser;
+const post=(url,body={},cookie="",headers={})=>fetch(base+url,{method:"POST",headers:{"Content-Type":"application/json",...(cookie?{cookie}:{}),...headers},body:JSON.stringify(body)});
+async function ok(url,body,cookie="",headers={}){const r=await post(url,body,cookie,headers);const d=await r.json();assert(r.ok,`${url}: ${r.status} ${JSON.stringify(d)}`);return d;}
+async function check(name,fn){await fn();count++;console.log(`PASS ${name}`);}
+const hook=(event,data,instance="max travel")=>post("/api/whatsapp/evolution",{instance,event,data},"",auth);
+const provider=http.createServer(async(req,res)=>{
+ try {
+  assert.equal(req.headers.apikey,key);
+  assert(req.url.endsWith("/max%20travel"),req.url);
+  res.setHeader("Content-Type","application/json");
+  if(req.url.startsWith("/instance/connectionState/")){res.end(JSON.stringify({instance:{state}}));return;}
+  assert(req.url.startsWith("/message/sendText/"));
+  let raw="";for await(const chunk of req)raw+=chunk;
+  const body=JSON.parse(raw);sent.push(body);sends++;
+  if(sendMode==="429"){res.statusCode=429;res.end("{}");return;}
+  if(sendMode==="500"){res.statusCode=500;res.end("{}");return;}
+  const id=`out-${sends}`;
+  // Deliberately race the webhook ahead of the send response.
+  await hook("messages.update",{keyId:id,status:"READ"});
+  res.end(JSON.stringify({key:{id},status:"PENDING"}));
+ }catch(e){res.statusCode=500;res.end(JSON.stringify({error:e.message}));}
+}).listen(providerPort,"127.0.0.1");
+const cli=path.join(ROOT,"node_modules/prisma/build/index.js");
+execFileSync(process.execPath,[cli,"migrate","deploy"],{env,stdio:"pipe"});
+const log=fs.createWriteStream(path.join(runtime,"server.log"));
+const server=spawn(process.execPath,[path.join(ROOT,"node_modules/next/dist/bin/next"),"start","-p",String(port),"-H","127.0.0.1"],{env,stdio:["ignore","pipe","pipe"]});server.stdout.pipe(log);server.stderr.pipe(log);
+try {
+ for(let i=0;i<100;i++){try{if((await fetch(base+"/setup")).ok)break;}catch{}await new Promise(r=>setTimeout(r,200));}
+ await ok("/api/setup",{agencyName:"Evolution Test",city:"Pune",name:"Owner",email:"owner@evolution.test",password});
+ const login=await post("/api/auth/login",{email:"owner@evolution.test",password});assert.equal(login.status,200);const cookie=login.headers.getSetCookie().map(c=>c.split(";")[0]).join("; ");
+ const alice=await ok("/api/customers",{name:"Alice",phone:"+919000000002",city:"Pune"},cookie);
+ const bob=await ok("/api/customers",{name:"Bob",phone:"+919000000003",city:"Pune"},cookie);
+
+ const ownerRow=await db.user.findUniqueOrThrow({where:{email:"owner@evolution.test"}});
+ const staffRole=await db.role.findUniqueOrThrow({where:{key:"SALES_EXECUTIVE"}});
+ await db.user.create({data:{name:"Restricted staff",email:"staff@evolution.test",employeeCode:"TEST-STAFF",phone:"",passwordHash:ownerRow.passwordHash,roleId:staffRole.id,branchId:ownerRow.branchId}});
+ const staffLogin=await post("/api/auth/login",{email:"staff@evolution.test",password});assert.equal(staffLogin.status,200);const staffCookie=staffLogin.headers.getSetCookie().map(c=>c.split(";")[0]).join("; ");
+ await check("Restricted staff cannot message or change consent for another staff member's customer",async()=>{assert.equal((await post("/api/whatsapp/send",{customerId:alice.id,text:"Forbidden",requestId:randomBytes(16).toString("hex")},staffCookie)).status,403);assert.equal((await post("/api/whatsapp/settings",{customerId:alice.id,optIn:true},staffCookie)).status,403);});
+ await check("Only administrators can enable automatic messaging rules",async()=>assert.equal((await post("/api/whatsapp/settings",{rules:["STATUS_UPDATE"]},staffCookie)).status,403));
+ const requestId=randomBytes(16).toString("hex");let message;
+ await check("Provider status is authenticated and never exposes its key",async()=>{assert.equal((await fetch(base+"/api/whatsapp/connection")).status,401);const r=await fetch(base+"/api/whatsapp/connection",{headers:{cookie}});const text=await r.text();assert(!text.includes(key));assert.equal(JSON.parse(text).state,"open");});
+ await check("Worker endpoint rejects unauthenticated calls",async()=>assert.equal((await post("/api/whatsapp/process")).status,403));
+ await check("Webhook rejects forged credentials and other instances",async()=>{assert.equal((await post("/api/whatsapp/evolution",{instance:"max travel"})).status,403);assert.equal((await hook("messages.upsert",{},"whatsapp-main")).status,403);});
+ await check("Outbound message is queued, attributed, and not falsely delivered",async()=>{message=await ok("/api/whatsapp/send",{customerId:alice.id,text:"Hello Alice",requestId},cookie);assert.equal(message.status,"QUEUED");assert.equal(sends,0);assert((await db.whatsAppMessage.findUniqueOrThrow({where:{id:message.messageId}})).staffId);});
+ await check("Duplicate requests enqueue exactly one message",async()=>{const repeated=await ok("/api/whatsapp/send",{customerId:alice.id,text:"Hello Alice",requestId},cookie);assert.equal(repeated.messageId,message.messageId);assert.equal(await db.whatsAppMessage.count({where:{direction:"OUT"}}),1);assert.equal((await post("/api/whatsapp/send",{customerId:bob.id,text:"Hello Alice",requestId},cookie)).status,409);});
+ await check("Disconnected sessions pause queue without sending",async()=>{state="close";await ok("/api/whatsapp/process",{},"",auth);assert.equal(sends,0);assert.equal((await db.whatsAppMessage.findUniqueOrThrow({where:{id:message.messageId}})).status,"QUEUED");state="open";});
+ await check("Worker sends only to the selected instance and preserves early READ receipt",async()=>{await ok("/api/whatsapp/process",{},"",auth);assert.equal(sends,1);assert.equal(sent[0].number,"919000000002");assert.equal((await db.whatsAppMessage.findUniqueOrThrow({where:{id:message.messageId}})).status,"READ");});
+ await check("Late delivery receipts cannot downgrade a read message",async()=>{await hook("MESSAGES_UPDATE",{keyId:"out-1",status:"DELIVERY_ACK"});assert.equal((await db.whatsAppMessage.findUniqueOrThrow({where:{id:message.messageId}})).status,"READ");});
+ const incoming={key:{id:"in-1",remoteJid:"919000000002@s.whatsapp.net",fromMe:false},message:{conversation:"Please confirm my appointment"},messageTimestamp:Math.floor(Date.now()/1000)};
+ await check("Inbound messages are matched and webhook retries are deduplicated",async()=>{assert.equal((await hook("messages.upsert",incoming)).status,200);await hook("messages.upsert",incoming);assert.equal(await db.whatsAppMessage.count({where:{direction:"IN"}}),1);assert.equal((await db.whatsAppThread.findUniqueOrThrow({where:{id:message.threadId}})).unread,1);});
+ await check("Groups and unresolved WhatsApp LIDs are never mistaken for customers",async()=>{await hook("messages.upsert",{...incoming,key:{...incoming.key,id:"group",remoteJid:"919000000002@g.us"}});await hook("messages.upsert",{...incoming,key:{...incoming.key,id:"lid",remoteJid:"919000000002@lid"}});assert.equal(await db.whatsAppMessage.count({where:{direction:"IN"}}),1);});
+ await check("Unknown senders are retained for admin matching",async()=>{await hook("messages.upsert",{...incoming,key:{...incoming.key,id:"unknown",remoteJid:"919000000099@s.whatsapp.net"}});const item=await db.whatsAppInbound.findFirstOrThrow({where:{matched:false}});assert.equal(item.reason,"NO_MATCH");await ok("/api/whatsapp/settings",{inboundId:item.id,matchCustomerId:bob.id},cookie);assert((await db.whatsAppInbound.findUniqueOrThrow({where:{id:item.id}})).matched);});
+ await check("Consent is opt-in and STOP withdraws it",async()=>{assert.equal((await db.customer.findUniqueOrThrow({where:{id:alice.id}})).whatsappOptIn,false);await ok("/api/whatsapp/settings",{customerId:alice.id,optIn:true},cookie);await hook("messages.upsert",{...incoming,key:{...incoming.key,id:"stop"},message:{conversation:"STOP"}});assert.equal((await db.customer.findUniqueOrThrow({where:{id:alice.id}})).whatsappOptIn,false);});
+ await check("Unknown send outcomes are never retried automatically",async()=>{sendMode="500";const m=await ok("/api/whatsapp/send",{customerId:alice.id,text:"Ambiguous",requestId:randomBytes(16).toString("hex")},cookie);await ok("/api/whatsapp/process",{},"",auth);assert.equal((await db.whatsAppMessage.findUniqueOrThrow({where:{id:m.messageId}})).status,"UNKNOWN");const n=sends;await ok("/api/whatsapp/process",{},"",auth);assert.equal(sends,n);sendMode="success";});
+ await check("Explicit rate-limit rejection backs off without claiming success",async()=>{sendMode="429";const m=await ok("/api/whatsapp/send",{customerId:alice.id,text:"Retry later",requestId:randomBytes(16).toString("hex")},cookie);await ok("/api/whatsapp/process",{},"",auth);const row=await db.whatsAppMessage.findUniqueOrThrow({where:{id:m.messageId}});assert.equal(row.status,"QUEUED");assert(row.nextAttempt>new Date());await db.whatsAppMessage.update({where:{id:m.messageId},data:{status:"CANCELLED"}});sendMode="success";});
+ await check("Recipient changes cancel pending sends",async()=>{const m=await ok("/api/whatsapp/send",{customerId:bob.id,text:"Old phone",requestId:randomBytes(16).toString("hex")},cookie);await db.customer.update({where:{id:bob.id},data:{phone:"+919000000004"}});const n=sends;await ok("/api/whatsapp/process",{},"",auth);assert.equal(sends,n);assert.equal((await db.whatsAppMessage.findUniqueOrThrow({where:{id:m.messageId}})).status,"CANCELLED");});
+ const traveller=await db.traveller.findFirstOrThrow({where:{customerId:alice.id}});
+ const vc=await ok("/api/visa/cases",{customerId:alice.id,travellerIds:[traveller.id],destination:"France",visaType:"Visitor"},cookie);
+ const next=await db.visaStage.findFirstOrThrow({where:{key:"ASSESSMENT"}}).catch(()=>db.visaStage.findFirstOrThrow({where:{key:{not:"ENQUIRY"}},orderBy:{seq:"asc"}}));
+ await check("Automation stays off until enabled, even for opted-in customers",async()=>{await ok("/api/whatsapp/settings",{customerId:alice.id,optIn:true},cookie);await ok(`/api/visa/cases/${vc.caseId}/stage`,{stageId:next.id},cookie);assert.equal(await db.whatsAppMessage.count({where:{automation:{not:null}}}),0);});
+ await check("Enabled stage automation queues once and repeated same-stage saves do not spam",async()=>{await ok("/api/whatsapp/settings",{rules:["STATUS_UPDATE","APPOINTMENT_REMINDER","PNR_EXPIRY","PAYMENT_REMINDER"]},cookie);const enquiry=await db.visaStage.findUniqueOrThrow({where:{key:"ENQUIRY"}});await ok(`/api/visa/cases/${vc.caseId}/stage`,{stageId:enquiry.id},cookie);await ok(`/api/visa/cases/${vc.caseId}/stage`,{stageId:enquiry.id},cookie);assert.equal(await db.whatsAppMessage.count({where:{automation:"STATUS_UPDATE"}}),1);});
+ await check("Scheduled appointment and PNR reminders are deduplicated",async()=>{await db.visaCase.update({where:{id:vc.caseId},data:{appointmentDate:new Date(Date.now()+3600000)}});await ok("/api/bookings",{customerId:alice.id,travellerIds:[traveller.id],pnr:"TEST01",deadlineHours:2},cookie);await ok("/api/whatsapp/process",{},"",auth);await ok("/api/whatsapp/process",{},"",auth);assert.equal(await db.whatsAppMessage.count({where:{automation:"APPOINTMENT_REMINDER"}}),1);assert.equal(await db.whatsAppMessage.count({where:{automation:"PNR_EXPIRY"}}),1);});
+ await check("Worker lease prevents concurrent drains",async()=>{await db.settings.upsert({where:{key:"whatsapp.worker.lease"},create:{key:"whatsapp.worker.lease",value:`${Date.now()}:test`},update:{value:`${Date.now()}:test`}});const r=await ok("/api/whatsapp/process",{},"",auth);assert.equal(r.busy,true);await db.settings.delete({where:{key:"whatsapp.worker.lease"}});});
+ await check("Configured inbox renders staff attribution, consent and connection controls",async()=>{
+  browser=await chromium.launch({headless:true});const context=await browser.newContext();await context.addCookies([{name:"tos_session",value:cookie.split("=")[1],url:base}]);const page=await context.newPage();await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});assert(await page.getByRole("button",{name:"Send WhatsApp message",exact:true}).isVisible());assert(await page.getByText("Customer agreed to automatic WhatsApp updates").isVisible());await page.getByText("Automatic messages and unmatched replies",{exact:true}).click();assert(await page.getByLabel("Visa stage changes").isChecked());await page.screenshot({path:path.join(runtime,"desktop.png"),fullPage:true});await page.setViewportSize({width:390,height:844});await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(runtime,"phone.png"),fullPage:false});await browser.close();browser=null;
+ });
+ console.log(`${count} Evolution integration checks passed. Evidence: ${runtime}`);
+}finally{
+ if(browser)await browser.close();await db.$disconnect();provider.closeAllConnections();await new Promise(r=>provider.close(r));
+ if(process.platform==="win32")spawn("taskkill",["/PID",String(server.pid),"/T","/F"],{stdio:"ignore"});else server.kill("SIGTERM");log.end();
+}

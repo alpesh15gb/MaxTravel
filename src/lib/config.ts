@@ -161,12 +161,25 @@ export function checkConfig(env: NodeJS.ProcessEnv = process.env, root = process
   // single token silently disables it. Say so rather than letting an operator wonder.
   const hasVerify = Boolean(env.WA_VERIFY_TOKEN);
   const hasSecret = Boolean(env.WA_WEBHOOK_SECRET);
-  if (hasVerify !== hasSecret) {
+  if (hasVerify !== hasSecret && !env.EVOLUTION_BASE_URL) {
     issues.push({
       level: "warning",
       key: hasVerify ? "WA_WEBHOOK_SECRET" : "WA_VERIFY_TOKEN",
       message: "The inbound WhatsApp webhook needs both WA_VERIFY_TOKEN and WA_WEBHOOK_SECRET; with only one set it stays disabled.",
     });
+  }
+
+  if (env.EVOLUTION_BASE_URL || env.EVOLUTION_API_KEY) {
+    for (const key of ["EVOLUTION_BASE_URL", "EVOLUTION_API_KEY", "EVOLUTION_INSTANCE", "WA_WEBHOOK_SECRET", "WA_WORKER_SECRET"] as const) {
+      if (!env[key]) issues.push({ level: "error", key, message: `${key} is required when Evolution messaging is enabled.` });
+    }
+    for (const key of ["WA_WEBHOOK_SECRET", "WA_WORKER_SECRET"] as const) {
+      if (env[key] && env[key]!.length < 32) issues.push({ level: "error", key, message: `${key} must contain at least 32 characters.` });
+    }
+    try {
+      const url = new URL(env.EVOLUTION_BASE_URL ?? "");
+      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error();
+    } catch { issues.push({ level: "error", key: "EVOLUTION_BASE_URL", message: "EVOLUTION_BASE_URL must be an http(s) URL without embedded credentials, query or fragment." }); }
   }
 
   return issues;

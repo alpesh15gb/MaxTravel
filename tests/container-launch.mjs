@@ -14,6 +14,8 @@ try {
   let ready=false;
   for(let i=0;i<90;i++){try{if((await fetch(base+"/api/health")).status===200){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,500));}
   assert(ready,"Container health did not become ready");
+  assert.equal((await fetch(base+"/brand/max-travel.png")).status,200,"Packaged branding asset is missing");
+  docker("exec",name,"node","-e","const fs=require('fs');for(const p of ['scripts/whatsapp-worker.mjs','scripts/configure-evolution.mjs'])if(!fs.existsSync(p))process.exit(1)");
   const password="Container-"+randomBytes(16).toString("hex");
   assert.equal((await post("/api/setup",{agencyName:"Container verification",city:"Pune",name:"Container owner",email:"container@example.test",password})).status,201);
   const login=await post("/api/auth/login",{email:"container@example.test",password});assert.equal(login.status,200);cookie=login.headers.getSetCookie().map(v=>v.split(";")[0]).join("; ");

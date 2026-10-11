@@ -2,6 +2,8 @@
 
 Deploy on the existing Ubuntu VPS: [Docker + system Nginx installation and updates](docs/vps-nginx-deploy.md).
 
+Connect the separate WhatsApp instance: [Evolution pilot installation and verification](docs/evolution-pilot.md).
+
 Operational system for visa processing, air ticketing, payment collection, document
 collection/verification, WhatsApp communication, employee tasks, and supplier/refund
 tracking. Built around: **Search anyone, know everything, see what is pending, take action.**

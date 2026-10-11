@@ -19,7 +19,8 @@
     "db:status": "prisma migrate status",
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs",
-    "test": "node tests/smoke.mjs && node tests/a11y-gate.mjs && node tests/ui-metrics.mjs",
+    "test": "node tests/smoke.mjs && node tests/evolution.mjs && node tests/a11y-gate.mjs && node tests/ui-metrics.mjs",
+    "test:evolution": "node tests/evolution.mjs",
     "test:a11y": "node tests/a11y-gate.mjs",
     "test:ui": "node tests/ui-metrics.mjs",
     "a11y:budget": "node tests/a11y-gate.mjs --update-budget"

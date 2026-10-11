@@ -1,4 +1,5 @@
 import { requireSession, jsonError, ApiError, canTouchRecord } from "@/lib/guard";
+import { queueStageUpdate } from "@/lib/whatsapp-queue";
 import { prisma } from "@/lib/db";
 import { transactionAudit, optionalId } from "@/lib/transactions";
 
@@ -39,7 +40,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         visaOutcome: decision ? target.key : reopening ? null : vc.visaOutcome,
         closedAt: target.key === "CLOSED" ? new Date() : null,
       } });
-      await tx.visaCaseStatus.create({ data: { caseId: id, stageId: target.id, note: optionalId(note), byId: user.id } });
+      const history = await tx.visaCaseStatus.create({ data: { caseId: id, stageId: target.id, note: optionalId(note), byId: user.id } });
+      if (vc.stageId !== target.id) await queueStageUpdate(tx, vc.customerId, id, history.id, target.name);
       await tx.activity.create({ data: { customerId: vc.customerId, actorId: user.id, type: "STATUS", summary: `${vc.caseNo} moved to ${target.name}`, link: `/visa/${id}` } });
       await transactionAudit(tx, user, "STAGE", "VisaCase", id, reopening ? `${target.name} · ${vc.visaOutcome} decision cleared` : target.name);
     });

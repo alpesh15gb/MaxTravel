@@ -96,6 +96,7 @@ model Customer {
   notes           Note[]
   activities      Activity[]
   whatsappThreads WhatsAppThread[]
+  whatsappOptIn   Boolean @default(false)
   uploadLinks     UploadLink[]
 
   @@index([name, phone])
@@ -579,12 +580,22 @@ model WhatsAppMessage {
   body      String
   template  String? // quick-reply template key when outbound
   status    String         @default("LOGGED") // LOGGED QUEUED SENT DELIVERED READ FAILED
+  providerKey String? @unique
+  requestKey  String? @unique
+  instance    String?
+  recipient   String?
+  automation  String?
+  attempts    Int @default(0)
+  nextAttempt DateTime @default(now())
+  claimedAt   DateTime?
+  lastError   String?
   replied   Boolean?
   staffId   String?
   staff     User?          @relation(fields: [staffId], references: [id])
   at        DateTime       @default(now())
 
   @@index([threadId])
+  @@index([status, nextAttempt])
 }
 
 model QuickReply {
@@ -637,4 +648,14 @@ model AuditLog {
   entityId String?
   detail   String?
   at       DateTime @default(now())
+}
+
+model WhatsAppInbound {
+  id String @id @default(cuid())
+  providerKey String @unique
+  phone String
+  body String
+  at DateTime @default(now())
+  matched Boolean @default(false)
+  reason String
 }
