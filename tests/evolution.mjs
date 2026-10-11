@@ -96,7 +96,7 @@ try {
  await check("A committed payment queues the correct receipt; rejected payments queue nothing",async()=>{
   const payment=await ok("/api/payments",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:25,mode:"UPI"},cookie);
   const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:PAYMENT_RECEIVED:${payment.payment.id}`}});
-  assert(row.body.includes(payment.receiptNo));assert(row.body.includes("25"));assert.equal(row.status,"QUEUED");
+  assert(row.body.includes(payment.receiptNo));assert(row.body.includes("25"));assert(row.body.includes("after this payment: ₹75"));assert.equal(row.status,"QUEUED");
   const n=await db.whatsAppMessage.count({where:{automation:"PAYMENT_RECEIVED"}});
   assert.equal((await post("/api/payments",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:1000,mode:"UPI"},cookie)).status,400);
   assert.equal(await db.whatsAppMessage.count({where:{automation:"PAYMENT_RECEIVED"}}),n);
@@ -113,8 +113,54 @@ try {
   assert.equal((await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:BOOKING_CREATED:${confirmedBooking.bookingId}`}})).status,"CANCELLED");
   assert.equal((await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:TICKET_CONFIRMED:${confirmedBooking.bookingId}`}})).status,"READ");
  });
+ await check("Payment template changes require administrator access and valid placeholders",async()=>{
+  const valid="Thanks {customer}. Payment {amount}, receipt {receipt}. Balance for {balanceReference}: {balance}.";
+  assert.equal((await post("/api/whatsapp/settings",{paymentTemplate:valid},staffCookie)).status,403);
+  assert.equal((await post("/api/whatsapp/settings",{paymentTemplate:valid.replace("{balance}","{secret}")},cookie)).status,400);
+  assert.equal((await post("/api/whatsapp/settings",{paymentTemplate:"Missing financial placeholders"},cookie)).status,400);
+  assert.equal((await post("/api/whatsapp/settings",{paymentTemplate:"x".repeat(2501)},cookie)).status,400);
+  await ok("/api/whatsapp/settings",{paymentTemplate:valid},cookie);
+  assert.equal((await db.settings.findUniqueOrThrow({where:{key:"whatsapp.template.PAYMENT_RECEIVED"}})).value,valid);
+ });
+ await check("Custom receipts calculate linked-work balance across direct and invoiced payments",async()=>{
+  const inv=await ok("/api/invoices",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:100},cookie);
+  const payment=await ok("/api/payments",{customerId:alice.id,invoiceId:inv.invoiceId,amount:15,mode:"UPI"},cookie);
+  const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:PAYMENT_RECEIVED:${payment.payment.id}`}});
+  assert(row.body.startsWith("Thanks Alice."));assert(row.body.includes(payment.receiptNo));assert(row.body.includes(`Balance for ${confirmedBooking.bookingNo}: ₹60.`));assert(!row.body.includes("{"));
+  // An existing receipt retains its historical balance and template.
+  const old=await db.whatsAppMessage.findFirstOrThrow({where:{automation:"PAYMENT_RECEIVED",body:{contains:"after this payment"}}});assert(old.body.includes("₹75"));
+ });
+ await check("Standalone invoices and visa payments have their own balances; advances have none",async()=>{
+  const inv=await ok("/api/invoices",{customerId:alice.id,amount:80},cookie);
+  const visa=await ok("/api/visa/cases",{customerId:alice.id,travellerIds:[traveller.id],destination:"France",visaType:"Visitor",sellingPrice:120},cookie);
+  for(const [allocation,amount,expected] of [
+    [{invoiceId:inv.invoiceId},30,`Balance for ${inv.invoiceNo}: ₹50.`],
+    [{visaCaseId:visa.caseId},20,`Balance for ${visa.caseNo}: ₹100.`],
+    [{},10,"Not applicable (unallocated customer advance)"],
+  ]) {
+    const payment=await ok("/api/payments",{customerId:alice.id,...allocation,amount,mode:"CASH"},cookie);
+    const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:PAYMENT_RECEIVED:${payment.payment.id}`}});assert(row.body.includes(expected),row.body);
+  }
+ });
+ await check("A fully settled invoice reports a zero balance",async()=>{
+  const inv=await ok("/api/invoices",{customerId:alice.id,amount:10.50},cookie);
+  const payment=await ok("/api/payments",{customerId:alice.id,invoiceId:inv.invoiceId,amount:10.50,mode:"UPI"},cookie);
+  const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:PAYMENT_RECEIVED:${payment.payment.id}`}});assert(row.body.includes(`Balance for ${inv.invoiceNo}: \u20b90.`),row.body);
+ });
+ await check("A completed partial refund is reflected in the next booking balance",async()=>{
+  // Provider integration fixture: only a paid refund changes the receivable.
+  await db.refund.create({data:{refundNo:"TEST-REFUND",customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:10,status:"PAID"}});
+  const payment=await ok("/api/payments",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:5,mode:"UPI"},cookie);
+  const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:PAYMENT_RECEIVED:${payment.payment.id}`}});assert(row.body.includes(`Balance for ${confirmedBooking.bookingNo}: ₹65.`),row.body);
+  await ok("/api/whatsapp/settings",{paymentTemplate:null},cookie);assert.equal(await db.settings.findUnique({where:{key:"whatsapp.template.PAYMENT_RECEIVED"}}),null);
+ });
  await check("Configured inbox renders staff attribution, consent and connection controls",async()=>{
-  browser=await chromium.launch({headless:true});const context=await browser.newContext();await context.addCookies([{name:"tos_session",value:cookie.split("=")[1],url:base}]);const page=await context.newPage();await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});assert(await page.getByRole("button",{name:"Send WhatsApp message",exact:true}).isVisible());assert(await page.getByText("Customer agreed to automatic WhatsApp updates").isVisible());await page.getByText("Automatic messages and unmatched replies",{exact:true}).click();assert(await page.getByLabel("Payment received acknowledgement").isChecked());await page.screenshot({path:path.join(runtime,"desktop.png"),fullPage:true});await page.setViewportSize({width:390,height:844});await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(runtime,"phone.png"),fullPage:false});await browser.close();browser=null;
+  browser=await chromium.launch({headless:true});const context=await browser.newContext();await context.addCookies([{name:"tos_session",value:cookie.split("=")[1],url:base}]);const page=await context.newPage();await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});assert(await page.getByRole("button",{name:"Send WhatsApp message",exact:true}).isVisible());assert(await page.getByText("Customer agreed to automatic WhatsApp updates").isVisible());await page.getByText("Automatic messages and unmatched replies",{exact:true}).click();assert(await page.getByLabel("Payment received acknowledgement").isChecked());
+  const editor=page.getByLabel("Payment acknowledgement template",{exact:true});assert(await editor.isVisible());
+  await editor.fill("Paid {amount}; receipt {receipt}; balance for {balanceReference}: {balance}. Thank you!");
+  await page.getByRole("button",{name:"Save payment template",exact:true}).click();await page.getByRole("status").filter({hasText:"Payment template saved"}).waitFor();
+  assert.equal((await db.settings.findUniqueOrThrow({where:{key:"whatsapp.template.PAYMENT_RECEIVED"}})).value,await editor.inputValue());
+  await page.getByRole("button",{name:"Restore default",exact:true}).click();await page.getByRole("status").filter({hasText:"Default payment template restored"}).waitFor();await page.screenshot({path:path.join(runtime,"desktop.png"),fullPage:true});await page.setViewportSize({width:390,height:844});await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});await page.getByText("Automatic messages and unmatched replies",{exact:true}).click();assert(await page.getByLabel("Payment acknowledgement template",{exact:true}).isVisible());assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(runtime,"phone.png"),fullPage:false});await browser.close();browser=null;
  });
  console.log(`${count} Evolution integration checks passed. Evidence: ${runtime}`);
 }finally{

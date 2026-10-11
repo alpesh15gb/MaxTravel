@@ -1,3 +1,4 @@
+import { PAYMENT_TEMPLATE_KEY, paymentTemplateError } from "@/lib/whatsapp-templates";
 import { prisma } from "@/lib/db";
 import { requireSession, ApiError, jsonError } from "@/lib/guard";
 import { customerFor, transactionAudit } from "@/lib/transactions";
@@ -19,6 +20,17 @@ export async function POST(req: Request) {
         await customerFor(tx, user, String(b.matchCustomerId));
         await attachInbound(tx,String(b.inboundId),String(b.matchCustomerId));
         await transactionAudit(tx,user,"MATCH","WhatsAppInbound",String(b.inboundId),`Matched to customer ${b.matchCustomerId}`);
+      } else if (Object.hasOwn(b, "paymentTemplate")) {
+        if (!user.permissions.includes("settings:manage")) throw new ApiError(403,"Administrator access required.");
+        if (b.paymentTemplate === null) {
+          await tx.settings.deleteMany({ where: { key: PAYMENT_TEMPLATE_KEY } });
+        } else {
+          const error = paymentTemplateError(b.paymentTemplate);
+          if (error) throw new ApiError(400, error);
+          const value = b.paymentTemplate.trim();
+          await tx.settings.upsert({ where: { key: PAYMENT_TEMPLATE_KEY }, create: { key: PAYMENT_TEMPLATE_KEY, value }, update: { value } });
+        }
+        await transactionAudit(tx,user,"UPDATE","WhatsAppAutomation","paymentTemplate",b.paymentTemplate === null ? "Default payment template restored" : "Payment template updated");
       } else {
         if (!user.permissions.includes("settings:manage")) throw new ApiError(403,"Administrator access required.");
         if (!Array.isArray(b.rules) || b.rules.some((r: unknown)=>!RULES.includes(r as typeof RULES[number]))) throw new ApiError(400,"Choose valid automation rules.");

@@ -100,6 +100,18 @@ requests on entering a document stage, appointments and unticketed PNR deadlines
 scans up to 200 candidates per rule per cycle; this pilot targets the single office.
 Do not use it for bulk campaigns.
 
+Administrators can edit the payment acknowledgement in **WhatsApp desk > Automatic
+messages and unmatched replies > Payment acknowledgement template**. A preview shows
+sample values. Use the listed placeholders; amount, receipt, balance and balance
+reference are required. Restore default resets the wording. Templates apply only to
+future receipts; queued/sent messages retain their recorded wording and balance.
+Balances are snapshots after the payment: linked booking or visa work takes precedence
+over its invoice to include all allocated receipts. Paid booking refunds reduce net
+receipts, standalone invoices use their own balance, and unallocated advances say no
+balance applies. This is the referenced work balance, not the customer's total account
+balance. If unusual placeholder repetition expands a message beyond the provider
+limit, the default template is used rather than truncating financial information.
+
 Queued automation is rechecked against customer consent, current dates, stages,
 invoice balances, booking status and recipient phone. Obsolete reminders are cancelled.
 Messages more than 48 hours old are cancelled. Scheduled updates use quiet hours;
@@ -130,10 +142,11 @@ verification; it is not a configuration-only switch.
 
 - Production Next.js build and TypeScript/ESLint checks passed.
 - Existing CRM regression suite: 190 checks passed.
-- Evolution integration: 27 checks against a local mock provider, including restricted
+- Evolution integration: 32 checks against a local mock provider, including restricted
   staff access, instance isolation, idempotency, disconnects, receipt races, opt-out,
   rate-limit backoff, ambiguous sends, scheduling, booking/ticket/payment confirmations,
-  rejected payments, duplicate prevention and desktop/phone inbox rendering.
+  rejected payments, duplicate prevention, partial/full and refunded balances,
+  editable payment templates and desktop/phone inbox rendering.
 - Accessibility gate: no findings; UI metrics: 21 routes at desktop and phone widths.
 - Linux Docker image built and passed migration/setup/login, 20 concurrent reads,
   restart persistence, backup/restore, static branding and packaged worker checks.

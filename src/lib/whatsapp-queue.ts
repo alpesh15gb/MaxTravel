@@ -3,6 +3,8 @@ import { prisma } from "./db";
 import { evolutionConfig, evolutionState, evolutionSend, EvolutionError, providerKey, whatsappPhone } from "./evolution";
 import { dateTimeLabel } from "./dates";
 import { inrAmount } from "./money";
+import { netOfRefundTotal } from "./receivables";
+import { DEFAULT_PAYMENT_TEMPLATE, PAYMENT_TEMPLATE_KEY, paymentTemplateError, renderPaymentTemplate } from "./whatsapp-templates";
 
 export const RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "PAYMENT_RECEIVED", "STATUS_UPDATE", "DOC_REQUEST", "APPOINTMENT_REMINDER", "PNR_EXPIRY", "PAYMENT_REMINDER"] as const;
 const IMMEDIATE_RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "PAYMENT_RECEIVED"];
@@ -58,8 +60,26 @@ export async function queuePaymentAcknowledgement(tx: Prisma.TransactionClient, 
   const payment = await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, include: { customer: true, booking: true, visaCase: true, invoice: true } });
   const agency = (await tx.settings.findUnique({ where: { key: "agency.name" } }))?.value ?? "Your agency";
   const reference = payment.invoice?.invoiceNo ?? payment.booking?.bookingNo ?? payment.visaCase?.caseNo ?? "your customer account";
-  await queueAutomation(tx, payment.customerId, "PAYMENT_RECEIVED", payment.id,
-    `Hello ${payment.customer.name}, ${agency} has recorded your payment of ${inrAmount(payment.amount)} by ${payment.mode} for ${reference}. Receipt: ${payment.receiptNo}. Recorded on ${dateTimeLabel(payment.receivedOn)}. Thank you.`);
+  // Match the CRM receivable: linked work takes precedence over its invoice.
+  let balance = "Not applicable (unallocated customer advance)";
+  const balanceReference = payment.booking?.bookingNo ?? payment.visaCase?.caseNo ?? payment.invoice?.invoiceNo ?? "customer advance";
+  if (payment.booking || payment.visaCase) {
+    const where = payment.booking ? { bookingId: payment.booking.id } : { visaCaseId: payment.visaCase!.id };
+    const paid = await tx.payment.aggregate({ where, _sum: { amount: true } });
+    const returned = payment.booking ? await tx.refund.aggregate({ where: { bookingId: payment.booking.id, status: "PAID" }, _sum: { amount: true } }) : null;
+    const total = payment.booking?.sellingPrice ?? payment.visaCase!.sellingPrice;
+    balance = inrAmount(Math.max(0, Math.round((total - netOfRefundTotal(paid._sum.amount ?? 0, returned?._sum.amount ?? 0)) * 100) / 100));
+  } else if (payment.invoice) {
+    balance = inrAmount(Math.max(0, Math.round((payment.invoice.amount - payment.invoice.amountPaid) * 100) / 100));
+  }
+  const saved = (await tx.settings.findUnique({ where: { key: PAYMENT_TEMPLATE_KEY } }))?.value;
+  const template = saved && !paymentTemplateError(saved) ? saved : DEFAULT_PAYMENT_TEMPLATE;
+  const values = {
+    customer: payment.customer.name, agency, amount: inrAmount(payment.amount), mode: payment.mode,
+    reference, receipt: payment.receiptNo, date: dateTimeLabel(payment.receivedOn), balance, balanceReference,
+  };
+  const body = renderPaymentTemplate(template, values);
+  await queueAutomation(tx, payment.customerId, "PAYMENT_RECEIVED", payment.id, body.length <= 4000 ? body : renderPaymentTemplate(DEFAULT_PAYMENT_TEMPLATE, values));
 }
 
 export async function scheduleReminders(now = new Date()) {
