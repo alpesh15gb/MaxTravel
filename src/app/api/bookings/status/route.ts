@@ -3,6 +3,7 @@ import { inrAmount } from "@/lib/money";
 import { requireSession, jsonError, ApiError, canTouchRecord } from "@/lib/guard";
 import { isWithdrawnBooking, netReceived, unencumberedBalance } from "@/lib/receivables";
 import { prisma } from "@/lib/db";
+import { queueBookingConfirmation } from "@/lib/whatsapp-queue";
 import { transactionAudit, money, nextReference } from "@/lib/transactions";
 
 // Statuses a person may set by hand.
@@ -88,6 +89,7 @@ export async function POST(req: Request) {
       }
 
       const booking = await tx.booking.update({ where: { id: bookingId }, data: { status } });
+      if (status === "TICKETED" && b.status !== status) await queueBookingConfirmation(tx, bookingId, true);
       await tx.activity.create({ data: { customerId: b.customerId, actorId: user.id, type: "BOOKING", summary: `${b.bookingNo} → ${enumLabel(status)}`, link: `/ticketing/${bookingId}` } });
       await transactionAudit(tx, user, "STATUS", "Booking", bookingId, refundNo ? `${status} · refund ${refundNo} raised` : status);
       return { booking, refundNo };

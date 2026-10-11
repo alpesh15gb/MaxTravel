@@ -1,6 +1,7 @@
 import { inrAmount } from "@/lib/money";
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { prisma } from "@/lib/db";
+import { queuePaymentAcknowledgement } from "@/lib/whatsapp-queue";
 import { customerFor, relatedFor, optionalId, nextReference, money, transactionAudit } from "@/lib/transactions";
 import { isWithdrawnBooking, netOfRefundTotal } from "@/lib/receivables";
 
@@ -69,6 +70,7 @@ export async function POST(req: Request) {
       }
       await tx.activity.create({ data: { customerId, actorId: user.id, type: "PAYMENT", summary: `Payment ${inrAmount(amount)} recorded (${mode}) — ${record.receiptNo}`, link: `/customers/${customerId}?tab=payments` } });
       await transactionAudit(tx, user, "RECORD", "Payment", record.id, `${record.receiptNo} ₹${amount}`);
+      await queuePaymentAcknowledgement(tx, record.id);
       return record;
     });
     return Response.json({ ok: true, receiptNo: payment.receiptNo, payment });

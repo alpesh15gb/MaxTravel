@@ -69,7 +69,11 @@ curl -fsS http://127.0.0.1:3107/api/health
 4. Reply from the test phone; check the correct customer thread updates within 15 seconds.
 5. Check unmatched replies under the admin controls. Groups, broadcasts and unresolved
    WhatsApp LID addresses are ignored; they are never treated as customer phone numbers.
-6. Record the test customer's consent and enable one automatic rule. Move a test visa
+6. Record the test customer's consent and enable one automatic rule. For immediate
+   booking/payment confirmations, enable the corresponding acknowledgement rules
+   before creating a new booking or recording a new payment. Ticket confirmations
+   require the booking to be marked ticketed with valid ticket numbers. Existing
+   bookings and receipts are not resent retrospectively. For scheduled updates, move a test visa
    stage or create an appointment within 24 hours. Check that it sends once during
    09:00–20:00 India time. Disable the rule again if the demo is finished.
 7. Reply STOP and verify customer automatic messaging consent is removed.
@@ -84,7 +88,12 @@ automatically retries a timeout or 5xx after sending: those become **outcome unk
 because the provider may already have sent the message. Check WhatsApp before manually
 resending. An interrupted send is treated the same way after restart.
 
-Automatic rules start off and require a recorded customer opt-in. An incoming STOP,
+Automatic rules start off and require a recorded customer opt-in. Booking creation,
+ticket confirmation and payment acknowledgements send immediately, including outside
+reminder hours. Booking creation does not claim a ticket has been issued. A ticket
+confirmation is queued only when valid ticket numbers are recorded and the booking
+becomes ticketed. A payment acknowledgement is queued in the payment transaction,
+so a rejected or rolled-back payment never sends a receipt. An incoming STOP,
 UNSUBSCRIBE or CANCEL MESSAGES withdraws it. Rules cover visa stage changes, document
 requests on entering a document stage, appointments and unticketed PNR deadlines within
 24 hours, and one reminder per overdue invoice due date in the last 30 days. Scheduling
@@ -93,8 +102,9 @@ Do not use it for bulk campaigns.
 
 Queued automation is rechecked against customer consent, current dates, stages,
 invoice balances, booking status and recipient phone. Obsolete reminders are cancelled.
-Messages more than 48 hours old are cancelled. Automatic sends use quiet hours;
-manual staff sends are not restricted by those hours. Old backlog is not imported.
+Messages more than 48 hours old are cancelled. Scheduled updates use quiet hours;
+transactional confirmations and manual staff sends are not restricted by those hours.
+Old backlog is not imported.
 Delivery/read receipts are monotonic; absence of a receipt never implies delivery.
 
 Webhook requests require a separate bearer secret and the exact instance name. Retry
@@ -120,9 +130,10 @@ verification; it is not a configuration-only switch.
 
 - Production Next.js build and TypeScript/ESLint checks passed.
 - Existing CRM regression suite: 190 checks passed.
-- Evolution integration: 22 checks against a local mock provider, including restricted
+- Evolution integration: 27 checks against a local mock provider, including restricted
   staff access, instance isolation, idempotency, disconnects, receipt races, opt-out,
-  rate-limit backoff, ambiguous sends, scheduling and desktop/phone inbox rendering.
+  rate-limit backoff, ambiguous sends, scheduling, booking/ticket/payment confirmations,
+  rejected payments, duplicate prevention and desktop/phone inbox rendering.
 - Accessibility gate: no findings; UI metrics: 21 routes at desktop and phone widths.
 - Linux Docker image built and passed migration/setup/login, 20 concurrent reads,
   restart persistence, backup/restore, static branding and packaged worker checks.

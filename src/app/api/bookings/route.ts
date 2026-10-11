@@ -1,5 +1,6 @@
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { prisma } from "@/lib/db";
+import { queueBookingConfirmation } from "@/lib/whatsapp-queue";
 import { customerFor, travellersFor, optionalId, nextReference, money, date, transactionAudit } from "@/lib/transactions";
 export async function POST(req: Request) {
   try {
@@ -16,6 +17,7 @@ export async function POST(req: Request) {
       const record=await tx.booking.create({data:{bookingNo:await nextReference(tx, "BK"),customerId,pnr,airline:optionalId(b.airline),gdsSource:optionalId(b.gdsSource),supplierId,status:pnr?"PNR_CREATED":"ENQUIRY",sector:optionalId(b.sector),flightNo:optionalId(b.flightNo),travelDate,ticketingDeadline:pnr&&hours>0?new Date(Date.now()+hours*3600000):null,fare,taxes,markup,serviceFee,supplierCost,sellingPrice:money(fare+taxes+markup+serviceFee,"Selling price"),ownerId:user.id,branchId:customer.branchId,travellers:{create:travellers.map(t=>({travellerId:t.id}))}}});
       await transactionAudit(tx,user,"CREATE","Booking",record.id,record.bookingNo);
       await tx.activity.create({data:{customerId,actorId:user.id,type:"BOOKING",summary:`Booking ${record.bookingNo} created`,link:`/ticketing/${record.id}`}});
+      await queueBookingConfirmation(tx, record.id);
       return record;
     });
     return Response.json({ok:true,bookingId:booking.id,bookingNo:booking.bookingNo});

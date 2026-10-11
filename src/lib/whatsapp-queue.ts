@@ -4,7 +4,8 @@ import { evolutionConfig, evolutionState, evolutionSend, EvolutionError, provide
 import { dateTimeLabel } from "./dates";
 import { inrAmount } from "./money";
 
-export const RULES = ["STATUS_UPDATE", "DOC_REQUEST", "APPOINTMENT_REMINDER", "PNR_EXPIRY", "PAYMENT_REMINDER"] as const;
+export const RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "PAYMENT_RECEIVED", "STATUS_UPDATE", "DOC_REQUEST", "APPOINTMENT_REMINDER", "PNR_EXPIRY", "PAYMENT_REMINDER"] as const;
+const IMMEDIATE_RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "PAYMENT_RECEIVED"];
 export type AutomationRule = typeof RULES[number];
 export async function automationRules(tx: Prisma.TransactionClient = prisma): Promise<AutomationRule[]> {
   const row = await tx.settings.findUnique({ where: { key: "whatsapp.automation" } });
@@ -40,6 +41,27 @@ export async function queueStageUpdate(tx: Prisma.TransactionClient, customerId:
   }
 }
 
+export async function queueBookingConfirmation(tx: Prisma.TransactionClient, bookingId: string, ticketed = false) {
+  if (!evolutionConfig()) return;
+  const booking = await tx.booking.findUniqueOrThrow({ where: { id: bookingId }, include: { customer: true, tickets: { where: { status: "OK" } } } });
+  const agency = (await tx.settings.findUnique({ where: { key: "agency.name" } }))?.value ?? "Your agency";
+  const reference = `${booking.bookingNo}${booking.pnr ? ` / PNR ${booking.pnr}` : ""}`;
+  const details = `${booking.sector ? ` Route: ${booking.sector}.` : ""}${booking.travelDate ? ` Travel: ${dateTimeLabel(booking.travelDate)}.` : ""}`;
+  const body = ticketed
+    ? `Hello ${booking.customer.name}, ticket details are confirmed for ${reference}.${details} Ticket number(s): ${booking.tickets.map(t=>t.ticketNo).join(", ")}. Please check your itinerary with ${agency}.`
+    : `Hello ${booking.customer.name}, ${agency} has recorded your booking ${reference}.${details} Ticket issuance is not yet confirmed. We will update you when ticket details are recorded.`;
+  await queueAutomation(tx, booking.customerId, ticketed ? "TICKET_CONFIRMED" : "BOOKING_CREATED", booking.id, body);
+}
+
+export async function queuePaymentAcknowledgement(tx: Prisma.TransactionClient, paymentId: string) {
+  if (!evolutionConfig()) return;
+  const payment = await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, include: { customer: true, booking: true, visaCase: true, invoice: true } });
+  const agency = (await tx.settings.findUnique({ where: { key: "agency.name" } }))?.value ?? "Your agency";
+  const reference = payment.invoice?.invoiceNo ?? payment.booking?.bookingNo ?? payment.visaCase?.caseNo ?? "your customer account";
+  await queueAutomation(tx, payment.customerId, "PAYMENT_RECEIVED", payment.id,
+    `Hello ${payment.customer.name}, ${agency} has recorded your payment of ${inrAmount(payment.amount)} by ${payment.mode} for ${reference}. Receipt: ${payment.receiptNo}. Recorded on ${dateTimeLabel(payment.receivedOn)}. Thank you.`);
+}
+
 export async function scheduleReminders(now = new Date()) {
   if (!evolutionConfig() || !(await automationRules()).length) return;
   const tomorrow = new Date(now.getTime() + 86400000);
@@ -69,12 +91,12 @@ export async function processWhatsAppQueue() {
   let state: string;
   try { state = await evolutionState(); } catch { return { state: "unreachable", processed: 0 }; }
   if (state !== "open") return { state, processed: 0 };
-  // Quiet hours for automatic messages: 09:00–19:59 India time. Manual sends stay available.
+  // Reminders use quiet hours. Confirmations of a staff-recorded transaction send immediately.
   const indiaHour = (new Date().getUTCHours() + 5 + (new Date().getUTCMinutes() >= 30 ? 1 : 0)) % 24;
   const quiet = indiaHour < 9 || indiaHour >= 20;
   const rules = await automationRules();
   const messages = await prisma.whatsAppMessage.findMany({ where: { status: "QUEUED", instance: config.instance,
-    nextAttempt: { lte: new Date() }, ...(quiet ? { automation: null } : {}) }, orderBy: { at: "asc" }, take: 10,
+    nextAttempt: { lte: new Date() }, ...(quiet ? { OR: [{ automation: null }, { automation: { in: IMMEDIATE_RULES } }] } : {}) }, orderBy: { at: "asc" }, take: 10,
     include: { thread: { include: { customer: true } } } });
   let processed = 0;
   for (const message of messages) {
@@ -109,6 +131,12 @@ export async function processWhatsAppQueue() {
 
 async function reminderIsCurrent(rule: string, key: string, body: string) {
   const parts = key.split(":"), id = parts[2], when = parts.slice(3).join(":");
+  if (rule === "BOOKING_CREATED" || rule === "TICKET_CONFIRMED") {
+    const booking = await prisma.booking.findUnique({ where: { id } });
+    if (!booking || ["CANCELLED","VOID","REFUNDED"].includes(booking.status)) return false;
+    return rule === "TICKET_CONFIRMED" ? booking.status === "TICKETED" : !["TICKETED","REISSUED"].includes(booking.status);
+  }
+  if (rule === "PAYMENT_RECEIVED") return Boolean(await prisma.payment.findUnique({ where: { id } }));
   if (rule === "APPOINTMENT_REMINDER") {
     const vc = await prisma.visaCase.findUnique({ where: { id } });
     return Boolean(vc && !vc.closedAt && vc.appointmentDate && vc.appointmentDate.toISOString() === when && vc.appointmentDate > new Date());

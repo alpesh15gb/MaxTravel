@@ -79,8 +79,42 @@ try {
  await check("Enabled stage automation queues once and repeated same-stage saves do not spam",async()=>{await ok("/api/whatsapp/settings",{rules:["STATUS_UPDATE","APPOINTMENT_REMINDER","PNR_EXPIRY","PAYMENT_REMINDER"]},cookie);const enquiry=await db.visaStage.findUniqueOrThrow({where:{key:"ENQUIRY"}});await ok(`/api/visa/cases/${vc.caseId}/stage`,{stageId:enquiry.id},cookie);await ok(`/api/visa/cases/${vc.caseId}/stage`,{stageId:enquiry.id},cookie);assert.equal(await db.whatsAppMessage.count({where:{automation:"STATUS_UPDATE"}}),1);});
  await check("Scheduled appointment and PNR reminders are deduplicated",async()=>{await db.visaCase.update({where:{id:vc.caseId},data:{appointmentDate:new Date(Date.now()+3600000)}});await ok("/api/bookings",{customerId:alice.id,travellerIds:[traveller.id],pnr:"TEST01",deadlineHours:2},cookie);await ok("/api/whatsapp/process",{},"",auth);await ok("/api/whatsapp/process",{},"",auth);assert.equal(await db.whatsAppMessage.count({where:{automation:"APPOINTMENT_REMINDER"}}),1);assert.equal(await db.whatsAppMessage.count({where:{automation:"PNR_EXPIRY"}}),1);});
  await check("Worker lease prevents concurrent drains",async()=>{await db.settings.upsert({where:{key:"whatsapp.worker.lease"},create:{key:"whatsapp.worker.lease",value:`${Date.now()}:test`},update:{value:`${Date.now()}:test`}});const r=await ok("/api/whatsapp/process",{},"",auth);assert.equal(r.busy,true);await db.settings.delete({where:{key:"whatsapp.worker.lease"}});});
+
+ let confirmedBooking;
+ await check("Booking and payment acknowledgements remain off unless explicitly enabled",async()=>{
+  const before=await db.whatsAppMessage.count({where:{automation:{in:["BOOKING_CREATED","PAYMENT_RECEIVED"]}}});
+  const booking=await ok("/api/bookings",{customerId:alice.id,travellerIds:[traveller.id],fare:100,pnr:"OFF001"},cookie);
+  await ok("/api/payments",{customerId:alice.id,bookingId:booking.bookingId,amount:10,mode:"UPI"},cookie);
+  assert.equal(await db.whatsAppMessage.count({where:{automation:{in:["BOOKING_CREATED","PAYMENT_RECEIVED"]}}}),before);
+ });
+ await check("Enabled booking creation queues an acknowledgement without claiming ticket issuance",async()=>{
+  await ok("/api/whatsapp/settings",{rules:["BOOKING_CREATED","TICKET_CONFIRMED","PAYMENT_RECEIVED"]},cookie);
+  confirmedBooking=await ok("/api/bookings",{customerId:alice.id,travellerIds:[traveller.id],fare:100,pnr:"CONF01",sector:"BOM-DXB"},cookie);
+  const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:BOOKING_CREATED:${confirmedBooking.bookingId}`}});
+  assert.equal(row.status,"QUEUED");assert(row.body.includes("Ticket issuance is not yet confirmed"));assert(row.body.includes("CONF01"));
+ });
+ await check("A committed payment queues the correct receipt; rejected payments queue nothing",async()=>{
+  const payment=await ok("/api/payments",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:25,mode:"UPI"},cookie);
+  const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:PAYMENT_RECEIVED:${payment.payment.id}`}});
+  assert(row.body.includes(payment.receiptNo));assert(row.body.includes("25"));assert.equal(row.status,"QUEUED");
+  const n=await db.whatsAppMessage.count({where:{automation:"PAYMENT_RECEIVED"}});
+  assert.equal((await post("/api/payments",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:1000,mode:"UPI"},cookie)).status,400);
+  assert.equal(await db.whatsAppMessage.count({where:{automation:"PAYMENT_RECEIVED"}}),n);
+ });
+ await check("Ticket confirmations require actual ticket numbers and repeated saves do not duplicate",async()=>{
+  assert.equal((await post("/api/bookings/status",{bookingId:confirmedBooking.bookingId,status:"TICKETED",tickets:[]},cookie)).status,400);
+  const input={bookingId:confirmedBooking.bookingId,status:"TICKETED",tickets:[{travellerId:traveller.id,ticketNo:"123-1234567890"}]};
+  await ok("/api/bookings/status",input,cookie);await ok("/api/bookings/status",input,cookie);
+  const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:TICKET_CONFIRMED:${confirmedBooking.bookingId}`}});assert(row.body.includes("123-1234567890"));
+  assert.equal(await db.whatsAppMessage.count({where:{automation:"TICKET_CONFIRMED"}}),1);
+ });
+ await check("Transactional confirmations send outside reminder hours and obsolete booking notices are cancelled",async()=>{
+  const n=sends;await ok("/api/whatsapp/process",{},"",auth);assert.equal(sends,n+2);
+  assert.equal((await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:BOOKING_CREATED:${confirmedBooking.bookingId}`}})).status,"CANCELLED");
+  assert.equal((await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:TICKET_CONFIRMED:${confirmedBooking.bookingId}`}})).status,"READ");
+ });
  await check("Configured inbox renders staff attribution, consent and connection controls",async()=>{
-  browser=await chromium.launch({headless:true});const context=await browser.newContext();await context.addCookies([{name:"tos_session",value:cookie.split("=")[1],url:base}]);const page=await context.newPage();await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});assert(await page.getByRole("button",{name:"Send WhatsApp message",exact:true}).isVisible());assert(await page.getByText("Customer agreed to automatic WhatsApp updates").isVisible());await page.getByText("Automatic messages and unmatched replies",{exact:true}).click();assert(await page.getByLabel("Visa stage changes").isChecked());await page.screenshot({path:path.join(runtime,"desktop.png"),fullPage:true});await page.setViewportSize({width:390,height:844});await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(runtime,"phone.png"),fullPage:false});await browser.close();browser=null;
+  browser=await chromium.launch({headless:true});const context=await browser.newContext();await context.addCookies([{name:"tos_session",value:cookie.split("=")[1],url:base}]);const page=await context.newPage();await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});assert(await page.getByRole("button",{name:"Send WhatsApp message",exact:true}).isVisible());assert(await page.getByText("Customer agreed to automatic WhatsApp updates").isVisible());await page.getByText("Automatic messages and unmatched replies",{exact:true}).click();assert(await page.getByLabel("Payment received acknowledgement").isChecked());await page.screenshot({path:path.join(runtime,"desktop.png"),fullPage:true});await page.setViewportSize({width:390,height:844});await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(runtime,"phone.png"),fullPage:false});await browser.close();browser=null;
  });
  console.log(`${count} Evolution integration checks passed. Evidence: ${runtime}`);
 }finally{
