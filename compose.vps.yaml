@@ -1,0 +1,35 @@
+name: max-travel-crm
+services:
+  app:
+    image: max-travel-crm:local
+    build: .
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:3107:3000"
+    environment:
+      DATABASE_URL: file:/data/app.db
+      UPLOAD_ROOT: /data/uploads
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      APP_ORIGIN: ${APP_ORIGIN:?Set APP_ORIGIN in .env}
+      TRUST_PROXY: "1"
+    volumes:
+      - agency-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  backup:
+    image: max-travel-crm:local
+    profiles: [maintenance]
+    entrypoint: [node, scripts/backup.mjs]
+    command: [--out, /backups]
+    environment:
+      DATABASE_URL: file:/data/app.db
+      UPLOAD_ROOT: /data/uploads
+    volumes:
+      - agency-data:/data
+      - ./backups:/backups
+volumes:
+  agency-data:

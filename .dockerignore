@@ -1,0 +1,42 @@
+# Keep the build context small and, more importantly, keep local state out of the image.
+# Anything listed here is invisible to `COPY . .` in the Dockerfile.
+
+# Dependencies and build output are rebuilt inside the image.
+node_modules
+.next
+.next-*
+/out
+/build
+*.tsbuildinfo
+next-env.d.ts
+
+# Local secrets — the real ones arrive as environment variables at runtime.
+.env
+.env*.local
+*.pem
+
+# Local databases and customer data: never baked into an image layer.
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-wal
+prisma/*.db-shm
+uploads
+uploads.pre-revamp
+backups
+
+# Test/support artifacts.
+test-artifacts
+tests/.runtime
+*.log
+reports
+
+# Tooling and docs that the runtime does not need.
+.git
+.gitignore
+.github
+.vscode
+.vercel
+docs
+tests
+Dockerfile
+.dockerignore

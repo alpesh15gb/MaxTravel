@@ -1,0 +1,3 @@
+import Link from "next/link";
+import Icon from "@/components/Icon";
+export default function NotFound(){return <main className="flex min-h-screen items-center justify-center p-6"><section className="panel max-w-lg p-10 text-center"><span className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-50 text-teal-700"><Icon name="compass" size={32}/></span><h1 className="text-3xl font-semibold">This page isn’t available.</h1><p className="my-5 text-sm leading-6 text-slate-500">The record may not exist, or it may be outside your access. Private upload links can also expire.</p><Link href="/" className="btn-primary">Return to workspace<Icon name="arrow" size={16}/></Link></section></main>;}

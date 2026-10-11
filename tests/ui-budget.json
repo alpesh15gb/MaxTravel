@@ -1,0 +1,15 @@
+{
+  "note": "Empty space below the content, per screen, as a ceiling. §2 of docs/ui-revamp-plan.md wants ≤25% of a 1440x900 viewport empty below the last element on every screen; these screens are still above it. Filling them is content work, not a stylesheet change — the seeded review workspace holds three customers, two bookings, one checklist and no suppliers or refunds, so the screens that list those are short by data, not by layout — and it belongs to those screens' own phase (§4: 'inline empty states, real content density, and a what-to-do-next action'). The ceiling may not rise: a screen above its recorded figure fails the metrics gate. Measured values below the ceiling are reported so the entry can be deleted as soon as the screen meets the 25% target.",
+  "updatedAt": "2026-10-11",
+  "slackNote": "The gate allows two points of measurement slack for viewport rounding before calling a ceiling breached. That is noise tolerance, not permission to regress.",
+  "deadSpaceCeilings": {
+    "/ticketing": 40,
+    "/documents": 50,
+    "/payments": 48,
+    "/refunds": 43,
+    "/suppliers": 33,
+    "/employees": 59,
+    "/checklists": 64,
+    "/notifications": 58
+  }
+}

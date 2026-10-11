@@ -1,0 +1,335 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Shared workspace polish and responsive reporting surfaces. */
+.report-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1rem; }
+.report-kpis .stat-card { height:100%; border:1px solid var(--border-default); border-radius:14px; background:var(--bg-panel); }
+.report-filters { display:flex; flex-wrap:wrap; align-items:end; gap:1rem; padding:1.25rem; }
+.report-filters > div:first-child { flex:1; min-width:180px; align-self:center; }
+.report-filters .field { min-width:150px; }
+.report-track { height:8px; border-radius:6px; background:var(--bg-inset); overflow:hidden; }
+.report-track > div { height:100%; border-radius:6px; background:var(--accent); min-width:0; }
+.report-track.collections > div { background:var(--ok); }
+.report-chart { display:grid; gap:1.25rem; }
+.report-month { display:grid; gap:8px; }
+.report-legend { display:flex; align-items:center; gap:6px; }
+.report-legend::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--accent); }
+.report-legend.collections::before { background:var(--ok); }
+.report-definitions { font-size:.875rem; line-height:1.8; color:var(--text-secondary); }
+.report-definitions summary { cursor:pointer; font-weight:600; }
+.report-definitions p { max-width:100ch; margin-top:8px; }
+@media(max-width:1100px) { .report-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:540px) {
+  .report-kpis { grid-template-columns:1fr; }
+  .report-filters .field { flex:1; min-width:0; width:calc(50% - 1rem); }
+  .report-filters > div:first-child { flex-basis:100%; }
+  .report-filters button { width:100%; }
+  .report-month > div:first-child { flex-wrap:wrap; }
+}
+
+:root {
+  /* ── 1. primitives ─────────────────────────────────────────────────────────────────────────
+     Raw values, named once. Nothing outside this block should write a colour as a literal, and
+     nothing outside this block and tailwind.config.ts should write a size in pixels. The brand
+     ramp mirrors `brand` in tailwind.config.ts — the key that used to be called `teal` while
+     holding these blue values, which is how focus rings and text selection once rendered green
+     on a blue-branded app. */
+  --brand-50:#eef5ff; --brand-100:#dbeafd; --brand-200:#bcd8fb; --brand-300:#8fbff7;
+  --brand-400:#5aa0f0; --brand-500:#3485e8; --brand-600:#1f6fd6; --brand-700:#1a63c4;
+  --brand-800:#1852a3; --brand-900:#173f7a;
+  --ink-900:#0c1f33; --ink-800:#102a43; --ink-700:#172b42; --ink-600:#475569;
+  --ink-500:#64748b; --ink-400:#8290a1; --ink-300:#cbd5e1;
+  --paper-0:#ffffff; --paper-1:#f8fafc; --paper-2:#f4f6f9;
+  --line-hairline:#eef1f5; --line-soft:#e4e9ef; --line-strong:#cbd5e1;
+  --danger-50:#fff1f2; --danger-200:#fecdd3; --danger-600:#e11d48; --danger-700:#be123c;
+  --warn-50:#fffbeb; --warn-200:#fde68a; --warn-700:#b45309; --warn-800:#92400e;
+  --ok-50:#ecfdf5; --ok-200:#a7f3d0; --ok-600:#047857; --ok-800:#065f46;
+  --info-50:#f0f9ff; --info-200:#bae6fd; --info-700:#0369a1;
+
+  /* ── 2. semantic roles — what a colour MEANS, so a restyle is one edit ──────────────────── */
+  --text-primary:var(--ink-700); --text-secondary:var(--ink-600); --text-muted:var(--ink-500);
+  --text-faint:var(--ink-400); --text-inverse:#ffffff;
+  --bg-app:var(--paper-2); --bg-panel:var(--paper-0); --bg-inset:var(--paper-1);
+  --border-hairline:var(--line-hairline); --border-default:var(--line-soft); --border-strong:var(--line-strong);
+  --accent:var(--brand-700); --accent-hover:var(--brand-800); --accent-weak:var(--brand-50);
+  --on-accent:#ffffff;
+  --danger:var(--danger-600); --warn:var(--warn-700); --ok:var(--ok-600); --info:var(--info-700);
+
+  /* ── 3. component measurements — the numbers the layers above are spent through ─────────── */
+  --gutter:24px; --header-height:64px; --rail-width:224px; --panel-radius:12px;
+  --card-pad:16px; --row-pad:12px; --row-height:44px; --field-height:38px; --btn-height:38px;
+  --shadow-1:0 1px 2px rgba(12,31,51,.06), 0 8px 24px rgba(12,31,51,.08);
+  --shadow-2:0 2px 6px rgba(12,31,51,.08), 0 16px 40px rgba(12,31,51,.12);
+
+  /* Legacy aliases for the pre-revamp names, so no rule silently loses its colour mid-migration. */
+  --background:var(--bg-app); --foreground:var(--text-primary);
+  --line:var(--border-default); --surface:var(--bg-panel); --muted-surface:var(--bg-inset);
+  --workspace-gutter:var(--gutter);
+}
+@media (min-width:768px) { :root { --gutter:24px; } }
+
+/* Density is one attribute on <html>, not a decision re-made per screen. Comfortable is the
+   default; compact is for staff who live in tables all day. Both read their numbers from the
+   block above, so the two modes cannot drift apart as screens are edited. */
+:root[data-density="comfortable"] { --card-pad:16px; --row-pad:12px; --row-height:44px; --field-height:38px; --btn-height:38px; }
+:root[data-density="compact"]     { --card-pad:12px; --row-pad:8px;  --row-height:36px; --field-height:34px; --btn-height:34px; }
+@layer base {
+  * { box-sizing:border-box; }
+  body { background:var(--bg-app); color:var(--text-primary); }
+  button, input, select, textarea { font:inherit; }
+  button, a, input, select, textarea { -webkit-tap-highlight-color:transparent; }
+  button:disabled { cursor:wait; opacity:.55; }
+  input:not([type=checkbox]):not([type=radio]),select,textarea { min-height:36px; }
+  input,select,textarea { color:var(--text-primary); accent-color:var(--accent); }
+  input::placeholder,textarea::placeholder { color:var(--text-faint); }
+  /* Was a 53%-alpha blue, which measured too faint against white to read as a focus indicator. */
+  :focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+  /* Was Tailwind's default green teal — the last visible relic of the pre-blue palette. */
+  ::selection { background:var(--brand-200); color:var(--brand-900); }
+  h1,h2,h3 { letter-spacing:-.025em; }
+}
+@layer components {
+  /* The gutter the rest of the app always claimed to honour: --gutter was declared and then never
+     read, while this rule hardcoded px-4/md:px-6. */
+  .workspace-page { @apply mx-auto w-full max-w-[1600px] py-5; padding-inline:var(--gutter); }
+  .page-header { @apply mb-5 flex flex-wrap items-start justify-between gap-3; }
+  /* One page title per screen, and deliberately below the KPI step: on a data screen the deciding
+     number outranks the page name. */
+  .page-header h1 { @apply text-display font-semibold; }
+  /* This paragraph sits on the page background (#f5f7fa), where slate-500 measures 4.43:1 — just
+     under the 4.5:1 minimum for body text. slate-600 measures 7.06:1 there. */
+  .page-header p { @apply mt-1 max-w-3xl text-xs leading-5 text-slate-600; }
+  @media print { .no-print { display: none !important; } }
+  .eyebrow { @apply mb-2 text-micro font-bold uppercase tracking-[.2em] text-brand-800; }
+  .page-actions { @apply flex flex-wrap items-center gap-2; }
+  .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-3.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:opacity-50; min-height:var(--btn-height); }
+  .btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50; min-height:var(--btn-height); }
+  /* Solid destructive action, for the one button that closes or rejects a record for good. */
+  .btn-danger { @apply inline-flex items-center justify-center gap-2 rounded-md bg-rose-600 px-3.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50; min-height:var(--btn-height); }
+  .icon-button { @apply relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900; }
+  .panel { border:1px solid var(--border-default); background:var(--bg-panel); border-radius:var(--panel-radius); }
+  .empty-state { @apply flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white px-5 py-8 text-center; }
+  .empty-icon { @apply mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-slate-50 text-slate-500; }
+  /* An empty state is the first section heading under the page h1, so it is an h2: as an h3 it
+     skipped a heading level on every page that had no records. */
+  .empty-state h2 { @apply text-title font-semibold; }
+  .empty-state p { @apply mb-4 mt-1 max-w-md text-xs leading-5 text-slate-500; }
+  /* Padding comes from the density layer, so one attribute on <html> moves every card at once. */
+  .stat-card { @apply h-full min-w-0 rounded-lg border border-slate-200 bg-white transition hover:border-slate-300; padding:var(--card-pad); }
+  .stat-top { @apply flex items-center justify-between gap-2 text-xs font-medium text-slate-500; }
+  .stat-icon { @apply flex h-6 w-6 shrink-0 items-center justify-center rounded bg-slate-50 text-slate-500; }
+  .stat-icon.amber { @apply bg-amber-50 text-amber-700; }
+  .stat-icon.rose { @apply bg-rose-50 text-rose-700; }
+  .stat-value { @apply mt-1 text-kpi font-semibold tabular-nums; }
+  .stat-note { @apply mt-1 text-xs leading-5 text-slate-500; }
+  .summary-strip { @apply mb-4 grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white; }
+  .summary-strip > * { @apply min-w-0 border-b border-r border-slate-100; }
+  .summary-strip .stat-card { @apply rounded-none border-0; }
+  .summary-strip .stat-icon { @apply hidden; }
+  .summary-strip .stat-value { @apply text-title; }
+  .summary-strip .stat-note { @apply hidden sm:block; }
+  /* The band decides its own layout from the space it was given and the number of children, instead
+     of each caller re-deciding it (sm:grid-cols-3, xl:grid-cols-4, grid-cols-3, grid-cols-2 …). Two
+     up on a phone; from 640px, as many columns as fit at a readable 180px minimum. One rule, one
+     behaviour, whatever the screen passes in. */
+  @media (min-width:640px) { .summary-strip { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); } }
+  .workspace-toolbar { @apply mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white; padding:var(--row-pad); }
+  .field { @apply flex min-w-0 flex-col gap-1.5 text-sm; }
+  .field-label { @apply text-xs font-semibold text-slate-600; }
+  /* Careful with `focus:outline-none` on form controls: it deletes the ring that `:focus-visible`
+     paints above, and the utility that replaced it — `ring-teal-500/10` — is a 10%-alpha glow that
+     is invisible on white. Every field in the app was consequently focusable with no indicator a
+     keyboard user could see (measured: `outline: 2px solid rgba(0,0,0,0)` while `:focus-visible`
+     matched). Keep the soft glow as decoration, but let the ring through. */
+  .field input,.field select,.field textarea { @apply w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm transition focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10; }
+  /* A date field is four focus stops in one control: Chromium walks month, day, year and finally the
+     calendar picker, and on that last segment the host input matches neither `:focus` nor
+     `:focus-visible` — so the ring disappeared while the user was still inside the field (measured:
+     stop 25 with a 3px ring, stop 26 with none). `:focus-within` keeps matching, so the ring is
+     pinned to the control for as long as any part of it has focus. */
+  .field:focus-within input,.field:focus-within select,.field:focus-within textarea,.control:focus-within { outline:3px solid var(--accent); outline-offset:2px; }
+  .field-hint { @apply text-xs leading-5 text-slate-500; }
+  .form-grid { @apply grid gap-4 sm:grid-cols-2; }
+  .form-section-label { @apply border-t border-slate-200 pt-5 text-micro font-bold uppercase tracking-[.16em] text-slate-600; }
+  /* Semantic surfaces read from the token layer, so "this went wrong" is one colour to change. */
+  .form-error { @apply rounded-xl border px-4 py-3 text-sm; border-color:var(--danger-200); background:var(--danger-50); color:var(--danger-700); }
+  .form-success { @apply rounded-xl border px-4 py-3 text-sm; border-color:var(--ok-200); background:var(--ok-50); color:var(--ok-800); }
+  .status { @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold; }
+  .status-dot { @apply h-1.5 w-1.5 rounded-full bg-current; }
+  .status-neutral { @apply border-slate-200 bg-slate-50 text-slate-600; }
+  .status-success { border-color:var(--ok-200); background:var(--ok-50); color:var(--ok-800); }
+  .status-warning { border-color:var(--warn-200); background:var(--warn-50); color:var(--warn-800); }
+  .status-danger { border-color:var(--danger-200); background:var(--danger-50); color:var(--danger-700); }
+  .status-info { border-color:var(--info-200); background:var(--info-50); color:var(--info-700); }
+  .brand-mark { @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-700 text-white; }
+  /* The rail is an off-canvas drawer below lg; see the desktop reset at the end of this file. */
+  .app-sidebar { @apply fixed inset-y-0 left-0 z-50 flex w-[var(--rail-width)] flex-col border-r border-slate-200 bg-white transition-transform lg:sticky lg:top-[var(--header-height)] lg:h-[calc(100vh-var(--header-height))] lg:z-30; }
+  .nav-link { @apply flex items-center gap-2.5 rounded-md px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900; }
+  .nav-link.active { @apply bg-brand-50 font-semibold text-brand-700; }
+  /* 9px slate-400 measured 2.56:1 on white — well under the 4.5:1 minimum, and far too small to read. */
+  .nav-section { @apply mb-1 mt-4 px-3 text-micro font-semibold uppercase tracking-[.12em] text-slate-500; }
+  .app-header { @apply sticky top-0 z-40 flex h-[var(--header-height)] items-center gap-3 border-b border-slate-200 bg-white px-4 text-slate-900 md:px-5; }
+  .app-header .icon-button { @apply text-slate-500 hover:bg-slate-100 hover:text-slate-900; }
+  .topbar-search { @apply relative w-full max-w-xl; }
+  .topbar-chip { @apply inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-slate-200 transition hover:bg-white/10 hover:text-white; }
+  .btn-quick { @apply inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50; }
+  .btn-quick-caret { @apply inline-flex h-10 items-center rounded-r-lg border-l border-white/20 bg-brand-600 px-2 text-white transition hover:bg-brand-700; }
+  .menu-panel { @apply absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 text-slate-700 shadow-xl; }
+  .menu-item { @apply flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-50; }
+  /* Five 264px columns plus four 12px gaps is 1368px inside ~1232px of content, so the board used to
+     scroll horizontally inside a fixed-height box. The pipeline groups into four columns now, and
+     they share the width: minmax(0,1fr) each at ≥1280px, scrolling columns below that. */
+  /* minmax(0,1fr) for the row, not min-content: the board is a fixed height, so a row sized to its
+     content let the columns grow past it and slide under the page footer — which then swallowed
+     clicks on the last action on a tall card. The row now takes the board's height and each column
+     body scrolls its own cards, which is what the fixed height was there to do. */
+  .board-scroll { @apply grid gap-3 pb-3; grid-auto-rows:minmax(0,1fr); grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .board-scroll--three { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  /* Below 1280px the columns scroll sideways; each one snaps into place so a swipe lands on a whole column. */
+  @media (max-width:1279px) { .board-scroll { grid-auto-flow:column; grid-auto-columns:250px; grid-template-columns:none; overflow-x:auto; scroll-snap-type:x mandatory; } .board-column { scroll-snap-align:start; } }
+  .board-column { @apply flex min-w-0 flex-col rounded-lg border border-slate-200 bg-[#edf1f6] p-2 transition; }
+  /* An empty column is a 40px header strip, not a full-height dashed slab. It stays a drop target:
+     the drag handlers live on the section, which is still visible. */
+  .board-column[data-empty=true] .board-column-body { display:none; }
+  .board-column[data-empty=true] .board-column-head { @apply mb-0; }
+  /* `h-full` on the section made every empty column as tall as the busiest one — a 753px empty box.
+     `height:auto` plus this higher-specificity selector turns it into a header strip. */
+  .board-column[data-empty=true] { align-self:start; height:auto; }
+  .board-column.drop-ok { @apply bg-teal-50 ring-2 ring-teal-400/60; }
+  .board-column.drop-blocked { @apply opacity-60; }
+  .board-column-head { @apply mb-3 flex items-center justify-between gap-2 px-1; }
+  .board-count { @apply rounded-md bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-600 shadow-sm; }
+  .board-card { @apply cursor-default select-none rounded-md border border-slate-200 bg-white p-3 transition hover:border-teal-300; }
+  .board-card[draggable=true] { @apply cursor-grab active:cursor-grabbing; }
+  .board-card.dragging { @apply opacity-50; }
+  /* Card text wraps rather than truncates: a clipped name or case reference is hidden information. */
+  .board-card-title { @apply block text-sm font-semibold text-slate-900 hover:text-teal-700; overflow-wrap:anywhere; }
+  .board-card-meta { @apply mt-0.5 text-small text-slate-500; overflow-wrap:anywhere; }
+  .doc-meter { @apply mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100; }
+  .doc-meter > span { @apply block h-full rounded-full transition-[width]; }
+  .chip-filter { @apply inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50; }
+  .chip-filter[aria-pressed=true] { @apply border-teal-600 bg-teal-50 text-teal-800; }
+  .board-divider { @apply my-3 border-t border-slate-100; }
+  .contact-row { @apply flex min-w-0 items-center gap-2 py-1 text-xs text-slate-600; }
+  .contact-row span:last-child { @apply truncate; }
+  .avatar { @apply flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white; }
+  .segmented { @apply inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm; }
+  .segmented button { @apply flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-slate-500 transition hover:text-slate-900; }
+  .segmented button[aria-pressed=true] { @apply bg-slate-100 font-semibold text-slate-900; }
+  /* Same rule as .field above: no `focus:outline-none`, or the ring is gone. */
+  .control { @apply rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10; height:var(--field-height); }
+  .auth-layout { @apply grid min-h-screen bg-white lg:grid-cols-[1fr_1.05fr]; }
+  .auth-story { @apply relative hidden overflow-hidden bg-[#102d43] p-12 text-white lg:flex lg:flex-col; background-image:radial-gradient(ellipse at 85% 80%,var(--brand-700),transparent 62%); }
+  .auth-brand { @apply flex items-center gap-2 text-2xl font-semibold tracking-tight; }
+  .max-travel-brand { display:inline-flex; flex-direction:column; align-items:flex-end; flex-shrink:0; gap:4px; padding:12px 16px; border-radius:8px; background:#fff; color:#0f172a; }
+  .max-travel-brand img { display:block; width:220px; height:auto; }
+  .max-travel-brand-label { font-size:13px; line-height:1; font-weight:600; letter-spacing:.16em; }
+  .max-travel-brand-compact { padding:0; gap:3px; }
+  .max-travel-brand-compact img { width:150px; }
+  @media (max-width:639px) { .max-travel-brand-compact img { width:88px; } }
+  .auth-story-content { @apply my-auto max-w-lg py-14; }
+  .auth-kicker { @apply text-micro font-bold tracking-[.24em] text-brand-200; }
+  .auth-story h1 { @apply mt-6 text-[clamp(3rem,4.8vw,5rem)] font-medium leading-[1.08] tracking-[-.055em]; }
+  .auth-story h1 span { @apply text-teal-300; }
+  .auth-story p { @apply mt-7 max-w-sm text-sm leading-7 text-slate-300; }
+  .journey-art { @apply relative my-5 text-teal-300/60; }
+  .journey-art span { @apply absolute right-[7%] top-[23%] -rotate-12 text-teal-200; }
+  .auth-pill-row { @apply flex flex-wrap gap-2; }
+  .auth-pill-row>span { @apply flex items-center gap-2 rounded-full border border-white/15 px-3 py-2 text-small text-slate-200; }
+  .auth-story-footer { @apply text-xs text-slate-400; }
+  .auth-form-side { @apply flex flex-col items-center justify-center px-6 py-10 sm:px-12; }
+  .auth-form-wrap { @apply w-full max-w-md; }
+  .auth-form-wrap h2 { @apply text-3xl font-semibold leading-tight; }
+  .auth-description { @apply mb-7 mt-3 text-sm leading-6 text-slate-500; }
+  .auth-form { @apply space-y-4; }
+  .auth-submit { @apply mt-4 w-full; }
+  .auth-security { @apply mt-10 flex items-center gap-2 text-xs text-slate-500; }
+}
+.tos-scroll::-webkit-scrollbar { width:6px; height:6px; }
+/* Workflow boards use the page scroll, so every step stays reachable without nested lanes. */
+.workflow-board { height:auto; min-height:0; grid-template-columns:repeat(4,minmax(0,1fr)); grid-auto-flow:row; grid-auto-rows:auto; align-items:start; overflow:visible; }
+.workflow-board.relationship-board { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.workflow-board .board-column { height:auto; padding:12px; scroll-margin-top:80px; }
+.workflow-board .board-column-body { overflow:visible; padding-right:0; }
+.workflow-board .board-column[data-empty=true] .board-column-body { display:flex; }
+.workflow-board .board-column-head { margin-bottom:8px; align-items:flex-start; }
+.workflow-board .board-column-head > div { align-items:flex-start; }
+.workflow-board .board-column-head > div > span { margin-top:7px; }
+.board-step { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; margin-right:6px; border-radius:6px; color:var(--accent); background:var(--bg-panel); font-size:.8125rem; }
+.board-column-description { font-size:.8125rem; line-height:1.6; color:var(--text-secondary); margin:0 4px 16px; }
+.board-empty { padding:16px 8px; border:1px dashed var(--border-strong); border-radius:8px; font-size:.875rem; line-height:1.6; color:var(--text-secondary); background:var(--bg-panel); }
+.board-open-link { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border-default); color:var(--accent); font-size:.875rem; font-weight:600; min-height:40px; }
+.board-guide { margin-bottom:20px; padding:16px 20px; border:1px solid var(--border-default); border-radius:12px; background:var(--bg-panel); font-size:.875rem; }
+.board-guide p { margin-top:4px; line-height:1.7; color:var(--text-secondary); max-width:90ch; }
+.board-jumps { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.board-jumps a { display:flex; align-items:center; gap:10px; min-height:40px; padding:6px 10px; border:1px solid var(--border-default); border-radius:8px; color:var(--accent); }
+.board-jumps a span { color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+@media(max-width:1279px) { .workflow-board,.workflow-board.relationship-board { grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-flow:row; grid-auto-columns:auto; overflow:visible; } }
+@media(max-width:767px) { .workflow-board,.workflow-board.relationship-board { grid-template-columns:minmax(0,1fr); } .board-jumps { display:grid; grid-template-columns:1fr; } .board-jumps a { justify-content:space-between; } }
+.skip-link { position:fixed; top:8px; left:8px; transform:translateY(-200%); z-index:100; background:var(--accent); color:var(--on-accent); border-radius:8px; padding:12px 18px; }
+.skip-link:focus { transform:none; }
+.nav-link.active { box-shadow:inset 3px 0 var(--accent); }
+.page-header h1 { letter-spacing:-.035em; }
+.panel { box-shadow:0 2px 6px rgb(12 31 51 / 3%); }
+.tos-scroll::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:8px; }
+/* Consistent table treatment across the legacy detail modules. */
+main table { width:100%; border-collapse:collapse; }
+main table thead { background:var(--bg-inset); }
+/* Table rows read their rhythm from the density attribute, and headers use the micro step (the one
+   12px tier allowed, because an uppercase tracked label is a different job from body copy). */
+main table th { padding-block:calc(var(--row-pad) - 2px); text-align:left; font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text-secondary); font-weight:600; }
+main table td { padding-block:var(--row-pad); }
+/* Row rhythm is the density layer too: 44px comfortable, 36px compact, from one attribute. */
+main table tbody tr { border-color:#edf0f4; height:var(--row-height); }
+main table tbody tr:hover { background:#f9fbfc; }
+main>div h1.text-xl { font-size:1.5rem; line-height:1.25; font-weight:600; }
+main>div { animation:page-in .22s ease-out; }
+@keyframes page-in { from { opacity:.6; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+@media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
+@media (max-width:640px) { main table { min-width:600px; } main .grid-cols-5 { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+/* The shell adds -translate-x-full to the rail while the drawer is closed, and that utility is
+   emitted after @layer components — so a `lg:translate-x-0` written inside .app-sidebar above would
+   lose and leave the desktop sidebar parked off-screen. This reset is more specific and later on
+   purpose: the rail always sits on screen from lg up, and stays a drawer below it. */
+@media (min-width:1024px) { aside.app-sidebar { transform:none; } }
+/* A closed off-canvas drawer must not stay tabbable. Sliding it off-screen with a transform leaves
+   its controls in the tab order and in the accessibility tree, parked at x≈-196 — measured on a
+   390px viewport: stops 5-19 of a Tab walk were the 15 controls of a drawer the user could not see.
+   `visibility:hidden` removes them, and the reset above brings them back from lg up, where the same
+   element is the always-visible rail. The delayed visibility transition keeps the slide-out. */
+@media (max-width:1023px) {
+  aside.app-sidebar { transition:transform 150ms cubic-bezier(.4,0,.2,1), visibility 0s linear 150ms; }
+  aside.app-sidebar[data-drawer="closed"] { visibility:hidden; }
+  aside.app-sidebar[data-drawer="open"] { visibility:visible; transition-delay:0s; }
+}
+/* Kept as its own rule so the built-CSS assertion in tests/smoke.mjs still matches exactly. */
+@media (min-width:1024px) { aside.app-sidebar { visibility:visible; } }
+/* Work-focused detail hierarchy: compact identity, one primary action, then the record. */
+.customer-record { padding:16px; }
+.customer-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0; overflow:hidden; border:1px solid var(--line); border-radius:var(--panel-radius); background:var(--surface); margin-bottom:12px; }
+.customer-summary > div { padding:10px 14px; border-right:1px solid var(--line); border-bottom:1px solid var(--line); }
+.customer-tools { position:relative; }
+.customer-tools summary { list-style:none; cursor:pointer; }
+.customer-tools summary::-webkit-details-marker { display:none; }
+.customer-tools[open] summary { background:var(--muted-surface); }
+.customer-tool-list { position:absolute; top:calc(100% + 6px); right:0; z-index:35; width:240px; padding:6px; border:1px solid var(--line); border-radius:8px; background:var(--surface); box-shadow:0 8px 24px #172b421a; }
+.customer-tool-list button { display:flex; width:100%; justify-content:flex-start; border:0; background:transparent; min-height:40px; }
+.customer-tool-list button:hover { background:var(--muted-surface); }
+/* .customer-overview-empty used to sit here with a hardcoded 12px — the last sub-13px text that was
+   not an uppercase label. It is now the `text-small` step at the call site, so the rule is gone. */
+@media (min-width:768px) { .customer-summary { grid-template-columns:repeat(6,minmax(0,1fr)); } }
+@media (max-width:767px) {
+  input:not([type=checkbox]):not([type=radio]),select,textarea { min-height:42px; }
+  .btn-primary,.btn-secondary,.btn-danger { min-height:42px; }
+  /* The compact actions in the detail views opt out of the .btn-* classes with their own explicit
+     min-h-7/min-h-8, so the touch floor has to cover those heights too. Without this the visa
+     workflow chips and document actions shipped at 28-32px on a phone, and one back-link at 16px,
+     under the 24px accessibility minimum. */
+  main button.min-h-7,main button.min-h-8,main a.min-h-7,main a.min-h-8 { min-height:40px; }
+  .page-header { margin-bottom:16px; }
+  .customer-summary > div { padding:8px 12px; }
+  .customer-tool-list { left:0; right:auto; max-width:calc(100vw - 64px); }
+  .summary-strip .stat-card { padding:10px 12px; }
+}
+@media print { body { background:white; } }

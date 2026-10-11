@@ -1,0 +1,144 @@
+# Continuous integration for this workspace.
+#
+# WHERE THIS FILE BELONGS
+# It must sit at the root of the Git repository — the same directory as package.json. This machine
+# has no Git metadata (no .git), so the workflow has never executed here; the YAML itself was
+# validated with `npx js-yaml .github/workflows/ci.yml`. A human must confirm the run on a branch.
+# Either push the branch and watch the Actions run, or reproduce the three jobs by hand from the
+# repository root:
+#
+#   npm ci && npx prisma generate && npm run typecheck && npm run lint
+#   npm run build
+#   npx playwright install --with-deps chromium && npm test
+#
+# WHAT EACH JOB PROVES
+#   verify  — the tree typechecks (tsc --noEmit) and lints (next lint). Prisma's client is generated
+#             first because the TypeScript types for the database come from `prisma generate`, and a
+#             fresh checkout has no generated client.
+#   build   — the app compiles. Every route in the route table is dynamic (`ƒ`), so `next build` does
+#             not prerender or query anything: no database is needed and none is provided. The
+#             DATABASE_URL and JWT_SECRET below are throwaway CI values, never real credentials, and
+#             JWT_SECRET is well over 32 characters because the session signer rejects anything shorter.
+#   test    — the project's own chain, exactly as `npm test` defines it: tests/smoke.mjs (isolated
+#             SQLite database and upload root under tests/.runtime/) and then tests/a11y-gate.mjs,
+#             which audits the build made by the previous step and exits non-zero if any finding
+#             falls outside tests/a11y-budget.json. Both suites start and stop their own servers on
+#             loopback ports and leave the machine clean.
+#
+# PREREQUISITES A HUMAN MUST KEEP TRUE
+#   • npm ci requires package-lock.json to be in sync with package.json. Adding a dependency without
+#     updating the lockfile fails this job immediately and deliberately.
+#   • Playwright is a declared devDependency pinned in package-lock.json (1.63.0), so `npm ci`
+#     installs it and `npx playwright install` fetches the browser for exactly that version. The
+#     harnesses load it through tests/browser.mjs, which prefers the project's copy — the path this
+#     workflow exercises — and falls back to a vendored copy for local setups that have one.
+#   • The build runs before the tests because both the smoke suite (`next start`) and the
+#     accessibility gate require a build, and the gate refuses one older than src/.
+#
+# DELIBERATELY NOT HERE
+#   • No migration is applied against a real database: this workflow has no database and no
+#     credentials, and migrating a live database is a deployment step, not a pull-request check.
+#     That the migrations apply cleanly to an *empty* database is already proven by the test job —
+#     tests/smoke.mjs builds its throwaway SQLite file with `prisma migrate deploy`, so a migration
+#     that cannot run from scratch fails this pipeline.
+#   • Not wired: tests/implementation-verify.mjs, tests/client-audit.mjs, tests/responsive-review.mjs
+#     and tests/visa-board-verify.mjs. They assert against their own review servers and fixtures and
+#     are run by hand; `npm test` — the chain this job runs — is the project's defined gate.
+#   • No deploys, no secrets, no third-party services.
+#
+# RUNS TWICE ON A PULL-REQUEST BRANCH, ON PURPOSE: `push` covers every branch, so a branch with no
+# pull request still gets checked, and `pull_request` then re-checks the merge result. The default
+# branch name is not assumed here, because this machine cannot read the repository's Git metadata.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  DATABASE_URL: "file:./ci.db"
+  JWT_SECRET: "ci-only-placeholder-secret-not-used-anywhere-real-0123456789abcdef"
+
+jobs:
+  verify:
+    name: Typecheck and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Generate the Prisma client
+        run: npx prisma generate
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Generate the Prisma client
+        run: npx prisma generate
+      - name: Build
+        run: npm run build
+
+  test:
+    name: Smoke suite and accessibility gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Generate the Prisma client
+        run: npx prisma generate
+      - name: Install the Chromium the audit drives
+        run: npx playwright install --with-deps chromium
+      - name: Build for the audit
+        run: npm run build
+      - name: Run the test chain
+        run: npm test
+      - name: Upload the test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-evidence
+          path: |
+            test-artifacts/a11y/report.json
+            test-artifacts/a11y/report.md
+            test-artifacts/a11y/gate.json
+            test-artifacts/a11y-gate-server.log
+            tests/.runtime/latest.json
+            docs/verification-results.json
+          if-no-files-found: warn

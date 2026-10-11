@@ -1,0 +1,53 @@
+name: travel-os
+services:
+  app:
+    image: travel-os:local
+    build: .
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      DATABASE_URL: file:/data/app.db
+      UPLOAD_ROOT: /data/uploads
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+    volumes:
+      - agency-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  proxy:
+    image: caddy:2-alpine
+    profiles: [public]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CRM_DOMAIN: ${CRM_DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - proxy-data:/data
+      - proxy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+  backup:
+    image: travel-os:local
+    profiles: [maintenance]
+    entrypoint: [node, scripts/backup.mjs]
+    command: [--out, /backups]
+    environment:
+      DATABASE_URL: file:/data/app.db
+      UPLOAD_ROOT: /data/uploads
+    volumes:
+      - agency-data:/data
+      - ./backups:/backups
+volumes:
+  agency-data:
+  proxy-data:
+  proxy-config:

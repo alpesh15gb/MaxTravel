@@ -1,0 +1,20 @@
+const { PrismaClient } = require("@prisma/client");
+const path = require("path");
+const runtime = require("fs").readdirSync(path.join(__dirname, ".runtime")).filter(d => d.startsWith("impl-verify-")).sort().at(-1);
+const url = "file:" + path.join(__dirname, ".runtime", runtime, "test.db").replaceAll("\\", "/");
+const p = new PrismaClient({ datasources: { db: { url } } });
+(async () => {
+  const docs = await p.document.findMany({ where: { docType: "Passport" }, select: { status: true, expiryDate: true, version: true, rejectionReason: true } });
+  console.log("docs", JSON.stringify(docs));
+  const items = await p.checklistItem.findMany({ select: { name: true, needsExpiry: true, needsVerification: true, required: true } });
+  console.log("items", JSON.stringify(items));
+  const msgs = await p.whatsAppMessage.findMany({ select: { body: true, status: true, template: true } });
+  console.log("msgs", JSON.stringify(msgs));
+  const tasks = await p.task.findMany({ select: { title: true, status: true } });
+  console.log("tasks", JSON.stringify(tasks));
+  const dues = await p.supplierDue.findMany({ select: { description: true, amount: true, paidAmount: true, paid: true } });
+  console.log("dues", JSON.stringify(dues));
+  const audits = await p.auditLog.findMany({ where: { entity: "SupplierDue" }, select: { action: true, detail: true }, orderBy: { at: "asc" } });
+  console.log("due-audits", JSON.stringify(audits));
+  await p.$disconnect();
+})().catch(e => { console.error(e.message); process.exit(1); });

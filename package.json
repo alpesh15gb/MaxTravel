@@ -1,0 +1,53 @@
+{
+  "name": "travel-os",
+  "version": "0.1.0",
+  "private": true,
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "overrides": {
+    "postcss": "$postcss"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:status": "prisma migrate status",
+    "backup": "node scripts/backup.mjs",
+    "restore": "node scripts/restore.mjs",
+    "test": "node tests/smoke.mjs && node tests/a11y-gate.mjs && node tests/ui-metrics.mjs",
+    "test:a11y": "node tests/a11y-gate.mjs",
+    "test:ui": "node tests/ui-metrics.mjs",
+    "a11y:budget": "node tests/a11y-gate.mjs --update-budget"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "bcryptjs": "^3.0.3",
+    "jose": "^6.2.12",
+    "jsonwebtoken": "^9.0.3",
+    "nanoid": "^6.0.2",
+    "next": "15.5.27",
+    "postcss": "^8.5.29",
+    "prisma": "^5.22.0",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "15.5.27",
+    "playwright": "1.63.0",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5"
+  }
+}

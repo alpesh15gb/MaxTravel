@@ -1,0 +1,83 @@
+// Browser acceptance for the implementation checkpoint. Isolated DB/server; no live data touched.
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { spawn, execFileSync } from "node:child_process";
+import { mkdirSync, writeFileSync, createWriteStream } from "node:fs";
+import { randomBytes } from "node:crypto";
+import net from "node:net";
+import { PrismaClient } from "@prisma/client";
+import { chromium } from "./browser.mjs";
+const ROOT = process.cwd();
+const runtime = path.join(ROOT, "tests", ".runtime", `impl-verify-${Date.now()}`);
+mkdirSync(runtime, { recursive: true });
+const database = `file:${path.join(runtime, "test.db").replaceAll("\\", "/")}`;
+const PORT = 3212;
+await new Promise((resolve, reject) => { const s = net.createServer(); s.once("error", reject); s.listen(PORT, "127.0.0.1", () => s.close(resolve)); });
+const BASE = `http://127.0.0.1:${PORT}`;
+const password = `Verify-${randomBytes(15).toString("hex")}!`;
+const env = { ...process.env, DATABASE_URL: database, JWT_SECRET: randomBytes(32).toString("hex"), UPLOAD_ROOT: path.join(runtime, "uploads"), NEXT_DIST_DIR: ".next-implementation" };
+const prisma = new PrismaClient({ datasources: { db: { url: database } } });
+const log = createWriteStream(path.join(runtime, "server.log"));
+const prismaCli = path.join(ROOT, "node_modules", "prisma", "build", "index.js");
+execFileSync(process.execPath, [prismaCli, "migrate", "deploy"], { cwd: ROOT, env, stdio: "pipe" });
+const server = spawn(process.execPath, [path.join(ROOT, "node_modules", "next", "dist", "bin", "next"), "start", "--port", String(PORT), "--hostname", "127.0.0.1"], { cwd: ROOT, env, stdio: ["ignore", "pipe", "pipe"] });
+server.stdout.pipe(log); server.stderr.pipe(log);
+for (let i = 0; i < 100; i++) { if (server.exitCode !== null) throw new Error(`Server exited ${server.exitCode}`); try { const r = await fetch(`${BASE}/setup`); if (r.ok) break; } catch {} await new Promise(r => setTimeout(r, 200)); }
+const results = []; let passed = 0;
+async function check(name, fn) { try { const note = await fn(); if (typeof note === "string") results.push({ name, status: "PASS", note }); else results.push({ name, status: "PASS" }); passed++; console.log(`PASS ${name}`); } catch (e) { results.push({ name, status: "FAIL", error: e.message }); console.log(`FAIL ${name}: ${e.message.slice(0, 300)}`); } }
+const post = (url, body, cookie = "", origin) => fetch(BASE + url, { method: "POST", headers: { "Content-Type": "application/json", ...(cookie ? { cookie } : {}), ...(origin ? { origin } : {}) }, body: JSON.stringify(body) });
+async function ok(url, body, cookie) { const r = await post(url, body, cookie); const d = await r.json(); assert(r.ok, `${url}: ${r.status} ${JSON.stringify(d)}`); return d; }
+
+// Seed workspace
+const setup = await post("/api/setup", { agencyName: "Impl Verify Agency", city: "Pune", name: "Verify Owner", email: "owner@impl.test", password }, "", BASE);
+assert.equal(setup.status, 201, await setup.text());
+const login = await post("/api/auth/login", { email: "owner@impl.test", password });
+const owner = login.headers.getSetCookie().map(c => c.split(";")[0]).join("; ");
+const customer = await ok("/api/customers", { name: "Ravi Verify", phone: "+919000000001", email: "ravi@impl.test" }, owner);
+const traveller = await prisma.traveller.findFirstOrThrow({ where: { customerId: customer.id } });
+const checklist = await ok("/api/checklists", { country: "Verifyland", visaType: "Tourist", applicantType: "STANDARD", items: [{ name: "Passport", required: true, fileTypes: "pdf", maxSizeMb: 1, needsVerification: true, needsExpiry: true }] }, owner);
+const visa = await ok("/api/visa/cases", { customerId: customer.id, travellerIds: [traveller.id], destination: "Verifyland", visaType: "Tourist", checklistId: checklist.checklist.id, visaFee: 80, serviceFee: 20 }, owner);
+const booking = await ok("/api/bookings", { customerId: customer.id, travellerIds: [traveller.id], pnr: "VER001", sector: "BOM → DXB", fare: 800, taxes: 100, markup: 50, serviceFee: 50 }, owner);
+await ok("/api/bookings/status", { bookingId: booking.bookingId, status: "TICKETED", tickets: [{ travellerId: traveller.id, ticketNo: "123-9990000001", originalFare: 900 }] }, owner);
+await ok("/api/payments", { customerId: customer.id, bookingId: booking.bookingId, amount: 1000, mode: "UPI" }, owner);
+const invoice = await ok("/api/invoices", { customerId: customer.id, amount: 250, description: "Service charge", dueDate: "2026-11-01" }, owner);
+const refund = await ok("/api/refunds", { customerId: customer.id, bookingId: booking.bookingId, amount: 100, reason: "Change of plan" }, owner);
+const supplier = await ok("/api/suppliers", { name: "Verify Supplier", type: "CONSOLIDATOR", city: "Mumbai", paymentDueDays: 10 }, owner);
+const due = await ok("/api/suppliers/dues", { supplierId: supplier.supplier.id, description: "Consolidator bill", amount: 500, dueDate: "2026-09-01" }, owner);
+const task = await ok("/api/tasks", { title: "Verify callback", priority: "HIGH", customerId: customer.id, details: "Original details" }, owner);
+const opsRole = await prisma.role.findUniqueOrThrow({ where: { key: "OPERATIONS" } });
+const ops = await ok("/api/employees", { name: "Ops Staff", email: "ops@impl.test", password, roleId: opsRole.id }, owner);
+const opsLogin = await post("/api/auth/login", { email: "ops@impl.test", password });
+const opsCookie = opsLogin.headers.getSetCookie().map(c => c.split(";")[0]).join("; ");
+const uploadLink = await ok("/api/upload-links", { customerId: customer.id, visaCaseId: visa.caseId, expiresInDays: 7 }, owner);
+
+// Browser
+const browser = await chromium.launch({ headless: true });
+const context = await browser.newContext({ baseURL: BASE, viewport: { width: 1440, height: 900 } });
+const page = await context.newPage();
+page.setDefaultTimeout(10000);
+let promptAnswer = "";
+page.on("dialog", d => d.accept(d.type() === "prompt" ? promptAnswer : ""));
+async function navigate(url) { for (let i = 0; ; i++) { try { return await page.goto(url); } catch (e) { if (i >= 2 || !String(e.message).includes("ERR_ABORTED")) throw e; await page.waitForTimeout(300); } } }
+async function go(url) { const r = await navigate(url); assert(r?.status() < 400, `Page ${url}: HTTP ${r?.status()}`); await page.locator("main").waitFor(); }
+async function loginUi(email) { const dash = await navigate(`${BASE}/dashboard`); if (dash?.ok() && page.url().includes("/dashboard")) return; await navigate(`${BASE}/login`); await page.getByLabel("Work email", { exact: true }).fill(email); await page.getByLabel("Password", { exact: true }).fill(password); await page.getByRole("button", { name: "Sign in to workspace", exact: true }).click(); await page.waitForURL("**/dashboard"); }
+
+await check("Foreign-origin mutations are rejected by middleware", async () => { const r = await post("/api/payments", { customerId: customer.id, amount: 1 }, owner, "https://evil.example"); assert.equal(r.status, 403); const s = await post("/api/setup", {}, "", "https://evil.example"); assert.equal(s.status, 403); return "Both an authenticated mutation and first-run setup reject cross-site origins."; });
+await check("Visa readiness gate blocks submission without documents", async () => { await loginUi("owner@impl.test"); await go(`${BASE}/visa/${visa.caseId}`); const ready = await prisma.visaStage.findUniqueOrThrow({ where: { key: "READY_FOR_SUBMISSION" } }); const res = page.waitForResponse(r => r.url().includes(`/api/visa/cases/${visa.caseId}/stage`)); await page.getByRole("button", { name: "Ready for submission" }).click(); const response = await res; assert.equal(response.status(), 400); const vc = await prisma.visaCase.findUniqueOrThrow({ where: { id: visa.caseId }, include: { stage: true } }); assert.equal(vc.stage.key, "ENQUIRY"); return "UI submission attempt returns 400 and the case stays at Enquiry."; });
+await check("Portal requires expiry date for expiry-checked documents", async () => { await go(`${BASE}${uploadLink.url}`); await page.locator("input[type=date]").first().waitFor(); const input = page.locator("input[type=file]").first(); await input.setInputFiles({ name: "passport.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\nverify\n%%EOF") }); await page.getByText("enter the expiry date").waitFor(); await page.locator("input[type=date]").first().fill("2031-05-01"); await input.setInputFiles({ name: "passport.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\nverify\n%%EOF") }); await page.getByText("received. Your agency will review it").waitFor(); const doc = await prisma.document.findFirstOrThrow({ where: { visaCaseId: visa.caseId, docType: "Passport" } }); assert(doc.expiryDate && doc.status === "RECEIVED"); return "Blocked without expiry, accepted with it, expiry stored."; });
+await check("Rejected document appears in the re-upload queue", async () => { const doc = await prisma.document.findFirstOrThrow({ where: { visaCaseId: visa.caseId, docType: "Passport" } }); const r = await post("/api/documents/verify", { documentId: doc.id, decision: "REJECTED", reason: "Blurry scan" }, owner); assert(r.ok, await r.text()); await go(`${BASE}/documents`); await page.getByRole("button", { name: "Re-upload requested" }).click(); await page.getByText("Blurry scan").waitFor(); return "REJECTED doc visible under Re-upload requested with its reason."; });
+await check("Quick replies render resolved drafts through the server preview", async () => { await go(`${BASE}/whatsapp?customer=${customer.id}`); const select = page.locator("select[aria-label='Insert quick reply']"); await select.selectOption({ label: "Payment reminder" }); await page.waitForFunction(() => (document.querySelector("textarea")?.value ?? "").length > 0); const draft = await page.locator("textarea").inputValue(); const alertText = await page.locator("[role=alert]").first().innerText().catch(() => ""); assert(!/\{\w+\}/.test(draft), `Unresolved placeholders: ${draft}`); assert(draft.includes("Ravi Verify"), `draft="${draft.slice(0, 80)}" alert="${alertText}"`); return `Draft resolved: "${draft.slice(0, 60)}…"`; });
+await check("Refund rejection UI records a reason", async () => { await go(`${BASE}/refunds`); promptAnswer = "Customer accepted a travel credit instead"; await page.getByRole("button", { name: "Reject", exact: true }).click(); await page.getByText("rejected", { exact: false }).first().waitFor(); const r2 = await prisma.refund.findUniqueOrThrow({ where: { id: refund.refund.id } }); assert.equal(r2.status, "REJECTED"); assert(r2.reason.includes("travel credit")); promptAnswer = ""; return "UI Reject flow stores REJECTED with the recorded reason."; });
+await check("Operations sees no ticket or reissue money", async () => { const c2 = await browser.newContext({ baseURL: BASE }); const p2 = await c2.newPage(); await p2.goto(`${BASE}/login`); await p2.getByLabel("Work email", { exact: true }).fill("ops@impl.test"); await p2.getByLabel("Password", { exact: true }).fill(password); await p2.getByRole("button", { name: "Sign in to workspace", exact: true }).click(); await p2.waitForURL("**/dashboard"); await p2.goto(`${BASE}/ticketing/${booking.bookingId}`); await p2.getByText("PNR VER001").waitFor(); const text = await p2.locator("main").innerText(); assert(!text.includes("₹900"), `Original fare leaked to operations`); assert(!text.includes("₹1,000"), `Receipt total leaked to operations`); assert(!text.includes("₹800"), `Base fare leaked to operations`); assert(text.includes("restricted") || text.includes("Restricted"), "Masking notice expected"); await c2.close(); return "Ticket fare and receipts masked with a restricted notice."; });
+await check("Booking corrections through the UI", async () => { await loginUi("owner@impl.test"); await go(`${BASE}/ticketing/${booking.bookingId}`); await page.getByRole("button", { name: "Edit booking" }).click(); const dialog = page.locator("dialog[aria-label='Edit booking']"); await dialog.locator("label.field", { hasText: "Airline" }).locator("input").fill("Verify Airways"); await dialog.getByRole("button", { name: "Save changes" }).click(); await page.getByText("Verify Airways").waitFor(); const b2 = await prisma.booking.findUniqueOrThrow({ where: { id: booking.bookingId } }); assert.equal(b2.airline, "Verify Airways"); });
+await check("Customer corrections through the UI", async () => { await go(`${BASE}/customers/${customer.id}`); await page.getByRole("button", { name: "Edit customer" }).click(); const dialog = page.locator("dialog[aria-label='Edit customer']"); await dialog.locator("label.field", { hasText: "City" }).locator("input").fill("Nagpur"); await dialog.getByRole("button", { name: "Save changes" }).click(); await page.waitForTimeout(600); const c2 = await prisma.customer.findUniqueOrThrow({ where: { id: customer.id } }); assert.equal(c2.city, "Nagpur"); });
+await check("Task editing and cancellation through the UI", async () => { await go(`${BASE}/tasks`); await page.getByRole("button", { name: "Edit", exact: true }).first().click(); const dialog = page.locator("dialog[aria-label='Edit task']"); await dialog.locator("input").first().fill("Verify callback — rescheduled"); await dialog.getByRole("button", { name: "Save changes" }).click(); await page.getByText("rescheduled").waitFor(); await page.getByRole("button", { name: "Cancel task" }).first().click(); await page.waitForTimeout(500); const t2 = await prisma.task.findUniqueOrThrow({ where: { id: task.task.id } }); assert.equal(t2.status, "CANCELLED"); await page.getByRole("button", { name: "Done", exact: true }).click(); await page.waitForTimeout(300); const card = await page.locator("main").innerText(); assert(card.includes("rescheduled"), "Cancelled task remains visible under Done"); return "Edited title saved; cancelled task stays visible under Done."; });
+await await check("Supplier part payment and paid history through the UI", async () => { await go(`${BASE}/suppliers`); promptAnswer = "300"; await page.getByRole("button", { name: "Record payment" }).click(); await page.getByText("Payment recorded against the payable").waitFor(); await page.reload(); await page.getByText("settled ₹300", { exact: false }).waitFor({ timeout: 15000 }); promptAnswer = "200"; await page.getByRole("button", { name: "Record payment" }).click(); await page.getByText("Payment recorded against the payable").waitFor(); await page.reload(); await page.getByText("Paid history (1)").waitFor({ timeout: 15000 }); const d2 = await prisma.supplierDue.findUniqueOrThrow({ where: { id: due.due.id } }); assert.equal(d2.paid, true); assert.equal(d2.paidAmount, 500); promptAnswer = ""; return "Part payment then final settlement recorded; paid dues move into history."; });
+await check("Printable invoice renders balance and print action", async () => { await page.goto(`${BASE}/payments/print?invoice=${invoice.invoiceId}`); await page.getByText("Balance due").waitFor({ timeout: 15000 }); const text = await page.locator("main, body").first().innerText(); assert(text.includes("Balance due")); assert(text.includes("₹250.00")); assert(text.includes("Print / save as PDF")); assert(!text.includes("undefined")); });
+await browser.close();
+writeFileSync("test-artifacts/implementation/browser-verify.json", JSON.stringify(results, null, 2));
+const failed = results.filter(r => r.status === "FAIL");
+console.log(`\n${passed}/${results.length} browser checks passed`);
+server.kill(); await prisma.$disconnect();
+process.exit(failed.length ? 1 : 0);

@@ -1,0 +1,50 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/.next-a11y/
+/.next-implementation/
+/.next-review/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+*.key
+*.log
+/.next-*/
+*.tar.gz
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local secrets, databases, uploads and recovery copies
+.env
+.env*.local
+/prisma/*.db*
+/uploads/
+/uploads.pre-revamp/
+/backups/
+/test-artifacts/
+/tests/.runtime/
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

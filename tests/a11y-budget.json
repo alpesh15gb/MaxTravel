@@ -1,0 +1,12 @@
+{
+  "note": "Accepted accessibility findings, keyed one line per finding. Empty means the app may ship with none: a new finding fails the gate. Rewrite deliberately with `npm run a11y:budget` after reviewing what changed.",
+  "updatedAt": "2026-10-11T00:00:00.000Z",
+  "findings": {},
+  "indeterminate": {
+    "note": "Indeterminate results are the audit's honest 'a person must decide this' list (today: inline targets exempt under WCAG 2.5.8). Held as a ceiling rather than a list of lines, so a new kind of judgement call, or a collapse into blanket exemptions, still fails the gate. 78 were measured on 2026-10-11; the ceiling leaves room for copy and fixture churn without hiding a new class of exemption.",
+    "ceilings": {
+      "spacing-exempt-inline-target": 90,
+      "other": 0
+    }
+  }
+}
