@@ -25,6 +25,8 @@ export default async function Customer360Page({
   if (!data) notFound();
 
   return (
+    <>
+    {can(user.permissions,"payment:view")&&<div className="mb-4 flex justify-end"><a className="btn-secondary" href={`/reports?report=statement&customerId=${encodeURIComponent(id)}`}>Customer statement</a></div>}
     <Customer360View
       data={data}
       owners={["OWNER", "SUPER_ADMIN", "BRANCH_MANAGER"].includes(user.role) ? await prisma.user.findMany({where:{active:true,branchId:(await prisma.customer.findUniqueOrThrow({where:{id}})).branchId},select:{id:true,name:true},orderBy:{name:"asc"}}) : []}
@@ -48,5 +50,6 @@ export default async function Customer360Page({
         export: can(user.permissions, "export:data"),
       }}
     />
+    </>
   );
 }

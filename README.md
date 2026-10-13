@@ -41,6 +41,13 @@ anything. Roles and workflow stages can also be edited from **Settings** afterwa
 
 **Reports & insights** (`/reports`) provides date-filtered sales, net collections, current
 receivables, costed booking margin, monthly trends, workflow breakdowns and audited CSV export.
+The report catalogue also includes customer and supplier statements with running balances,
+PDF/Excel/CSV exports, customer/supplier ageing, editable payment due dates, a receipt register,
+refund exposure and detailed sales/work registers. Preserved financial history starts at the
+journal migration cutoff; existing records become explicit opening balances. Customer 360
+links directly to the selected customer's statement. Run `npm run reports:reconcile` to verify
+source positions against the journal without changing data.
+See [reporting deployment and acceptance](docs/reporting-deployment.md) before updating a live office.
 See [reporting research](docs/reporting-research.md) and the
 [single-office launch guide](docs/single-office-launch.md) for the latest work and deployment path.
 

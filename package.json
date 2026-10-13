@@ -6,7 +6,8 @@
     "seed": "tsx prisma/seed.ts"
   },
   "overrides": {
-    "postcss": "$postcss"
+    "postcss": "$postcss",
+    "exceljs": { "uuid": "^11.1.1" }
   },
   "scripts": {
     "dev": "next dev",
@@ -19,19 +20,24 @@
     "db:status": "prisma migrate status",
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs",
-    "test": "node tests/smoke.mjs && node tests/evolution.mjs && node tests/a11y-gate.mjs && node tests/ui-metrics.mjs",
+    "test": "tsx tests/reporting.ts && tsx tests/whatsapp-format.ts && node tests/smoke.mjs && node tests/evolution.mjs && node tests/a11y-gate.mjs && node tests/ui-metrics.mjs",
+    "test:reporting": "tsx tests/reporting.ts",
+    "reports:reconcile": "node scripts/reconcile-reporting.mjs",
     "test:evolution": "node tests/evolution.mjs",
     "test:a11y": "node tests/a11y-gate.mjs",
     "test:ui": "node tests/ui-metrics.mjs",
     "a11y:budget": "node tests/a11y-gate.mjs --update-budget"
   },
   "dependencies": {
+    "@fontsource/noto-sans": "^5.3.0",
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^3.0.3",
+    "exceljs": "^4.4.0",
     "jose": "^6.2.12",
     "jsonwebtoken": "^9.0.3",
     "nanoid": "^6.0.2",
     "next": "15.5.27",
+    "pdfkit": "^0.20.2",
     "postcss": "^8.5.29",
     "prisma": "^5.22.0",
     "react": "^18",
@@ -41,6 +47,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",
+    "@types/pdfkit": "^0.17.6",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",

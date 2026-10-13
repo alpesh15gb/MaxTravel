@@ -64,6 +64,7 @@ COPY prisma ./prisma
 
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY scripts/backup.mjs scripts/restore.mjs ./scripts/
+COPY scripts/reconcile-reporting.mjs ./scripts/
 COPY scripts/whatsapp-worker.mjs scripts/configure-evolution.mjs ./scripts/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

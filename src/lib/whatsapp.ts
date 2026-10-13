@@ -28,7 +28,7 @@ export const QUICK_REPLY_DEFAULTS: QuickReplyDefault[] = [
   {
     key: "DOC_REQUEST",
     title: "Document request",
-    body: "Hello {customer}, please provide the outstanding documents for {case}: {docs}. {uploadLink} — {agency}",
+    body: "Hello {customer},\n\n*Documents required*\nVisa case: *{case}*\n\nPlease upload the following outstanding documents:\n\n{docs}\n\n*Private upload link*\n{uploadLink}\n\n*Link expires:* {uploadExpiry}\n\nPlease keep this link private.\nFor help, contact {agency}.",
   },
   {
     key: "STATUS_UPDATE",

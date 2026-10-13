@@ -10,6 +10,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Append-only reporting journal. Existing records enter as an explicit cutover opening.
+// Positive customer amounts are charges/refunds; positive supplier amounts are payables.
+model FinancialEntry {
+  id          String   @id @default(cuid())
+  partyType   String
+  partyId     String
+  sourceType  String
+  sourceId    String
+  revision    Int
+  amountMinor BigInt
+  reference   String
+  description String
+  dueDate     DateTime?
+  effectiveAt DateTime @default(now())
+  recordedAt  DateTime @default(now())
+  actorId     String?
+  opening     Boolean  @default(false)
+
+  @@unique([sourceType, sourceId, revision])
+  @@index([partyType, partyId, effectiveAt])
+  @@index([sourceType, sourceId])
+}
+
 // ── Org ──────────────────────────────────────────────────────────────────────
 
 model Branch {
@@ -164,6 +187,7 @@ model VisaCase {
   visaFee              Float            @default(0)
   serviceFee           Float            @default(0)
   sellingPrice         Float            @default(0)
+  paymentDueDate       DateTime?
   amountReceived       Float            @default(0)
   supplierId           String?
   supplier             Supplier?        @relation(fields: [supplierId], references: [id])
@@ -351,6 +375,7 @@ model Booking {
   markup            Float              @default(0)
   serviceFee        Float              @default(0)
   sellingPrice      Float              @default(0)
+  paymentDueDate    DateTime?
   supplierCost      Float              @default(0)
   currency          String             @default("INR")
   owner             User               @relation("BookingOwner", fields: [ownerId], references: [id])

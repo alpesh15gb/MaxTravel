@@ -1,6 +1,6 @@
 {
-  "verifiedAt": "2026-10-11T21:45:00.658Z",
-  "passed": 190,
+  "verifiedAt": "2026-10-12T23:08:48.988Z",
+  "passed": 198,
   "checks": [
     "Fresh root routes to one-time setup",
     "Setup has no prefilled accounts or demo credentials",
@@ -187,6 +187,14 @@
     "Reporting CSV exports an auditable financial summary",
     "Reporting export is audited",
     "Reports workspace renders",
+    "Financial account reports require finance access",
+    "Report options expose permitted accounts and journal cutoff",
+    "Customer statement API has running balances",
+    "Customer statement exports csv",
+    "Customer statement exports xlsx",
+    "Customer statement exports pdf",
+    "Financial statement exports are audited",
+    "Invalid payment term date rejected",
     "Branch reporting excludes other branches' records",
     "Reporting includes the last millisecond of the India calendar day",
     "Reporting excludes midnight of the next India calendar day",

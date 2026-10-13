@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import type { SessionUser } from "./session";
+import { journalEntity } from "./financial-journal";
 import { ApiError, canTouchRecord } from "./guard";
 
 export const optionalId = (value: unknown): string | null => typeof value === "string" && value.trim() ? value.trim() : null;
@@ -86,5 +87,6 @@ export async function travellersFor(tx: Prisma.TransactionClient, customerId: st
   return travellers;
 }
 export async function transactionAudit(tx: Prisma.TransactionClient, user: SessionUser, action: string, entity: string, entityId: string, detail: string) {
+  if (!(entity === "VisaCase" && action === "STAGE")) await journalEntity(tx, entity, entityId, user.id);
   await tx.auditLog.create({ data: { userId: user.id, action, entity, entityId, detail } });
 }

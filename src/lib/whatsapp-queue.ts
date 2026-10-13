@@ -7,6 +7,7 @@ import { dateTimeLabel } from "./dates";
 import { inrAmount } from "./money";
 import { netOfRefundTotal } from "./receivables";
 import { DEFAULT_PAYMENT_TEMPLATE, PAYMENT_TEMPLATE_KEY, paymentTemplateError, renderPaymentTemplate } from "./whatsapp-templates";
+import { documentList, documentRequestMessage } from "./whatsapp-documents";
 
 export const RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "PAYMENT_RECEIVED", "STATUS_UPDATE", "DOC_REQUEST", "APPOINTMENT_REMINDER", "PNR_EXPIRY", "PAYMENT_REMINDER"] as const;
 const IMMEDIATE_RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "PAYMENT_RECEIVED", "DOC_REQUEST"];
@@ -56,7 +57,7 @@ export async function queueDocumentRequest(tx: Prisma.TransactionClient, caseId:
   if (!link) link = await tx.uploadLink.create({ data: { token: randomBytes(24).toString("base64url"), customerId: vc.customerId, visaCaseId: caseId, expiresAt: new Date(Date.now()+7*86400000), note: "Please upload the outstanding documents listed below. Your agency will review them." } });
   const agency = (await tx.settings.findUnique({ where: { key: "agency.name" } }))?.value ?? "Your agency";
   await queueAutomation(tx, vc.customerId, "DOC_REQUEST", `${link.id}:${eventId}`,
-    `Hello ${vc.customer.name}, please provide these outstanding documents for ${vc.caseNo}: ${documentNames(docs)}. Upload privately: ${origin}/upload/${link.token} . Link expires ${dateTimeLabel(link.expiresAt)}. Please keep this link private. Contact ${agency} if you need help.`);
+    documentRequestMessage({customer:vc.customer.name,caseNo:vc.caseNo,docs,url:`${origin}/upload/${link.token}`,expires:dateTimeLabel(link.expiresAt),agency}));
 }
 
 export async function queueBookingConfirmation(tx: Prisma.TransactionClient, bookingId: string, ticketed = false) {
@@ -143,11 +144,23 @@ export async function processWhatsAppQueue() {
       await prisma.whatsAppMessage.updateMany({ where: { id: message.id, status: "QUEUED" }, data: { status: "CANCELLED", lastError: "Recipient, consent or automation settings changed, or reminder expired." } });
       continue;
     }
+    // Upgrade an unsent request from the previous layout without creating or resending a message.
+    let body = message.body;
+    if (message.automation === "DOC_REQUEST" && body.includes(". Upload privately:")) {
+      const linkId = message.requestKey?.split(":")[2];
+      const link = linkId ? await prisma.uploadLink.findUnique({where:{id:linkId},include:{visaCase:true}}) : null;
+      const origin = publicOrigin();
+      if (link?.visaCase && origin) {
+        const docs = await prisma.document.findMany({where:{visaCaseId:link.visaCaseId,status:{in:PENDING_DOCUMENTS}},orderBy:{createdAt:"asc"}});
+        const agency=(await prisma.settings.findUnique({where:{key:"agency.name"}}))?.value??"Your agency";
+        body=documentRequestMessage({customer:customer.name,caseNo:link.visaCase.caseNo,docs,url:`${origin}/upload/${link.token}`,expires:dateTimeLabel(link.expiresAt),agency});
+      }
+    }
     const claim = await prisma.whatsAppMessage.updateMany({ where: { id: message.id, status: "QUEUED" },
-      data: { status: "SENDING", claimedAt: new Date(), attempts: { increment: 1 } } });
+      data: { status: "SENDING", body, claimedAt: new Date(), attempts: { increment: 1 } } });
     if (!claim.count) continue;
     try {
-      const id = await evolutionSend(message.recipient!, message.body);
+      const id = await evolutionSend(message.recipient!, body);
       // Receipt webhooks can beat this response; do not downgrade a delivered/read message.
       const key = providerKey(id);
       const receipt = await prisma.settings.findUnique({ where: { key: `wa.receipt.${key}` } });
@@ -190,7 +203,8 @@ async function reminderIsCurrent(rule: string, key: string, body: string) {
     const link = await prisma.uploadLink.findUnique({ where: { id }, include: { visaCase: true } });
     if (!link || link.revoked || link.expiresAt <= new Date() || !link.visaCase || link.visaCase.closedAt || !body.includes(`/upload/${link.token}`)) return false;
     const docs = await prisma.document.findMany({ where: { visaCaseId: link.visaCaseId, status: { in: PENDING_DOCUMENTS } }, orderBy: { createdAt: "asc" } });
-    return Boolean(docs.length && body.includes(`: ${documentNames(docs)}. Upload privately:`));
+    // Retain valid requests queued by the previous release while validating the new layout.
+    return Boolean(docs.length && (body.includes(`\n\n${documentList(docs)}\n\n*Private upload link*\n`) || body.includes(`: ${documentNames(docs)}. Upload privately:`)));
   }
   const history = await prisma.visaCaseStatus.findUnique({ where: { id }, include: { case: true } });
   if (!history || history.case.stageId !== history.stageId) return false;

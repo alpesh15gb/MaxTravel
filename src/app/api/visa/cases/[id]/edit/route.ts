@@ -1,8 +1,7 @@
 import { requireSession, jsonError, ApiError, canTouchRecord } from "@/lib/guard";
 import { prisma } from "@/lib/db";
-import { audit } from "@/lib/audit";
 import { inrAmount } from "@/lib/money";
-import { money, date as parseDate } from "@/lib/transactions";
+import { money, date as parseDate, transactionAudit } from "@/lib/transactions";
 
 /** Edit core visa case fields (dates, fees, supplier, notes, category). */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -28,7 +27,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
     const dateField = (v: unknown, label: string) => (v ? parseDate(v, label) : null);
     if (b.supplierId && !(await prisma.supplier.findUnique({ where: { id: String(b.supplierId) } }))) throw new ApiError(400, "Supplier not found.");
-    const updated = await prisma.visaCase.update({
+    const updated = await prisma.$transaction(async tx => {
+    const current = await tx.visaCase.findUniqueOrThrow({where:{id}});
+    if (b.sellingPrice !== undefined && money(b.sellingPrice,"Selling price") < current.amountReceived) throw new ApiError(409,"Receipts changed; reload this case before changing its price.");
+    const result = await tx.visaCase.update({
       where: { id },
       data: {
         visaCategory: b.visaCategory !== undefined ? b.visaCategory || null : undefined,
@@ -47,7 +49,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         internalNotes: b.internalNotes !== undefined ? b.internalNotes || null : undefined,
       },
     });
-    await audit(user, "EDIT", "VisaCase", id);
+    await transactionAudit(tx,user,"EDIT","VisaCase",id,"Case details corrected");
+    return result;
+    });
     return Response.json({ ok: true, case: { id: updated.id } });
   } catch (e) {
     return jsonError(e);

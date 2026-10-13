@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import {documentList,documentRequestMessage} from "../src/lib/whatsapp-documents";
+const docs=[{docType:"Original NOC / Leave Sanction Letter"},{docType:"Salary Slips"},{docType:"Income Tax Returns"},{docType:"Salary Slips"}];
+assert.equal(documentList(docs),"1. Original NOC / Leave Sanction Letter\n2. Salary Slips\n3. Income Tax Returns");
+assert.equal(documentList([{docType:"Passport\ncopy"}]),"1. Passport copy");
+const url="https://agency.example/upload/private-test-token";
+const body=documentRequestMessage({customer:"Test Customer",caseNo:"VC-TEST",docs,url,expires:"19 Oct 2026, 3:20 am",agency:"Max Travel"});
+assert(body.startsWith("Hello Test Customer,\n\n"));assert(body.includes("\n\n2. Salary Slips")===false);assert(body.includes("\n2. Salary Slips\n3. Income Tax Returns\n\n"));
+assert(body.includes(`\n${url}\n\n`));assert(body.includes("*Link expires:* 19 Oct 2026, 3:20 am IST"));
+const many=Array.from({length:100},(_,n)=>({docType:`Document ${n} `+"a".repeat(110)}));const list=documentList(many);assert(list.length<1800);assert(list.endsWith("more)."));
+console.log("PASS WhatsApp document formatting: numbered list, deduplication, blank lines, standalone URL, explicit timezone, complete-item length limit.");

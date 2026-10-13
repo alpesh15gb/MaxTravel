@@ -10,6 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import { chromium } from "./browser.mjs";
 const ROOT=process.cwd(), runtime=path.join(ROOT,"tests/.runtime",`evolution-${Date.now()}`);
 fs.mkdirSync(runtime,{recursive:true});
+fs.writeFileSync(path.join(runtime,"test.db"),Buffer.alloc(0));
 const password=`Test-${randomBytes(15).toString("hex")}!`, secret=randomBytes(32).toString("hex"), key=randomBytes(32).toString("hex");
 const freePort=()=>new Promise(resolve=>{const s=net.createServer().listen(0,"127.0.0.1",()=>{const port=s.address().port;s.close(()=>resolve(port));});});
 const port=await freePort(), providerPort=await freePort(), base=`http://127.0.0.1:${port}`;
@@ -169,12 +170,16 @@ try {
   assert.equal(collectionLink.customerId,alice.id);assert.equal(collectionLink.travellerId,null);assert(collectionLink.token.length>=32);assert(collectionLink.expiresAt>new Date(Date.now()+6*86400000));
   const row=await db.whatsAppMessage.findFirstOrThrow({where:{automation:"DOC_REQUEST",requestKey:{endsWith:`:${collectionCase.caseId}`}}});
   assert.equal(row.status,"QUEUED");assert(row.body.includes(collectionCase.caseNo));assert(row.body.includes("Passport copy"));assert(row.body.includes(`${base}/upload/${collectionLink.token}`));
+  assert(row.body.includes("\n\n1. Passport copy\n\n"));assert(row.body.includes(`*Private upload link*\n${base}/upload/${collectionLink.token}\n\n`));assert(row.body.includes("*Link expires:*"));
   // A different case must never leak into this case's portal.
   const other=await createCollection();await db.document.updateMany({where:{visaCaseId:other.caseId},data:{docType:"Private-other-case-document"}});
   const page=await (await fetch(base+`/upload/${collectionLink.token}`)).text();assert(page.includes("Passport copy"));assert(!page.includes("Private-other-case-document"));
  });
  await check("Document requests send immediately and repeated worker polls do not duplicate",async()=>{
+  const queued=await db.whatsAppMessage.findFirstOrThrow({where:{automation:"DOC_REQUEST",requestKey:{endsWith:`:${collectionCase.caseId}`}}});
+  await db.whatsAppMessage.update({where:{id:queued.id},data:{body:`Hello customer, please provide documents for ${collectionCase.caseNo}: Passport copy. Upload privately: ${base}/upload/${collectionLink.token} . Keep this link private.`}});
   await ok("/api/whatsapp/process",{},"",auth);const row=await db.whatsAppMessage.findFirstOrThrow({where:{automation:"DOC_REQUEST",requestKey:{endsWith:`:${collectionCase.caseId}`}}});assert.equal(row.status,"READ");
+  assert(row.body.includes("\n\n1. Passport copy\n\n"));assert(sent.some(message=>message.text===row.body));
   const n=sends;await ok("/api/whatsapp/process",{},"",auth);assert.equal(sends,n);
  });
  await check("Entering a document stage includes the existing private link without duplicate same-stage saves",async()=>{

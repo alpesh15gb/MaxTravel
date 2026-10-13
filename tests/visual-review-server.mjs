@@ -9,6 +9,7 @@ import { PrismaClient } from "@prisma/client";
 const ROOT = process.cwd();
 const runtime = path.join(ROOT, "tests", ".runtime", `visual-review-${Date.now()}`);
 mkdirSync(runtime, { recursive: true });
+writeFileSync(path.join(runtime, "test.db"), Buffer.alloc(0));
 const database = `file:${path.join(runtime, "test.db").replaceAll("\\", "/")}`;
 const PORT = Number(process.env.REVIEW_PORT ?? 3214);
 const dev = process.env.REVIEW_DEV === "1";

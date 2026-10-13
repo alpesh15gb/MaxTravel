@@ -10,6 +10,7 @@ import { PrismaClient } from "@prisma/client";
 const ROOT = process.cwd();
 const runtime = path.join(ROOT, "tests", ".runtime", `run-${Date.now()}`);
 mkdirSync(runtime, { recursive: true });
+writeFileSync(path.join(runtime, "test.db"), Buffer.alloc(0));
 const database = `file:${path.join(runtime, "test.db").replaceAll("\\", "/")}`;
 const port = Number(process.env.TEST_PORT ?? 3211);
 assert(port !== 3210 && port !== 3000 && port > 1024, "Tests must not use the live or unrelated app ports");
@@ -492,6 +493,20 @@ async function run() {
   assert(await prisma.auditLog.findFirst({where:{entity:"reports",action:"EXPORT"}}));
   const reportsPage=await get("/reports",owner.cookie);
   check("Reports workspace renders",()=>assert.equal(reportsPage.status,200));
+  assert.equal((await get("/api/reports/accounts?report=ageing")).status,401);
+  assert.equal((await get("/api/reports/accounts?report=ageing",hr.cookie)).status,403);
+  check("Financial account reports require finance access",()=>{});
+  const optionsResponse=await get("/api/reports/accounts?options=1",owner.cookie);
+  const accountOptions=await optionsResponse.json();
+  check("Report options expose permitted accounts and journal cutoff",()=>{assert.equal(optionsResponse.status,200);assert(accountOptions.cutover);assert(accountOptions.customers.some(c=>c.id===alice.id));});
+  const statementQuery="report=statement&customerId="+alice.id;
+  const statementResponse=await get("/api/reports/accounts?"+statementQuery,owner.cookie);
+  const accountStatement=await statementResponse.json();
+  check("Customer statement API has running balances",()=>{assert.equal(statementResponse.status,200);assert(accountStatement.summary.some(s=>s.label==="Closing balance"));assert(accountStatement.rows.every(row=>typeof row.balance==="number"));});
+  for(const format of ["csv","xlsx","pdf"]){const exported=await get("/api/reports/accounts?"+statementQuery+"&format="+format,owner.cookie);check("Customer statement exports "+format,()=>{assert.equal(exported.status,200);assert(exported.headers.get("content-disposition").endsWith('.'+format+'"'));});await exported.arrayBuffer();}
+  assert(await prisma.auditLog.findFirst({where:{entity:"FinancialReport",action:"EXPORT"}}));
+  check("Financial statement exports are audited",()=>{});
+  await status("Invalid payment term date rejected","/api/reports/terms",{type:"Booking",id:booking.bookingId,dueDate:"2026-02-30"},owner.cookie,400);
   const reportBranch=await prisma.branch.create({data:{name:"Isolated reporting branch",code:"REPORT",city:"Pune"}});
   const managerRole=await prisma.role.findUniqueOrThrow({where:{key:"BRANCH_MANAGER"}});
   const ownerRecord=await prisma.user.findUniqueOrThrow({where:{id:owner.user.id}});

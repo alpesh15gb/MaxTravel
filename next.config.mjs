@@ -12,6 +12,7 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  serverExternalPackages: ["pdfkit", "exceljs"],
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   poweredByHeader: false,
   async headers() {
