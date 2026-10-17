@@ -1,6 +1,7 @@
 import { evolutionConfig, bearerMatches } from "@/lib/evolution";
 import { handleEvolutionEvent } from "@/lib/evolution-webhook";
 export async function POST(req: Request) {
+  if(process.env.WA_PROVIDER==="meta")return new Response("Legacy webhook disabled",{status:410});
   if (!bearerMatches(req, process.env.WA_WEBHOOK_SECRET)) return Response.json({ error: "Forbidden" }, { status: 403 });
   const config = evolutionConfig();
   if (!config) return Response.json({ error: "Evolution is not configured." }, { status: 503 });

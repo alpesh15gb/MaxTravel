@@ -14,7 +14,7 @@ fs.writeFileSync(path.join(runtime,"test.db"),Buffer.alloc(0));
 const password=`Test-${randomBytes(15).toString("hex")}!`, secret=randomBytes(32).toString("hex"), key=randomBytes(32).toString("hex");
 const freePort=()=>new Promise(resolve=>{const s=net.createServer().listen(0,"127.0.0.1",()=>{const port=s.address().port;s.close(()=>resolve(port));});});
 const port=await freePort(), providerPort=await freePort(), base=`http://127.0.0.1:${port}`;
-const env={...process.env,APP_ORIGIN:base,DATABASE_URL:`file:${path.join(runtime,"test.db").replaceAll("\\","/")}`,JWT_SECRET:randomBytes(32).toString("hex"),UPLOAD_ROOT:path.join(runtime,"uploads"),EVOLUTION_BASE_URL:`http://127.0.0.1:${providerPort}`,EVOLUTION_API_KEY:key,EVOLUTION_INSTANCE:"max travel",WA_WEBHOOK_SECRET:secret,WA_WORKER_SECRET:secret};
+const env={...process.env,WA_PROVIDER:"evolution",APP_ORIGIN:base,DATABASE_URL:`file:${path.join(runtime,"test.db").replaceAll("\\","/")}`,JWT_SECRET:randomBytes(32).toString("hex"),UPLOAD_ROOT:path.join(runtime,"uploads"),EVOLUTION_BASE_URL:`http://127.0.0.1:${providerPort}`,EVOLUTION_API_KEY:key,EVOLUTION_INSTANCE:"max travel",WA_WEBHOOK_SECRET:secret,WA_WORKER_SECRET:secret};
 const db=new PrismaClient({datasources:{db:{url:env.DATABASE_URL}}});
 const auth={Authorization:`Bearer ${secret}`};
 let state="open", sendMode="success", sends=0, sent=[], count=0, browser;

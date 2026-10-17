@@ -1,0 +1,24 @@
+# Use with your existing compose file and project name; no Evolution services are required.
+services:
+  app:
+    environment:
+      WA_PROVIDER: meta
+  whatsapp-worker:
+    image: max-travel-crm:local
+    healthcheck:
+      disable: true
+    stop_grace_period: 260s
+    restart: unless-stopped
+    init: true
+    entrypoint: [node, scripts/whatsapp-worker.mjs]
+    environment:
+      WA_WORKER_SECRET: ${WA_WORKER_SECRET:?Set WA_WORKER_SECRET}
+      WA_WORKER_URL: http://app:3000/api/whatsapp/process
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

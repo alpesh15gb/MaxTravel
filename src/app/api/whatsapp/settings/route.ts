@@ -4,6 +4,8 @@ import { requireSession, ApiError, jsonError } from "@/lib/guard";
 import { customerFor, transactionAudit } from "@/lib/transactions";
 import { RULES } from "@/lib/whatsapp-queue";
 import { attachInbound } from "@/lib/evolution-webhook";
+import { whatsappPhone } from "@/lib/evolution";
+import { isCloud } from "@/lib/whatsapp-provider";
 export async function POST(req: Request) {
   try {
     const user = await requireSession("whatsapp:send");
@@ -12,8 +14,9 @@ export async function POST(req: Request) {
       if (b.customerId) {
         const customer = await customerFor(tx, user, String(b.customerId));
         if (typeof b.optIn !== "boolean") throw new ApiError(400,"Choose whether automatic messages are allowed.");
+        if(isCloud()){const phone=whatsappPhone(customer.phone);if(phone){const key=`wa.meta.optout.${phone}`;if(b.optIn)await tx.settings.deleteMany({where:{key}});else await tx.settings.upsert({where:{key},create:{key,value:new Date().toISOString()},update:{value:new Date().toISOString()}});}}
         await tx.customer.update({ where: { id: customer.id }, data: { whatsappOptIn: b.optIn } });
-        if (!b.optIn) await tx.whatsAppMessage.updateMany({ where: { thread: { customerId: customer.id }, status: "QUEUED", automation: { not: null } }, data: { status: "CANCELLED", lastError: "Automatic messaging consent withdrawn." } });
+        if (!b.optIn) await tx.whatsAppMessage.updateMany({ where: { thread: { customerId: customer.id }, status:{in:["QUEUED","BLOCKED"]} }, data: { status: "CANCELLED", lastError: "Automatic messaging consent withdrawn." } });
         await transactionAudit(tx, user, "CONSENT", "Customer", customer.id, b.optIn ? "WhatsApp automatic messaging consent recorded by staff" : "WhatsApp automatic messaging consent withdrawn");
       } else if (b.inboundId && b.matchCustomerId) {
         if (!user.permissions.includes("settings:manage")) throw new ApiError(403,"Administrator access required.");

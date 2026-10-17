@@ -89,3 +89,8 @@ Remove-Item Env:DATABASE_URL
 ```
 
 The test refuses any URL without `integration-test.db`. It checks forged signatures, event/payment deduplication, stale revisions, hotel confirmation and partial/full refund journal reconciliation. Real provider/device acceptance and production deployment remain separate.
+
+
+## Official WhatsApp Cloud API
+
+See META-WHATSAPP-SETUP.md for account setup, template mappings and the compose.meta.yaml cutover. This update adds an additive WhatsAppMessage.cloudTemplate column. Keep the old Evolution worker stopped during cutover; configuration never silently falls back to it.

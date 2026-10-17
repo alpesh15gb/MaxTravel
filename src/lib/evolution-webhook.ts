@@ -40,12 +40,12 @@ export async function attachInbound(tx: Prisma.TransactionClient, inboundId: str
   if (inbound.matched) return;
   let thread = await tx.whatsAppThread.findFirst({ where: { customerId } });
   if (!thread) thread = await tx.whatsAppThread.create({ data: { customerId, phone: `+${inbound.phone}` } });
-  await tx.whatsAppMessage.create({ data: { threadId: thread.id, direction: "IN", body: inbound.body, at: inbound.at, providerKey: inbound.providerKey, status: "RECEIVED" } });
+  await tx.whatsAppMessage.create({ data: { threadId: thread.id, direction: "IN", body: inbound.body, recipient:inbound.phone, at: inbound.at, providerKey: inbound.providerKey, status: "RECEIVED" } });
   await tx.whatsAppThread.update({ where: { id: thread.id }, data: { unread: { increment: 1 }, ...(inbound.at>thread.lastMsgAt ? { lastMsgAt: inbound.at } : {}) } });
   await tx.whatsAppInbound.update({ where: { id: inboundId }, data: { matched: true, reason: "MATCHED" } });
   if (/^(stop|unsubscribe|cancel messages)$/i.test(inbound.body.trim())) {
     await tx.customer.update({ where: { id: customerId }, data: { whatsappOptIn: false } });
-    await tx.whatsAppMessage.updateMany({ where: { thread: { customerId }, status: "QUEUED", automation: { not: null } }, data: { status: "CANCELLED", lastError: "Customer withdrew automatic messaging consent." } });
+    await tx.whatsAppMessage.updateMany({ where: { thread: { customerId }, status: {in:["QUEUED","BLOCKED"]} }, data: { status: "CANCELLED", lastError: "Customer withdrew automatic messaging consent." } });
     await tx.auditLog.create({ data: { action: "CONSENT_WITHDRAWN", entity: "Customer", entityId: customerId, detail: "Customer opted out through WhatsApp." } });
   }
 }

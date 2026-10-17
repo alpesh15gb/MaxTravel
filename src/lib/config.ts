@@ -161,7 +161,7 @@ export function checkConfig(env: NodeJS.ProcessEnv = process.env, root = process
   // single token silently disables it. Say so rather than letting an operator wonder.
   const hasVerify = Boolean(env.WA_VERIFY_TOKEN);
   const hasSecret = Boolean(env.WA_WEBHOOK_SECRET);
-  if (hasVerify !== hasSecret && !env.EVOLUTION_BASE_URL) {
+  if (hasVerify !== hasSecret && !env.EVOLUTION_BASE_URL && env.WA_PROVIDER!=="meta") {
     issues.push({
       level: "warning",
       key: hasVerify ? "WA_WEBHOOK_SECRET" : "WA_VERIFY_TOKEN",
@@ -169,7 +169,7 @@ export function checkConfig(env: NodeJS.ProcessEnv = process.env, root = process
     });
   }
 
-  if (env.EVOLUTION_BASE_URL || env.EVOLUTION_API_KEY) {
+  if (env.WA_PROVIDER==="evolution" && (env.EVOLUTION_BASE_URL || env.EVOLUTION_API_KEY)) {
     for (const key of ["EVOLUTION_BASE_URL", "EVOLUTION_API_KEY", "EVOLUTION_INSTANCE", "WA_WEBHOOK_SECRET", "WA_WORKER_SECRET"] as const) {
       if (!env[key]) issues.push({ level: "error", key, message: `${key} is required when Evolution messaging is enabled.` });
     }
@@ -182,6 +182,14 @@ export function checkConfig(env: NodeJS.ProcessEnv = process.env, root = process
     } catch { issues.push({ level: "error", key: "EVOLUTION_BASE_URL", message: "EVOLUTION_BASE_URL must be an http(s) URL without embedded credentials, query or fragment." }); }
   }
 
+  if(env.WA_PROVIDER==="meta"&&["WA_CLOUD_ACCESS_TOKEN","WA_CLOUD_PHONE_NUMBER_ID","WA_CLOUD_WABA_ID","WA_CLOUD_APP_SECRET","WA_CLOUD_VERIFY_TOKEN","WA_CLOUD_GRAPH_VERSION"].some(key=>env[key])){
+    for(const key of ["WA_CLOUD_ACCESS_TOKEN","WA_CLOUD_PHONE_NUMBER_ID","WA_CLOUD_WABA_ID","WA_CLOUD_APP_SECRET","WA_CLOUD_VERIFY_TOKEN","WA_CLOUD_GRAPH_VERSION","WA_WORKER_SECRET"])if(!env[key])issues.push({level:"error",key,message:`${key} is required for Meta Cloud API.`});
+  }
+  if(env.WA_PROVIDER==="meta"){
+    for(const key of ["WA_CLOUD_PHONE_NUMBER_ID","WA_CLOUD_WABA_ID"])if(env[key]&&!/^\d+$/.test(env[key]!))issues.push({level:"error",key,message:`${key} must be the numeric Meta identifier.`});
+    if(env.WA_CLOUD_GRAPH_VERSION&&!/^v\d+\.\d+$/.test(env.WA_CLOUD_GRAPH_VERSION))issues.push({level:"error",key:"WA_CLOUD_GRAPH_VERSION",message:"Use an explicit supported Graph version, for example vNN.0 from Meta's API setup."});
+    for(const key of ["WA_CLOUD_APP_SECRET","WA_CLOUD_VERIFY_TOKEN","WA_WORKER_SECRET"])if(env[key]&&env[key]!.length<32)issues.push({level:"error",key,message:`${key} must contain at least 32 characters.`});
+  }
   return issues;
 }
 

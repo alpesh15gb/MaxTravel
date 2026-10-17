@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { evolutionConfig, whatsappPhone } from "@/lib/evolution";
+import { whatsappPhone } from "@/lib/evolution";
 import { dateTimeLabel } from "@/lib/dates";
 import { inrAmount } from "@/lib/money";
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
@@ -9,14 +9,23 @@ import { customerFor, relatedFor, optionalId, transactionAudit } from "@/lib/tra
 import { isWithdrawnBooking, netOfRefundTotal } from "@/lib/receivables";
 import { DEFAULT_COPY } from "@/lib/whatsapp";
 import { documentList } from "@/lib/whatsapp-documents";
+import { messagingConfig,isCloud,cloudReplyWindow } from "@/lib/whatsapp-provider";
+import { freezeTemplate,approvedTemplate } from "@/lib/meta-cloud";
 export async function POST(req: Request) {
   try {
     const user = await requireSession("whatsapp:send"); const b = await req.json();
     const customerId = optionalId(b.customerId); if (!customerId) throw new ApiError(400, "Select a customer.");
-    const config = evolutionConfig();
+    const config = messagingConfig();
     const requestId = typeof b.requestId === "string" && /^[a-zA-Z0-9-]{16,80}$/.test(b.requestId) ? b.requestId : null;
     if (config && b.preview !== true && !requestId) throw new ApiError(400, "A request ID is required. Refresh the inbox and retry.");
     const requestKey = config && requestId ? `manual:${user.id}:${requestId}` : null;
+    const cloudKey=isCloud()&&typeof b.cloudTemplateKey==="string"?b.cloudTemplateKey:null;
+    const selected=isCloud()&&cloudKey?freezeTemplate(cloudKey,typeof b.cloudValues==="object"&&b.cloudValues!==null?b.cloudValues:{}):null;
+    if(cloudKey&&!selected)throw new ApiError(400,"Choose a configured Meta utility template.");
+    const prepared=selected?await approvedTemplate(selected):null;
+    if(prepared&&b.preview!==true&&b.acceptedCloudBody!==prepared.body)throw new ApiError(409,"Preview and accept the current approved template wording before sending.");
+    const verifiedCustomer=await prisma.customer.findUnique({where:{id:customerId},select:{phone:true}});
+    const inWindow=isCloud()&&verifiedCustomer?await cloudReplyWindow(customerId,whatsappPhone(verifiedCustomer.phone)||""):false;
     const result = await prisma.$transaction(async tx => {
       const customer = await customerFor(tx, user, customerId);
       const { booking, visaCase } = await relatedFor(tx, user, customerId, optionalId(b.bookingId), optionalId(b.visaCaseId));
@@ -46,27 +55,29 @@ export async function POST(req: Request) {
         vars.uploadLink = `${origin}/upload/${link.token}`;
         vars.uploadExpiry = `${dateTimeLabel(link.expiresAt)} IST`;
       }
-      const template = optionalId(b.template); let text = optionalId(b.text);
+      const template = cloudKey??optionalId(b.template); let text = prepared?.body??optionalId(b.text);
       if (!text && template) { const copy = await tx.quickReply.findUnique({ where: { key: template } }); const source = copy?.body ?? DEFAULT_COPY[template]; if (!source) throw new ApiError(400, "This template is not configured. Write a message instead."); text = source.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? ""); }
       if (text && /\{\w+\}/.test(text)) throw new ApiError(400, "Complete all template placeholders before logging your message.");
       if (b.preview === true) return { body: text ?? "", status: "DRAFT", whatsappUrl: null };
       if (!text || text.length > 4000) throw new ApiError(400, "Write a message of 1–4000 characters.");
       const digits = whatsappPhone(customer.phone);
+      if(isCloud()&&!customer.phone.trim().startsWith("+"))throw new ApiError(400,"Store the customer number with + and its country code, for example +919876543210.");
       if (config && !digits) throw new ApiError(400, "Use a customer phone number with its country code, such as +919876543210.");
+      if(isCloud()&&(!customer.whatsappOptIn||Boolean(digits&&await tx.settings.findUnique({where:{key:`wa.meta.optout.${digits}`}}))||!selected&&!inWindow))throw new ApiError(400,!customer.whatsappOptIn?"Record customer WhatsApp consent before sending.":"The 24-hour reply window is closed. Select an approved Meta utility template.");
       if (config && customer.status === "INACTIVE") throw new ApiError(400, "Messaging is disabled for inactive customers.");
       if (requestKey) {
         const prior = await tx.whatsAppMessage.findUnique({ where: { requestKey }, include: { thread: true } });
         if (prior) {
-          if (prior.thread.customerId !== customerId || createHash("sha256").update(prior.body).digest("hex") !== createHash("sha256").update(text).digest("hex")) throw new ApiError(409,"This request ID was already used for another message.");
+          if (prior.thread.customerId !== customerId || prior.cloudTemplate!==selected || createHash("sha256").update(prior.body).digest("hex") !== createHash("sha256").update(text).digest("hex")) throw new ApiError(409,"This request ID was already used for another message.");
           return { messageId: prior.id, threadId: prior.threadId, body: prior.body, status: prior.status, whatsappUrl: null };
         }
       }
       let thread = await tx.whatsAppThread.findFirst({ where: { customerId } });
       if (!thread) thread = await tx.whatsAppThread.create({ data: { customerId, phone: customer.phone } });
-      const message = await tx.whatsAppMessage.create({ data: { threadId: thread.id, direction: "OUT", body: text, template, staffId: user.id, status: config ? "QUEUED" : "LOGGED", instance: config?.instance, recipient: digits, requestKey } });
+      const message = await tx.whatsAppMessage.create({ data: { cloudTemplate:selected,threadId: thread.id, direction: "OUT", body: text, template, staffId: user.id, status: config ? "QUEUED" : "LOGGED", instance: config?.instance, recipient: digits, requestKey } });
       await tx.whatsAppThread.update({ where: { id: thread.id }, data: { lastMsgAt: new Date() } });
       await tx.activity.create({ data: { customerId, actorId: user.id, type: "WHATSAPP", summary: config ? "WhatsApp message queued" : `Message logged for manual sending: ${text.slice(0, 90)}`, link: `/whatsapp?thread=${thread.id}` } });
-      await transactionAudit(tx, user, config ? "QUEUE" : "LOG", "WhatsAppMessage", message.id, config ? "Evolution message queued; delivery pending" : "Manual handoff; delivery not verified");
+      await transactionAudit(tx, user, config ? "QUEUE" : "LOG", "WhatsAppMessage", message.id, config ? "Provider message queued; delivery pending" : "Manual handoff; delivery not verified");
       return { messageId: message.id, threadId: thread.id, body: text, status: config ? "QUEUED" : "LOGGED", whatsappUrl: !config && digits ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}` : null };
     });
     return Response.json({ ok: true, ...result });

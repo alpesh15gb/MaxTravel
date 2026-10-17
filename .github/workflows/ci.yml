@@ -158,3 +158,6 @@ jobs:
       - run: npm run db:migrate
       - name: Verify signed receiver and accounting in an isolated database
         run: node --import ./scripts/standalone-server.mjs --import tsx tests/platform-receiver.mts
+
+      - name: Verify Meta Cloud API policies and signed delivery callbacks
+        run: node --import ./scripts/standalone-server.mjs --import tsx tests/meta-cloud.mts

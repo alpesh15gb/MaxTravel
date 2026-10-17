@@ -619,6 +619,7 @@ model WhatsAppMessage {
   nextAttempt DateTime @default(now())
   claimedAt   DateTime?
   lastError   String?
+  cloudTemplate String? // Frozen approved-template name/language/parameter values
   replied   Boolean?
   staffId   String?
   staff     User?          @relation(fields: [staffId], references: [id])

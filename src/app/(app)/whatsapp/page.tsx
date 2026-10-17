@@ -1,5 +1,5 @@
 import { DEFAULT_PAYMENT_TEMPLATE, PAYMENT_TEMPLATE_KEY } from "@/lib/whatsapp-templates";
-import { evolutionConfig } from "@/lib/evolution";
+import { messagingConfig } from "@/lib/whatsapp-provider";
 import { automationRules } from "@/lib/whatsapp-queue";
 import { prisma } from "@/lib/db";
 import { requirePage, scopeWhere } from "@/lib/guard";
@@ -19,5 +19,5 @@ export default async function WhatsAppPage({ searchParams: pending }: { searchPa
   const canManage = user.permissions.includes("settings:manage");
   const paymentTemplate = canManage ? (await prisma.settings.findUnique({ where: { key: PAYMENT_TEMPLATE_KEY } }))?.value ?? DEFAULT_PAYMENT_TEMPLATE : DEFAULT_PAYMENT_TEMPLATE;
   const unmatched = canManage ? await prisma.whatsAppInbound.findMany({ where: { matched: false }, orderBy: { at: "desc" }, take: 50, select: { id: true, phone: true, body: true, reason: true } }) : [];
-  return <WhatsAppInbox paymentTemplate={paymentTemplate} configured={Boolean(evolutionConfig())} canManage={canManage} rules={rules} unmatched={unmatched} customers={customers} templates={Array.from(new Map([...QUICK_REPLY_DEFAULTS, ...templates].map(t=>[t.key,{key:t.key,title:t.title,body:t.body}])).values())} canSend={user.permissions.includes("whatsapp:send")} selectedThread={searchParams.thread ?? null} selectedCustomer={searchParams.customer ?? null} threads={threads.map(t=>({id:t.id,customerId:t.customerId,customerName:t.customer.name,customerCode:t.customer.code,phone:t.phone,unread:t.unread,awaitingReply:t.msgs[0]?.direction==="IN",lastAt:t.lastMsgAt.toISOString(),messages:t.msgs.slice().reverse().map(m=>({id:m.id,direction:m.direction,body:m.body,at:m.at.toISOString(),status:m.status,template:m.template,staff:m.staff?.name??null,lastError:m.lastError}))}))}/>;
+  return <WhatsAppInbox paymentTemplate={paymentTemplate} configured={Boolean(messagingConfig())} canManage={canManage} rules={rules} unmatched={unmatched} customers={customers} templates={Array.from(new Map([...QUICK_REPLY_DEFAULTS, ...templates].map(t=>[t.key,{key:t.key,title:t.title,body:t.body}])).values())} canSend={user.permissions.includes("whatsapp:send")} selectedThread={searchParams.thread ?? null} selectedCustomer={searchParams.customer ?? null} threads={threads.map(t=>({id:t.id,customerId:t.customerId,customerName:t.customer.name,customerCode:t.customer.code,phone:t.phone,unread:t.unread,awaitingReply:t.msgs[0]?.direction==="IN",lastAt:t.lastMsgAt.toISOString(),messages:t.msgs.slice().reverse().map(m=>({id:m.id,direction:m.direction,body:m.body,at:m.at.toISOString(),status:m.status,template:m.template,staff:m.staff?.name??null,lastError:m.lastError}))}))}/>;
 }
