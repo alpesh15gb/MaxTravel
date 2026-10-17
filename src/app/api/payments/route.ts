@@ -27,6 +27,7 @@ export async function POST(req: Request) {
         if (Math.round(amount * 100) > Math.round((invoice.amount - invoice.amountPaid) * 100)) throw new ApiError(400, "Payment exceeds the invoice balance.");
       }
       const { booking, visaCase } = await relatedFor(tx, user, customerId, bookingId, visaCaseId);
+      if (booking?.gdsSource === "TRIPJACK_API") throw new ApiError(409,"Online booking money is managed by the booking platform.");
       // A withdrawn booking is closed and is not a receivable, so it must not absorb new receipts.
       if (booking && isWithdrawnBooking(booking.status)) throw new ApiError(400, "This booking is cancelled, void or refunded. Allocate the money to open work, or record it as a customer advance.");
 

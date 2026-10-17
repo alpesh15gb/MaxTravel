@@ -92,6 +92,7 @@ model User {
 // ── Customers & Travellers ──────────────────────────────────────────────────
 
 model Customer {
+  gstNumber       String?
   id              String           @id @default(cuid())
   code            String           @unique // C-1001
   name            String
@@ -353,6 +354,10 @@ model UploadLink {
 // ── Ticketing ───────────────────────────────────────────────────────────────
 
 model Booking {
+  product           String             @default("FLIGHT")
+  hotelName         String?
+  hotelCheckIn      DateTime?
+  hotelCheckOut     DateTime?
   id                String             @id @default(cuid())
   bookingNo         String             @unique // BK-3001
   customerId        String
@@ -683,4 +688,23 @@ model WhatsAppInbound {
   at DateTime @default(now())
   matched Boolean @default(false)
   reason String
+}
+
+model PlatformEvent {
+  id String @id
+  bodyHash String
+  aggregateId String
+  receivedAt DateTime @default(now())
+}
+model PlatformCustomerLink {
+  platformId String @id
+  customerId String @unique
+}
+model PlatformBookingLink {
+  platformId String @id
+  bookingId String @unique
+  revision Int
+  supplierReference String?
+  platformStatus String?
+  updatedAt DateTime @updatedAt
 }

@@ -67,7 +67,7 @@ export async function queueBookingConfirmation(tx: Prisma.TransactionClient, boo
   const reference = `${booking.bookingNo}${booking.pnr ? ` / PNR ${booking.pnr}` : ""}`;
   const details = `${booking.sector ? ` Route: ${booking.sector}.` : ""}${booking.travelDate ? ` Travel: ${dateTimeLabel(booking.travelDate)}.` : ""}`;
   const body = ticketed
-    ? `Hello ${booking.customer.name}, ticket details are confirmed for ${reference}.${details} Ticket number(s): ${booking.tickets.map(t=>t.ticketNo).join(", ")}. Please check your itinerary with ${agency}.`
+    ? `Hello ${booking.customer.name}, ticket details are confirmed for ${reference}.${details} ${booking.tickets.length?`Ticket number(s): ${booking.tickets.map(t=>t.ticketNo).join(", ")}.`:"Use your supplier PNR for ticket details."} Please check your itinerary with ${agency}.`
     : `Hello ${booking.customer.name}, ${agency} has recorded your booking ${reference}.${details} Ticket issuance is not yet confirmed. We will update you when ticket details are recorded.`;
   await queueAutomation(tx, booking.customerId, ticketed ? "TICKET_CONFIRMED" : "BOOKING_CREATED", booking.id, body);
 }

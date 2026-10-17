@@ -3,6 +3,10 @@ import { isWithdrawnBooking } from "./receivables";
 
 type Tx = Prisma.TransactionClient;
 type Position = { partyType:string; partyId:string; sourceType:string; sourceId:string; amountMinor:number; reference:string; description:string; dueDate?:Date|null };
+export async function journalPlatformCharge(tx:Tx,bookingId:string,chargeMinor:number,actorId:string){
+ const booking=await tx.booking.findUniqueOrThrow({where:{id:bookingId}});
+ await postPosition(tx,{partyType:"CUSTOMER",partyId:booking.customerId,sourceType:"Booking",sourceId:bookingId,amountMinor:chargeMinor,reference:booking.bookingNo,description:`Online ${booking.product.toLowerCase()} charge / adjustment`},actorId);
+}
 
 async function postPosition(tx:Tx, p:Position, actorId:string) {
   const previous = await tx.financialEntry.findMany({where:{sourceType:p.sourceType,sourceId:p.sourceId},orderBy:{revision:"desc"}});

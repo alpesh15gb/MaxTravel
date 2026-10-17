@@ -14,6 +14,7 @@ const NAV: { href: string; label: string; icon: IconName; perm: string; group: s
   { href:"/customers",label:"Customers",icon:"customers",perm:"customer:view",group:"Workspace" },
   { href:"/visa",label:"Visa cases",icon:"visa",perm:"visa:view",group:"Workspace" },
   { href:"/ticketing",label:"Ticketing",icon:"plane",perm:"ticketing:view",group:"Workspace" },
+  { href:"/online-bookings",label:"Online bookings",icon:"plane",perm:"ticketing:view",group:"Workspace" },
   { href:"/documents",label:"Documents",icon:"documents",perm:"document:view",group:"Workspace" },
   { href:"/payments",label:"Money & invoices",icon:"wallet",perm:"payment:view",group:"Finance" },
   { href:"/reports",label:"Reports & insights",icon:"dashboard",perm:"payment:view",group:"Finance" },

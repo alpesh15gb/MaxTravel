@@ -8,6 +8,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     await prisma.$transaction(async tx => {
       const current = await tx.booking.findUnique({ where: { id }, include: { tickets: true, payments: true, Invoice: true } });
       if (!current) throw new ApiError(404, "Booking not found.");
+      if (current.gdsSource === "TRIPJACK_API") throw new ApiError(409,"Manage online bookings from the booking platform.");
       if (!canTouchRecord(user, current)) throw new ApiError(403, "Booking is outside your access.");
       if (isWithdrawnBooking(current.status)) throw new ApiError(400, "Closed bookings cannot be amended.");
       const pnr = b.pnr === undefined ? current.pnr : optionalId(b.pnr);

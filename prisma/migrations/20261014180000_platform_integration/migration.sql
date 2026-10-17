@@ -1,0 +1,10 @@
+ALTER TABLE "Customer" ADD COLUMN "gstNumber" TEXT;
+ALTER TABLE "Booking" ADD COLUMN "product" TEXT NOT NULL DEFAULT 'FLIGHT';
+ALTER TABLE "Booking" ADD COLUMN "hotelName" TEXT;
+ALTER TABLE "Booking" ADD COLUMN "hotelCheckIn" DATETIME;
+ALTER TABLE "Booking" ADD COLUMN "hotelCheckOut" DATETIME;
+CREATE TABLE "PlatformEvent" ("id" TEXT NOT NULL PRIMARY KEY,"bodyHash" TEXT NOT NULL,"aggregateId" TEXT NOT NULL,"receivedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE "PlatformCustomerLink" ("platformId" TEXT NOT NULL PRIMARY KEY,"customerId" TEXT NOT NULL);
+CREATE UNIQUE INDEX "PlatformCustomerLink_customerId_key" ON "PlatformCustomerLink"("customerId");
+CREATE TABLE "PlatformBookingLink" ("platformId" TEXT NOT NULL PRIMARY KEY,"bookingId" TEXT NOT NULL,"revision" INTEGER NOT NULL,"supplierReference" TEXT,"updatedAt" DATETIME NOT NULL);
+CREATE UNIQUE INDEX "PlatformBookingLink_bookingId_key" ON "PlatformBookingLink"("bookingId");

@@ -43,6 +43,7 @@ export async function POST(req: Request) {
         },
       });
       if (!b) throw new ApiError(404, "Booking not found.");
+      if (b.gdsSource === "TRIPJACK_API") throw new ApiError(409,"Manage online booking status from the booking platform.");
       if (!canTouchRecord(user, b)) throw new ApiError(403, "Booking is outside your access.");
       if (isWithdrawnBooking(b.status) && status !== b.status) throw new ApiError(400, "A cancelled, void or refunded booking stays closed. Create a new booking or a reissue for further travel.");
 

@@ -9,6 +9,7 @@ export async function POST(req: Request) {
     if (!bookingId || !hours) throw new ApiError(400, "bookingId and hours required");
     const b = await prisma.booking.findUnique({ where: { id: bookingId } });
     if (!b) throw new ApiError(404, "Booking not found");
+    if(b.gdsSource==="TRIPJACK_API")throw new ApiError(409,"Online booking deadlines are managed by the supplier.");
     if (!canTouchRecord(user, b)) throw new ApiError(403, "Booking is outside your access.");
     if (!Number.isFinite(Number(hours)) || Number(hours) <= 0 || Number(hours) > 720) throw new ApiError(400, "Extension must be 1–720 hours.");
     const newDeadline = new Date(Math.max(Date.now(), b.ticketingDeadline?.getTime() ?? Date.now()) + Number(hours) * 3600000);

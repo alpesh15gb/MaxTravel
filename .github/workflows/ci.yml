@@ -142,3 +142,19 @@ jobs:
             tests/.runtime/latest.json
             docs/verification-results.json
           if-no-files-found: warn
+
+  booking-platform-receiver:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: file:./integration-test.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run db:migrate
+      - name: Verify signed receiver and accounting in an isolated database
+        run: node --import ./scripts/standalone-server.mjs --import tsx tests/platform-receiver.mts

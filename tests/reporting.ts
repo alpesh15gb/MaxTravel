@@ -20,8 +20,11 @@ async function run(){
  const role=await prisma.role.create({data:{key:"OWNER",name:"Owner",desc:"Reporting fixture"}});
  const owner=await prisma.user.create({data:{name:"Finance owner",email:"reports@example.test",phone:"9000000000",passwordHash:"unused-test-hash",employeeCode:"EMP-RP",roleId:role.id,branchId:branch.id}});
  const user={...owner,role:"OWNER",roleName:"Owner",branchName:branch.name,accessMode:"ALL",permissions:["payment:view","supplier:view","refund:view","export:data"]} as unknown as SessionUser;
- const customer=await prisma.customer.create({data:{name:"Statement Customer",code:"C-RP",phone:"9000000001",city:"Pune",branchId:branch.id,assignedToId:owner.id}});
- const booking=await prisma.booking.create({data:{bookingNo:"BK-RP",customerId:customer.id,branchId:branch.id,ownerId:owner.id,sellingPrice:120,supplierCost:80,status:"PNR_CREATED",pnr:"RP1234"},select:{id:true}});
+ // Seed the legacy schema using only legacy columns. The current generated client
+ // includes new booking-platform columns that intentionally do not exist until migration.
+ const customer={id:"reporting-legacy-customer"},booking={id:"reporting-legacy-booking"};
+ await prisma.$executeRaw`INSERT INTO "Customer" ("id","name","code","phone","city","branchId","assignedToId") VALUES (${customer.id},'Statement Customer','C-RP','9000000001','Pune',${branch.id},${owner.id})`;
+ await prisma.$executeRaw`INSERT INTO "Booking" ("id","bookingNo","customerId","branchId","ownerId","sellingPrice","supplierCost","status","pnr","updatedAt") VALUES (${booking.id},'BK-RP',${customer.id},${branch.id},${owner.id},120,80,'PNR_CREATED','RP1234',${new Date()})`;
  await prisma.payment.create({data:{receiptNo:"RCP-OLD",customerId:customer.id,bookingId:booking.id,amount:30}});
  const supplier=await prisma.supplier.create({data:{name:"Reporting Supplier"}});
  const due=await prisma.supplierDue.create({data:{supplierId:supplier.id,description:"Ticket bill",amount:100,paidAmount:20,dueDate:new Date("2026-01-01")}});

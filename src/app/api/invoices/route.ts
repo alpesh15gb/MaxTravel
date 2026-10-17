@@ -13,6 +13,7 @@ export async function POST(req: Request) {
       await customerFor(tx, user, customerId);
       const bookingId = optionalId(b.bookingId); const visaCaseId = optionalId(b.visaCaseId);
       const { booking } = await relatedFor(tx, user, customerId, bookingId, visaCaseId);
+      if (booking?.gdsSource === "TRIPJACK_API") throw new ApiError(409,"Online booking money is managed by the booking platform.");
       // A withdrawn booking is no longer a demand. Billing it leaves an invoice that can never be
       // paid, sitting in receivables forever, for a trip that was cancelled or already refunded.
       if (booking && isWithdrawnBooking(booking.status)) {
