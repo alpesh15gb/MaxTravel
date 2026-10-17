@@ -85,7 +85,7 @@ Example additional mapping (merge into the same `WA_CLOUD_TEMPLATES` JSON):
 
 In Meta create the matching utility template with header type Document and an approved body such as `Hello {{1}}, your travel document for {{2}} is attached.` Templates must be approved in your own WABA. Attaching a PDF does not create or submit templates.
 
-PDFs are stored under `UPLOAD_ROOT/whatsapp-pdf`, using random server-generated filenames and private filesystem permissions. Keep the existing uploads volume mounted and include it in backups. Authenticated downloads require access to the customer and are audited. The file is checked for PDF signature, EOF, size and SHA-256 integrity; this is not malware scanning. Only send documents your agency trusts. Removing a file from the composer clears the selection; retained draft uploads remain private on disk. This feature sends final PDFs selected by staff; it does not automatically generate or attach documents to every booking automation. Incoming media remains a notice.
+PDFs are stored under `UPLOAD_ROOT/whatsapp-pdf`, using random server-generated filenames and private filesystem permissions. Keep the existing uploads volume mounted and include it in backups. Authenticated downloads require access to the customer and are audited. The file is checked for PDF signature, EOF, size and SHA-256 integrity; this is not malware scanning. Only send documents your agency trusts. Removing a file from the composer clears the selection; retained draft uploads remain private on disk. Staff can send selected PDFs. The separate BOOKING_DOCUMENT automation also supports generated booking confirmation PDFs; see TWO-WAY-BOOKING-INTEGRATION.md. Incoming media remains a notice.
 
 ## VPS cutover after test-number acceptance
 

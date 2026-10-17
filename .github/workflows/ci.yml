@@ -163,3 +163,6 @@ jobs:
         run: node --import ./scripts/standalone-server.mjs --import tsx tests/meta-cloud.mts
       - name: Verify private WhatsApp PDFs and document-header delivery
         run: node --import ./scripts/standalone-server.mjs --import tsx tests/meta-pdf.mts
+
+      - name: Verify automatic signed booking PDFs and stale-document suppression
+        run: node --import ./scripts/standalone-server.mjs --import tsx tests/platform-documents.mts

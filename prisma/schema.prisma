@@ -715,6 +715,19 @@ model PlatformEvent {
   aggregateId String
   receivedAt DateTime @default(now())
 }
+
+model PlatformCommand {
+  id String @id
+  bookingId String
+  actorId String
+  request String
+  state String @default("STARTED")
+  response String?
+  httpStatus Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([bookingId, createdAt])
+}
 model PlatformCustomerLink {
   platformId String @id
   customerId String @unique
@@ -725,5 +738,6 @@ model PlatformBookingLink {
   revision Int
   supplierReference String?
   platformStatus String?
+  documentsCurrent Boolean @default(true)
   updatedAt DateTime @updatedAt
 }

@@ -4,7 +4,7 @@ import { customerFor, transactionAudit } from "@/lib/transactions";
 import { readPdf } from "@/lib/whatsapp-pdf";
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireSession("whatsapp:view");
+    const user = await requireSession(["whatsapp:view","ticketing:view"]);
     const { id } = await context.params;
     const attachment = await prisma.whatsAppAttachment.findUnique({ where: { id } });
     if (!attachment) throw new ApiError(404, "PDF not found.");

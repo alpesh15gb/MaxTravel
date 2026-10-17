@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { DEFAULT_PAYMENT_TEMPLATE, PAYMENT_TOKENS, PAYMENT_PREVIEW, paymentTemplateError, renderPaymentTemplate } from "@/lib/whatsapp-templates";
 import { useRouter } from "next/navigation";
-const RULE_LABELS: Record<string,string> = { BOOKING_CREATED: "Booking created acknowledgement", TICKET_CONFIRMED: "Ticket confirmation after ticket numbers are recorded", HOTEL_CONFIRMED: "Hotel booking confirmation", PAYMENT_RECEIVED: "Payment received acknowledgement", STATUS_UPDATE: "Visa stage changes", DOC_REQUEST: "Document upload links for new cases and document stages", APPOINTMENT_REMINDER: "Appointments within 24 hours", PNR_EXPIRY: "Ticketing deadlines within 24 hours", PAYMENT_REMINDER: "One reminder per overdue invoice due date" };
+const RULE_LABELS: Record<string,string> = { BOOKING_CREATED: "Booking created acknowledgement", TICKET_CONFIRMED: "Ticket confirmation after ticket numbers are recorded", HOTEL_CONFIRMED: "Hotel booking confirmation", BOOKING_DOCUMENT:"Send confirmed booking PDF automatically (Meta document template)", PAYMENT_RECEIVED: "Payment received acknowledgement", STATUS_UPDATE: "Visa stage changes", DOC_REQUEST: "Document upload links for new cases and document stages", APPOINTMENT_REMINDER: "Appointments within 24 hours", PNR_EXPIRY: "Ticketing deadlines within 24 hours", PAYMENT_REMINDER: "One reminder per overdue invoice due date" };
 export default function MessagingControls({ paymentTemplate, configured, canManage, rules, unmatched, customers }: {
   paymentTemplate: string; configured: boolean; canManage: boolean; rules: string[];
   unmatched: { id: string; phone: string; body: string; reason: string }[];

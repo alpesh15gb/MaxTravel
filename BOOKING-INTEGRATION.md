@@ -48,7 +48,7 @@ Customer identity uses explicit platform IDs, not phone/email merging. Flights a
 
 
 
-Imported bookings must be operated from the booking platform. CRM manual booking/status/payment/refund endpoints are not a replacement for supplier or gateway operations. Review all remaining administrative editing surfaces before rollout.
+Imported bookings use the booking platform as the supplier/payment source of truth. Authorised CRM staff can now invoke controlled operations from Online bookings; see TWO-WAY-BOOKING-INTEGRATION.md. CRM manual booking/status/payment/refund endpoints are not a replacement for supplier or gateway operations. Review all remaining administrative editing surfaces before rollout.
 
 
 
@@ -71,3 +71,7 @@ Apply the platform-status migration as well as the initial integration migration
 ## Flight services and partial cancellations
 
 Optional snapshots include serviceKind, parentBookingId, replacementBookings and per-ticket VOID/REISSUED statuses when route mapping is unambiguous. Flight extras and reissue have separate linked platform records and invoices. Confirmed cancellation refund offers reduce the charge even while remaining travel stays active. Refund payment journals are separate. Original ticket confirmation automation is suppressed after cancellation offers or a confirmed replacement, preventing stale ticket notifications.
+
+## Two-way operations and confirmation documents
+
+See [TWO-WAY-BOOKING-INTEGRATION.md](TWO-WAY-BOOKING-INTEGRATION.md) for the signed command endpoint, per-staff administrator mapping, approval-preserving CRM controls, automatic private PDF import and optional consent-based Meta document automation.

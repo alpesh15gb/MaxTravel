@@ -12,8 +12,8 @@ import { documentList, documentRequestMessage } from "./whatsapp-documents";
 import { messagingConfig,messagingState,isCloud,cloudReplyWindow } from "./whatsapp-provider";
 import { readPdf } from "./whatsapp-pdf";
 import { CloudError,freezeTemplate,approvedTemplate,cloudSend,cloudUploadPdf } from "./meta-cloud";
-export const RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "HOTEL_CONFIRMED", "PAYMENT_RECEIVED", "STATUS_UPDATE", "DOC_REQUEST", "APPOINTMENT_REMINDER", "PNR_EXPIRY", "PAYMENT_REMINDER"] as const;
-const IMMEDIATE_RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "HOTEL_CONFIRMED", "PAYMENT_RECEIVED", "DOC_REQUEST"];
+export const RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "HOTEL_CONFIRMED", "BOOKING_DOCUMENT", "PAYMENT_RECEIVED", "STATUS_UPDATE", "DOC_REQUEST", "APPOINTMENT_REMINDER", "PNR_EXPIRY", "PAYMENT_REMINDER"] as const;
+const IMMEDIATE_RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "HOTEL_CONFIRMED", "BOOKING_DOCUMENT", "PAYMENT_RECEIVED", "DOC_REQUEST"];
 export type AutomationRule = typeof RULES[number];
 export async function automationRules(tx: Prisma.TransactionClient = prisma): Promise<AutomationRule[]> {
   const row = await tx.settings.findUnique({ where: { key: "whatsapp.automation" } });
@@ -21,7 +21,8 @@ export async function automationRules(tx: Prisma.TransactionClient = prisma): Pr
   catch { return []; }
 }
 
-export async function queueAutomation(tx: Prisma.TransactionClient, customerId: string, rule: AutomationRule, key: string, body: string, variables:Record<string,string>={}) {
+export async function queueAutomation(tx: Prisma.TransactionClient, customerId: string, rule: AutomationRule, key: string, body: string, variables:Record<string,string>={},attachmentId?:string) {
+  if(rule==="BOOKING_DOCUMENT"&&!isCloud())return;
   const config = messagingConfig();
   if (!config || !(await automationRules(tx)).includes(rule)) return;
   const customer = await tx.customer.findUnique({ where: { id: customerId } });
@@ -34,7 +35,7 @@ export async function queueAutomation(tx: Prisma.TransactionClient, customerId: 
   let thread = await tx.whatsAppThread.findFirst({ where: { customerId } });
   if (!thread) thread = await tx.whatsAppThread.create({ data: { customerId, phone: customer.phone } });
   let frozen:string|null=null,blocked:string|null=null;if(isCloud()){try{frozen=freezeTemplate(rule,{customer:customer.name,agency:(await tx.settings.findUnique({where:{key:"agency.name"}}))?.value??"Your agency",...variables});if(frozen)frozen=JSON.stringify({...JSON.parse(frozen),contextBody:body.slice(0,4000)});if(!frozen)blocked="Map an approved Meta utility template for this automation before sending.";}catch{blocked="The Meta utility template fields are incomplete or invalid.";}}
-  await tx.whatsAppMessage.create({ data: { cloudTemplate:frozen,lastError:blocked,threadId: thread.id, direction: "OUT", body: body.slice(0,4000),
+  await tx.whatsAppMessage.create({ data: { attachmentId,cloudTemplate:frozen,lastError:blocked,threadId: thread.id, direction: "OUT", body: body.slice(0,4000),
     template: rule, automation: rule, instance: config.instance, recipient: phone, status: blocked?"BLOCKED":"QUEUED", requestKey } });
   await tx.whatsAppThread.update({ where: { id: thread.id }, data: { lastMsgAt: new Date() } });
 }
@@ -199,7 +200,8 @@ export async function processWhatsAppQueue() {
 
 async function reminderIsCurrent(rule: string, key: string, body: string) {
   const parts = key.split(":"), id = parts[2], when = parts.slice(3).join(":");
-  if (rule === "BOOKING_CREATED" || rule === "TICKET_CONFIRMED" || rule === "HOTEL_CONFIRMED") {
+  if (rule === "BOOKING_CREATED" || rule === "TICKET_CONFIRMED" || rule === "HOTEL_CONFIRMED" || rule === "BOOKING_DOCUMENT") {
+    if(rule==="BOOKING_DOCUMENT"){const link=await prisma.platformBookingLink.findUnique({where:{bookingId:id}});if(!link?.documentsCurrent)return false;}
     const booking = await prisma.booking.findUnique({ where: { id } });
     if (!booking || ["CANCELLED","VOID","REFUNDED"].includes(booking.status)) return false;
     return rule !== "BOOKING_CREATED" ? booking.status === "TICKETED" : !["TICKETED","REISSUED"].includes(booking.status);
