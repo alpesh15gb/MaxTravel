@@ -14,11 +14,12 @@ Official references checked 17 October 2026:
 - Signed Meta webhook verification and account/phone ID isolation, duplicate inbound protection, received/delivered/read/failed statuses and early-receipt handling.
 - Free-text staff replies only within 24 hours of a verified inbound Meta message for the current customer number. Manual logs and old Evolution events cannot open this window.
 - Customer consent checks for all Cloud outbound sends. STOP/unsubscribe cancels pending messages and records a number-level opt-out, including ambiguous/unmatched customers. An explicit staff-recorded new opt-in is required to clear it.
-- Automated updates use mapped, currently APPROVED UTILITY templates. No arbitrary full-body template variable is supported. Header/button/authentication/marketing templates are deliberately unsupported by this adapter.
+- Automated updates use mapped, currently APPROVED UTILITY templates. No arbitrary full-body template variable is supported. Document-header utility templates are supported for PDF delivery. Other header formats, buttons, authentication and marketing templates are unsupported by this adapter.
 - Staff select a mapped utility template, enter specific business values, preview current approved wording and accept that wording before queueing. Approval and template parameters are rechecked before dispatch.
 - Immutable queued template parameter values; stale reminders and withdrawn consent cancel unsent messages. Configuration problems pause/block messages rather than falling back to WhatsApp Web.
 - An uncertain send is never automatically repeated. Signed Meta status callbacks can recover its provider ID using the echoed opaque message identifier. If no receipt arrives, staff must reconcile it with Meta; do not create a new send blindly.
-- Media inbound messages remain notices; automatic media download and attachment sending are not implemented. No Meta account/number registration, real message, template submission or provider billing action has been performed.
+- Staff can upload a customer-specific PDF (up to 5 MB), download/review and confirm it, then send within the reply window or through an approved document-header utility template. Private immutable file references are stored with the message; bytes are uploaded directly to Meta, never exposed through a public URL. Consent, customer number, file hash and template approval are checked before delivery.
+- Media inbound messages remain notices; automatic incoming media download is not implemented. No Meta account/number registration, real message, template submission or provider billing action has been performed.
 
 ## Meta account setup (you perform this in your account)
 
@@ -68,6 +69,24 @@ Each `parameters` array must follow the approved template's positional variables
 
 Manual template mappings may use other uppercase keys, for example CUSTOMER_FOLLOW_UP, with specific fields entered by staff. Only templates which Meta currently classifies as approved utility are sent. Do not use these to disguise marketing.
 
+## Sending tickets, vouchers and receipts as PDFs
+
+1. In the WhatsApp desk choose the correct customer and record valid consent.
+2. Attach the final ticket, hotel voucher or receipt PDF. Only PDF files up to 5 MB are supported. Download the private file to review it, then confirm it belongs to the selected customer.
+3. Within 24 hours of a verified inbound message, use a caption of up to 1024 characters (or leave it blank for the filename).
+4. Outside this window, select a mapped APPROVED UTILITY template with a DOCUMENT header. Enter its body fields and preview the approved text after selecting the PDF. A body-only template cannot carry a PDF; a document-header template requires one.
+5. Send once and watch delivery status. An uncertain result must be reconciled before any new send.
+
+Example additional mapping (merge into the same `WA_CLOUD_TEMPLATES` JSON):
+
+```json
+{"TRAVEL_DOCUMENT":{"name":"travel_document_ready","language":"en","parameters":["customer","reference"]}}
+```
+
+In Meta create the matching utility template with header type Document and an approved body such as `Hello {{1}}, your travel document for {{2}} is attached.` Templates must be approved in your own WABA. Attaching a PDF does not create or submit templates.
+
+PDFs are stored under `UPLOAD_ROOT/whatsapp-pdf`, using random server-generated filenames and private filesystem permissions. Keep the existing uploads volume mounted and include it in backups. Authenticated downloads require access to the customer and are audited. The file is checked for PDF signature, EOF, size and SHA-256 integrity; this is not malware scanning. Only send documents your agency trusts. Removing a file from the composer clears the selection; retained draft uploads remain private on disk. This feature sends final PDFs selected by staff; it does not automatically generate or attach documents to every booking automation. Incoming media remains a notice.
+
 ## VPS cutover after test-number acceptance
 
 Keep the existing compose project name/database volume. First stop the OLD Evolution worker using the exact old files/project options; for the supplied layout its service name is `worker`:
@@ -104,6 +123,7 @@ $env:DATABASE_URL='file:./integration-test.db'
 npm run db:generate
 npm run db:migrate
 node --import ./scripts/standalone-server.mjs --import tsx tests/meta-cloud.mts
+node --import ./scripts/standalone-server.mjs --import tsx tests/meta-pdf.mts
 Remove-Item Env:DATABASE_URL
 ```
 

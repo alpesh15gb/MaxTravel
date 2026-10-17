@@ -10,7 +10,8 @@ import { DEFAULT_PAYMENT_TEMPLATE, PAYMENT_TEMPLATE_KEY, paymentTemplateError, r
 import { documentList, documentRequestMessage } from "./whatsapp-documents";
 
 import { messagingConfig,messagingState,isCloud,cloudReplyWindow } from "./whatsapp-provider";
-import { CloudError,freezeTemplate,approvedTemplate,cloudSend } from "./meta-cloud";
+import { readPdf } from "./whatsapp-pdf";
+import { CloudError,freezeTemplate,approvedTemplate,cloudSend,cloudUploadPdf } from "./meta-cloud";
 export const RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "HOTEL_CONFIRMED", "PAYMENT_RECEIVED", "STATUS_UPDATE", "DOC_REQUEST", "APPOINTMENT_REMINDER", "PNR_EXPIRY", "PAYMENT_REMINDER"] as const;
 const IMMEDIATE_RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "HOTEL_CONFIRMED", "PAYMENT_RECEIVED", "DOC_REQUEST"];
 export type AutomationRule = typeof RULES[number];
@@ -139,7 +140,7 @@ export async function processWhatsAppQueue() {
   const rules = await automationRules();
   const messages = await prisma.whatsAppMessage.findMany({ where: { status: "QUEUED", instance: config.instance,
     nextAttempt: { lte: new Date() }, ...(quiet ? { OR: [{ automation: null }, { automation: { in: IMMEDIATE_RULES } }] } : {}) }, orderBy: { at: "asc" }, take: 10,
-    include: { thread: { include: { customer: true } } } });
+    include: { attachment:true,thread: { include: { customer: true } } } });
   let processed = 0;
   for (const message of messages) {
     const customer = message.thread.customer;
@@ -163,12 +164,22 @@ export async function processWhatsAppQueue() {
       }
     }
     let prepared:Awaited<ReturnType<typeof approvedTemplate>>|undefined;
-    if(isCloud()){try{if(message.cloudTemplate){prepared=await approvedTemplate(message.cloudTemplate);body=prepared.body;}else if(message.automation||!await cloudReplyWindow(customer.id,message.recipient!))throw new CloudError(false,false,"The 24-hour reply window is closed. Choose an approved utility template.");}catch(error){await prisma.whatsAppMessage.updateMany({where:{id:message.id,status:"QUEUED"},data:{status:error instanceof CloudError&&error.retryable&&!error.uncertain&&message.attempts<4?"QUEUED":"BLOCKED",attempts:{increment:1},nextAttempt:new Date(Date.now()+60000*2**Math.min(message.attempts,4)),lastError:error instanceof CloudError?error.message:"Meta template validation failed."}});continue;}}
+    if(isCloud()){try{if(message.cloudTemplate){prepared=await approvedTemplate(message.cloudTemplate,message.attachment?{id:"pending",filename:message.attachment.filename}:undefined);body=prepared.body;}else if(message.automation||!await cloudReplyWindow(customer.id,message.recipient!))throw new CloudError(false,false,"The 24-hour reply window is closed. Choose an approved utility template.");}catch(error){await prisma.whatsAppMessage.updateMany({where:{id:message.id,status:"QUEUED"},data:{status:error instanceof CloudError&&error.retryable&&!error.uncertain&&message.attempts<4?"QUEUED":"BLOCKED",attempts:{increment:1},nextAttempt:new Date(Date.now()+60000*2**Math.min(message.attempts,4)),lastError:error instanceof CloudError?error.message:"Meta template validation failed."}});continue;}}
     const claim = await prisma.whatsAppMessage.updateMany({ where: { id: message.id, status: "QUEUED" },
       data: { status: "SENDING", body, claimedAt: new Date(), attempts: { increment: 1 } } });
     if (!claim.count) continue;
     try {
-      const id = isCloud()?await cloudSend(message.recipient!,body,prepared?.template,message.id):await evolutionSend(message.recipient!, body);
+      let document:{id:string;filename:string}|undefined;
+      if(message.attachment){
+        if(!isCloud()||message.attachment.customerId!==customer.id)throw new CloudError(false,false,"PDF customer does not match the conversation.");
+        let bytes:Buffer;try{bytes=await readPdf(message.attachment);}catch{throw new CloudError(false,false,"Private PDF unavailable or changed. Upload and review it again.");}
+        document={id:await cloudUploadPdf(bytes,message.attachment.filename),filename:message.attachment.filename};
+        if(prepared?.template.components){const header=prepared.template.components.find(c=>c.type==="header");if(header)header.parameters=[{type:"document",document}];}
+        // An upload can take time; recheck withdrawal and window immediately before submission.
+        const latest=await prisma.customer.findUniqueOrThrow({where:{id:customer.id}});
+        if(!latest.whatsappOptIn||latest.status==="INACTIVE"||whatsappPhone(latest.phone)!==message.recipient||await prisma.settings.findUnique({where:{key:`wa.meta.optout.${message.recipient}`}})||!prepared&&!await cloudReplyWindow(customer.id,message.recipient!))throw new CloudError(false,false,"Consent, recipient or reply window changed before PDF delivery.");
+      }
+      const id = isCloud()?await cloudSend(message.recipient!,body,prepared?.template,message.id,document):await evolutionSend(message.recipient!, body);
       // Receipt webhooks can beat this response; do not downgrade a delivered/read message.
       const key = isCloud()?`${config.instance}:${id}`:providerKey(id);
       const receipt = await prisma.settings.findUnique({ where: { key: `wa.receipt.${key}` } });

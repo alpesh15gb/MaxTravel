@@ -120,6 +120,7 @@ model Customer {
   notes           Note[]
   activities      Activity[]
   whatsappThreads WhatsAppThread[]
+  whatsappAttachments WhatsAppAttachment[]
   whatsappOptIn   Boolean @default(false)
   uploadLinks     UploadLink[]
 
@@ -620,13 +621,30 @@ model WhatsAppMessage {
   claimedAt   DateTime?
   lastError   String?
   cloudTemplate String? // Frozen approved-template name/language/parameter values
+  attachmentId String?
+  attachment WhatsAppAttachment? @relation(fields: [attachmentId], references: [id])
   replied   Boolean?
   staffId   String?
   staff     User?          @relation(fields: [staffId], references: [id])
   at        DateTime       @default(now())
 
   @@index([threadId])
+  @@index([attachmentId])
   @@index([status, nextAttempt])
+}
+
+model WhatsAppAttachment {
+  id String @id @default(cuid())
+  customerId String
+  customer Customer @relation(fields: [customerId], references: [id])
+  filename String
+  storageKey String @unique
+  sha256 String
+  size Int
+  createdBy String
+  createdAt DateTime @default(now())
+  messages WhatsAppMessage[]
+  @@index([customerId, createdAt])
 }
 
 model QuickReply {

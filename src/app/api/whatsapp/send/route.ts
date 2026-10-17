@@ -22,7 +22,13 @@ export async function POST(req: Request) {
     const cloudKey=isCloud()&&typeof b.cloudTemplateKey==="string"?b.cloudTemplateKey:null;
     const selected=isCloud()&&cloudKey?freezeTemplate(cloudKey,typeof b.cloudValues==="object"&&b.cloudValues!==null?b.cloudValues:{}):null;
     if(cloudKey&&!selected)throw new ApiError(400,"Choose a configured Meta utility template.");
-    const prepared=selected?await approvedTemplate(selected):null;
+    const attachmentId=optionalId(b.attachmentId);
+    if(attachmentId&&!isCloud())throw new ApiError(400,"PDF delivery requires Meta Cloud API.");
+    await customerFor(prisma,user,customerId);
+    const attachment=attachmentId?await prisma.whatsAppAttachment.findUnique({where:{id:attachmentId}}):null;
+    if(attachmentId&&(!attachment||attachment.customerId!==customerId||attachment.createdBy!==user.id))throw new ApiError(403,"Upload a PDF for this customer using your own staff account.");
+    if(attachment&&b.preview!==true&&b.acceptedAttachmentId!==attachment.id)throw new ApiError(400,"Review and confirm the PDF before sending.");
+    const prepared=selected?await approvedTemplate(selected,attachment?{id:"preview",filename:attachment.filename}:undefined):null;
     if(prepared&&b.preview!==true&&b.acceptedCloudBody!==prepared.body)throw new ApiError(409,"Preview and accept the current approved template wording before sending.");
     const verifiedCustomer=await prisma.customer.findUnique({where:{id:customerId},select:{phone:true}});
     const inWindow=isCloud()&&verifiedCustomer?await cloudReplyWindow(customerId,whatsappPhone(verifiedCustomer.phone)||""):false;
@@ -55,10 +61,11 @@ export async function POST(req: Request) {
         vars.uploadLink = `${origin}/upload/${link.token}`;
         vars.uploadExpiry = `${dateTimeLabel(link.expiresAt)} IST`;
       }
-      const template = cloudKey??optionalId(b.template); let text = prepared?.body??optionalId(b.text);
+      const template = cloudKey??optionalId(b.template); let text = prepared?.body??optionalId(b.text); if(attachment&&!text)text=`Document: ${attachment.filename}`;
       if (!text && template) { const copy = await tx.quickReply.findUnique({ where: { key: template } }); const source = copy?.body ?? DEFAULT_COPY[template]; if (!source) throw new ApiError(400, "This template is not configured. Write a message instead."); text = source.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? ""); }
       if (text && /\{\w+\}/.test(text)) throw new ApiError(400, "Complete all template placeholders before logging your message.");
       if (b.preview === true) return { body: text ?? "", status: "DRAFT", whatsappUrl: null };
+      if(attachment&&!selected&&(text?.length??0)>1024)throw new ApiError(400,"PDF captions must be 1024 characters or fewer.");
       if (!text || text.length > 4000) throw new ApiError(400, "Write a message of 1–4000 characters.");
       const digits = whatsappPhone(customer.phone);
       if(isCloud()&&!customer.phone.trim().startsWith("+"))throw new ApiError(400,"Store the customer number with + and its country code, for example +919876543210.");
@@ -68,13 +75,13 @@ export async function POST(req: Request) {
       if (requestKey) {
         const prior = await tx.whatsAppMessage.findUnique({ where: { requestKey }, include: { thread: true } });
         if (prior) {
-          if (prior.thread.customerId !== customerId || prior.cloudTemplate!==selected || createHash("sha256").update(prior.body).digest("hex") !== createHash("sha256").update(text).digest("hex")) throw new ApiError(409,"This request ID was already used for another message.");
+          if (prior.thread.customerId !== customerId || prior.attachmentId!==attachmentId || prior.cloudTemplate!==selected || createHash("sha256").update(prior.body).digest("hex") !== createHash("sha256").update(text).digest("hex")) throw new ApiError(409,"This request ID was already used for another message.");
           return { messageId: prior.id, threadId: prior.threadId, body: prior.body, status: prior.status, whatsappUrl: null };
         }
       }
       let thread = await tx.whatsAppThread.findFirst({ where: { customerId } });
       if (!thread) thread = await tx.whatsAppThread.create({ data: { customerId, phone: customer.phone } });
-      const message = await tx.whatsAppMessage.create({ data: { cloudTemplate:selected,threadId: thread.id, direction: "OUT", body: text, template, staffId: user.id, status: config ? "QUEUED" : "LOGGED", instance: config?.instance, recipient: digits, requestKey } });
+      const message = await tx.whatsAppMessage.create({ data: { attachmentId,cloudTemplate:selected,threadId: thread.id, direction: "OUT", body: text, template, staffId: user.id, status: config ? "QUEUED" : "LOGGED", instance: config?.instance, recipient: digits, requestKey } });
       await tx.whatsAppThread.update({ where: { id: thread.id }, data: { lastMsgAt: new Date() } });
       await tx.activity.create({ data: { customerId, actorId: user.id, type: "WHATSAPP", summary: config ? "WhatsApp message queued" : `Message logged for manual sending: ${text.slice(0, 90)}`, link: `/whatsapp?thread=${thread.id}` } });
       await transactionAudit(tx, user, config ? "QUEUE" : "LOG", "WhatsAppMessage", message.id, config ? "Provider message queued; delivery pending" : "Manual handoff; delivery not verified");
