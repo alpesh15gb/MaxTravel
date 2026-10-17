@@ -2,7 +2,9 @@
 
 Deploy on the existing Ubuntu VPS: [Docker + system Nginx installation and updates](docs/vps-nginx-deploy.md).
 
-Connect the separate WhatsApp instance: [Evolution pilot installation and verification](docs/evolution-pilot.md).
+Use the official [Meta Cloud API setup](META-WHATSAPP-SETUP.md) for WhatsApp. The Evolution guide is retained for legacy installations.
+
+Latest additions and rollout: [CRM completion update](docs/crm-completion-2026-10-18.md). Includes staff MFA/sessions, encryption, enquiries/quotes, incoming documents, applicant checklists, customer import and advance allocation; the document explicitly records remaining finance and release work.
 
 Operational system for visa processing, air ticketing, payment collection, document
 collection/verification, WhatsApp communication, employee tasks, and supplier/refund

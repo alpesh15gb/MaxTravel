@@ -16,6 +16,7 @@ export class ApiError extends Error {
 export async function requireSession(permission?: Permission | Permission[]): Promise<SessionUser> {
   const user = await getServerSession();
   if (!user) throw new ApiError(401, "Not signed in");
+  if(permission && process.env.CRM_REQUIRE_MFA==="true" && !user.mfaEnabled) { throw new ApiError(403,"Set up your authenticator from Account security before continuing."); }
   if (permission) {
     const list = Array.isArray(permission) ? permission : [permission];
     if (!canAny(user.permissions, list)) throw new ApiError(403, "You do not have permission for this action");
@@ -27,6 +28,8 @@ export async function requireSession(permission?: Permission | Permission[]): Pr
 export async function requirePage(permission?: Permission | Permission[]): Promise<SessionUser> {
   const user = await getServerSession();
   if (!user) redirect("/login");
+
+  if(permission && process.env.CRM_REQUIRE_MFA==="true" && !user.mfaEnabled)redirect("/account-security");
   if (permission) {
     const list = Array.isArray(permission) ? permission : [permission];
     if (!canAny(user.permissions, list)) redirect("/dashboard?denied=" + encodeURIComponent(String(list[0])));

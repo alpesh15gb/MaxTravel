@@ -190,6 +190,11 @@ export function checkConfig(env: NodeJS.ProcessEnv = process.env, root = process
     if(env.WA_CLOUD_GRAPH_VERSION&&!/^v\d+\.\d+$/.test(env.WA_CLOUD_GRAPH_VERSION))issues.push({level:"error",key:"WA_CLOUD_GRAPH_VERSION",message:"Use an explicit supported Graph version, for example vNN.0 from Meta's API setup."});
     for(const key of ["WA_CLOUD_APP_SECRET","WA_CLOUD_VERIFY_TOKEN","WA_WORKER_SECRET"])if(env[key]&&env[key]!.length<32)issues.push({level:"error",key,message:`${key} must contain at least 32 characters.`});
   }
+  const encryptionKey=env.CRM_DATA_ENCRYPTION_KEY;
+  if(encryptionKey&&!/^[a-f0-9]{64}$/i.test(encryptionKey))issues.push({level:"error",key:"CRM_DATA_ENCRYPTION_KEY",message:"Use a stable, private 32-byte hexadecimal encryption key."});
+  if(env.CRM_REQUIRE_MFA==="true"&&!encryptionKey)issues.push({level:"error",key:"CRM_DATA_ENCRYPTION_KEY",message:"Configure the encryption key before enforcing staff authenticators."});
+  if(!encryptionKey)issues.push({level:"warning",key:"CRM_DATA_ENCRYPTION_KEY",message:"Sensitive-field encryption and authenticator enrolment need a private encryption key. Legacy plaintext records require explicit backfill."});
+  if(env.UPLOAD_SCAN_REQUIRED==="true"&&!env.CLAMAV_HOST)issues.push({level:"error",key:"CLAMAV_HOST",message:"Required upload scanning needs a reachable private scanner."});
   return issues;
 }
 

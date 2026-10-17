@@ -199,7 +199,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
           {/* Documents by applicant */}
           <section className="panel p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Documents & Checklist</h2>
+              <h2 className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Documents & Checklist</h2><a className="text-small text-teal-700" href={`/visa-requirements?case=${vc.id}`}>Manage applicant checklists</a>
               {vc.checklist && (
                 <span className="text-small text-slate-500">Master: {vc.checklist.country} → {vc.checklist.visaType} → {vc.checklist.applicantType} · v{vc.checklist.version}</span>
               )}

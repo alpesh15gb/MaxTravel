@@ -92,6 +92,7 @@ model User {
 // ── Customers & Travellers ──────────────────────────────────────────────────
 
 model Customer {
+  mergedIntoId String?
   gstNumber       String?
   id              String           @id @default(cuid())
   code            String           @unique // C-1001
@@ -128,6 +129,7 @@ model Customer {
 }
 
 model Traveller {
+  passportLookup String?
   id                   String             @id @default(cuid())
   customerId           String
   customer             Customer           @relation(fields: [customerId], references: [id])
@@ -150,6 +152,7 @@ model Traveller {
   bookingTravellers    BookingTraveller[]
 
   @@index([customerId])
+  @@index([passportLookup])
 }
 
 // ── Visa ─────────────────────────────────────────────────────────────────────
@@ -286,6 +289,7 @@ model ChecklistLink {
 // ── Documents ───────────────────────────────────────────────────────────────
 
 model Document {
+  sensitive Boolean @default(false)
   id                     String              @id @default(cuid())
   docNo                  String              @unique
   customerId             String
@@ -740,4 +744,89 @@ model PlatformBookingLink {
   platformStatus String?
   documentsCurrent Boolean @default(true)
   updatedAt DateTime @updatedAt
+}
+model StaffSession {
+  id String @id
+  userId String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  agent String
+  @@index([userId, expiresAt])
+}
+model StaffMfa {
+  userId String @id
+  secret String
+  enabled Boolean @default(false)
+  lastStep Int @default(-1)
+  recoveryHashes String @default("[]")
+  updatedAt DateTime @updatedAt
+}
+model StaffRecovery {
+  id String @id
+  userId String
+  tokenHash String @unique
+  expiresAt DateTime
+  usedAt DateTime?
+  createdAt DateTime @default(now())
+}
+model SalesLead {
+ id String @id @default(cuid())
+ customerId String
+ branchId String
+ ownerId String
+ title String
+ source String
+ product String @default("FLIGHT")
+ stage String @default("NEW")
+ budgetMinor Int @default(0)
+ destination String?
+ travelDate DateTime?
+ followUpAt DateTime?
+ lostReason String?
+ notes String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ quotes SalesQuote[]
+ @@index([branchId,ownerId,stage])
+ @@index([customerId])
+}
+model SalesQuote {
+ id String @id @default(cuid())
+ leadId String
+ lead SalesLead @relation(fields:[leadId],references:[id])
+ version Int
+ items String
+ terms String
+ totalMinor Int
+ costMinor Int
+ expiresAt DateTime
+ state String @default("DRAFT")
+ shareHash String? @unique
+ acceptedName String?
+ acceptedAt DateTime?
+ bookingId String? @unique
+ createdBy String
+ createdAt DateTime @default(now())
+ @@unique([leadId,version])
+}
+model IncomingMedia {
+ documentId String? @unique
+ id String @id @default(cuid())
+ providerKey String @unique
+ mediaId String
+ mimeType String
+ filename String
+ expectedHash String
+ storageKey String?
+ sha256 String?
+ size Int?
+ createdAt DateTime @default(now())
+ @@index([createdAt])
+}
+model StaffAuthFailure {
+ id String @id @default(cuid())
+ keyHash String
+ at DateTime @default(now())
+ @@index([keyHash,at])
 }

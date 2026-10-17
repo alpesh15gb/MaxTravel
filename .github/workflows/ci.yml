@@ -166,3 +166,24 @@ jobs:
 
       - name: Verify automatic signed booking PDFs and stale-document suppression
         run: node --import ./scripts/standalone-server.mjs --import tsx tests/platform-documents.mts
+
+  staff-sales-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: file:./security-verification.db
+      APP_ORIGIN: http://127.0.0.1:3217
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - name: Create an isolated database file
+        run: node -e "require('node:fs').writeFileSync('prisma/security-verification.db','',{flag:'wx'})"
+      - run: npm run db:migrate
+      - run: npm run test:crm-core
+      - run: npm run build
+      - run: npm run test:staff-sales

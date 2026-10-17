@@ -94,3 +94,7 @@ The test refuses any URL without `integration-test.db`. It checks forged signatu
 ## Official WhatsApp Cloud API
 
 See META-WHATSAPP-SETUP.md for account setup, template mappings and the compose.meta.yaml cutover. This update adds an additive WhatsAppMessage.cloudTemplate column. Keep the old Evolution worker stopped during cutover; configuration never silently falls back to it.
+
+## Security and workflow update (18 October 2026)
+
+Read [the rollout instructions and remaining scope](docs/crm-completion-2026-10-18.md) before deploying this version. New staff sessions invalidate legacy browser sessions; field encryption requires a stable private key and explicit backfill. `compose.security.yaml` adds required ClamAV scanning. Maintenance commands are included in the production image and use native Node.js.

@@ -1,3 +1,4 @@
+import {canTouchRecord} from "@/lib/guard";
 import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "@/lib/session";
 import { loadCustomer360 } from "@/lib/customer360";
@@ -20,6 +21,8 @@ export default async function Customer360Page({
     return <div className="p-10 text-sm text-rose-700">You do not have permission to view customers.</div>;
   }
   const { id } = await params;
+  const alias=await prisma.customer.findUnique({where:{id}});
+  if(alias?.mergedIntoId&&canTouchRecord(user,alias))redirect(`/customers/${alias.mergedIntoId}`);
   const { tab } = await searchParams;
   const data = await loadCustomer360(id, user);
   if (!data) notFound();

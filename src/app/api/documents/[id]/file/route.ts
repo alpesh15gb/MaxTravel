@@ -18,7 +18,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const doc = await prisma.document.findUnique({ where: { id }, include: { customer: true } });
     if (!doc) throw new ApiError(404, "Document not found");
     if (!canTouchRecord(user, doc.customer)) throw new ApiError(403, "Document is outside your access.");
-    if (!user.permissions.includes("sensitive:view") && /passport|bank|salary|tax/i.test(doc.docType)) throw new ApiError(403, "Sensitive document access is restricted.");
+    if (!user.permissions.includes("sensitive:view") && (doc.sensitive || /passport|bank|salary|tax/i.test(doc.docType))) throw new ApiError(403, "Sensitive document access is restricted.");
     if (!doc.storagePath) throw new ApiError(404, "No file stored for this document");
 
     const token = await new SignJWT({ p: doc.storagePath })

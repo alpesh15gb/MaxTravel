@@ -1,0 +1,3 @@
+import assert from "node:assert/strict";
+import {parseCustomerCsv} from "../src/lib/customer-import";
+const rows=parseCustomerCsv('name,phone,email,city\r\n"A, Customer",+919876543210,TEST@example.test,"New\nCity"\r\n');assert.equal(rows.length,1);assert.equal(rows[0].name,"A, Customer");assert.equal(rows[0].email,"test@example.test");assert.equal(rows[0].city,"New\nCity");assert.throws(()=>parseCustomerCsv('name,phone\n"broken,+919876543210'));assert.throws(()=>parseCustomerCsv('name,phone,unknown\nTest,+919876543210,not-allowed'));assert.throws(()=>parseCustomerCsv('name,phone\nTest,12'));console.log("Customer CSV: quoting/newlines, canonical fields and invalid-row rejection passed.");

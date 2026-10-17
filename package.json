@@ -23,6 +23,8 @@
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs",
     "test": "tsx tests/reporting.ts && tsx tests/whatsapp-format.ts && node tests/smoke.mjs && node tests/evolution.mjs && node tests/a11y-gate.mjs && node tests/ui-metrics.mjs",
+    "test:crm-core": "tsx tests/staff-security.ts && tsx tests/sensitive-encryption.ts && tsx tests/customer-import.ts && tsx tests/upload-scan.mts && node --import ./scripts/standalone-server.mjs --import tsx tests/incoming-media.mts && node --import tsx tests/maintenance.mts",
+    "test:staff-sales": "node --import tsx tests/staff-sales-flow.mts",
     "test:reporting": "tsx tests/reporting.ts",
     "reports:reconcile": "node scripts/reconcile-reporting.mjs",
     "test:evolution": "node tests/evolution.mjs",

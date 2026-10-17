@@ -1,0 +1,7 @@
+CREATE TABLE "SalesLead" ("id" TEXT NOT NULL PRIMARY KEY, "customerId" TEXT NOT NULL,"branchId" TEXT NOT NULL,"ownerId" TEXT NOT NULL,"title" TEXT NOT NULL,"source" TEXT NOT NULL,"product" TEXT NOT NULL DEFAULT 'FLIGHT',"stage" TEXT NOT NULL DEFAULT 'NEW',"budgetMinor" INTEGER NOT NULL DEFAULT 0,"destination" TEXT,"travelDate" DATETIME,"followUpAt" DATETIME,"lostReason" TEXT,"notes" TEXT,"createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" DATETIME NOT NULL);
+CREATE INDEX "SalesLead_branchId_ownerId_stage_idx" ON "SalesLead"("branchId","ownerId","stage");
+CREATE INDEX "SalesLead_customerId_idx" ON "SalesLead"("customerId");
+CREATE TABLE "SalesQuote" ("id" TEXT NOT NULL PRIMARY KEY,"leadId" TEXT NOT NULL,"version" INTEGER NOT NULL,"items" TEXT NOT NULL,"terms" TEXT NOT NULL,"totalMinor" INTEGER NOT NULL,"costMinor" INTEGER NOT NULL,"expiresAt" DATETIME NOT NULL,"state" TEXT NOT NULL DEFAULT 'DRAFT',"shareHash" TEXT,"acceptedName" TEXT,"acceptedAt" DATETIME,"bookingId" TEXT,"createdBy" TEXT NOT NULL,"createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "SalesQuote_leadId_fkey" FOREIGN KEY ("leadId") REFERENCES "SalesLead"("id") ON DELETE RESTRICT ON UPDATE CASCADE);
+CREATE UNIQUE INDEX "SalesQuote_shareHash_key" ON "SalesQuote"("shareHash");
+CREATE UNIQUE INDEX "SalesQuote_bookingId_key" ON "SalesQuote"("bookingId");
+CREATE UNIQUE INDEX "SalesQuote_leadId_version_key" ON "SalesQuote"("leadId","version");

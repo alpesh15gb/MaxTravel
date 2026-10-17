@@ -39,7 +39,10 @@ export async function GET() {
   // Prisma records every applied migration here. Its absence means the schema was never deployed,
   // which the container's entrypoint or `npm run db:migrate` fixes.
   const schema = database
-    ? await within(prisma.$queryRawUnsafe('SELECT COUNT(*) FROM "_prisma_migrations"'))
+    ? await within(Promise.all([
+      prisma.$queryRawUnsafe('SELECT COUNT(*) FROM "_prisma_migrations"'),
+      prisma.$queryRawUnsafe('SELECT s.id, m.lastStep, r.tokenHash, l.title, q.items, i.documentId, t.passportLookup, d.sensitive, a.keyHash FROM "StaffSession" s, "StaffMfa" m, "StaffRecovery" r, "SalesLead" l, "SalesQuote" q, "IncomingMedia" i, "Traveller" t, "Document" d, "StaffAuthFailure" a LIMIT 0'),
+    ]))
     : false;
 
   const ok = database && schema;

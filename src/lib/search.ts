@@ -1,3 +1,4 @@
+import {passportLookup,encryptionConfigured} from "./sensitive-encryption";
 import { inrAmount } from "@/lib/money";
 import type { PrismaClient } from "@prisma/client";
 import type { SessionUser } from "./session";
@@ -6,13 +7,14 @@ export type SearchGroupKey="CUSTOMER"|"EMPLOYEE"|"VISA_CASE"|"BOOKING"|"PNR"|"TI
 export interface SearchHit{id:string;group:SearchGroupKey;title:string;subtitle:string;context:string;href:string}
 export interface SearchResponse{query:string;tookMs:number;groups:{key:SearchGroupKey;label:string;hits:SearchHit[]}[];exact?:SearchHit}
 export async function universalSearch(prisma:PrismaClient,query:string,user:SessionUser):Promise<SearchResponse>{
+ const passportFilter=encryptionConfigured()?{OR:[{passportLookup:passportLookup(query)},{passportLookup:null,passportNumber:{contains:query.trim().slice(0,120)}}]}:{passportNumber:{contains:query.trim().slice(0,120)}};
  const start=Date.now(),q=query.trim().slice(0,120);if(q.length<2)return{query:q,tookMs:0,groups:[]};const can=(p:string)=>user.permissions.some(v=>v===p),contains={contains:q},customer=scopeWhere(user,null,undefined,"assignedToId"),work=scopeWhere(user,null,"ownerId"),sensitive=can("sensitive:view");
  const [customers,employees,cases,bookings,travellers,tickets,invoices,receipts,suppliers,tasks,docs]=await Promise.all([
  can("customer:view")?prisma.customer.findMany({where:{AND:[customer,{OR:[{name:contains},{phone:contains},{email:contains},{code:contains},{city:contains}]}]},take:8}):[],
  can("employee:view")?prisma.user.findMany({where:{AND:[user.accessMode==="BRANCH"?{branchId:user.branchId}:user.accessMode==="ASSIGNED"?{id:user.id}:{},{OR:[{name:contains},{email:contains},{employeeCode:contains}]}]},include:{role:true},take:6}):[],
- can("visa:view")?prisma.visaCase.findMany({where:{AND:[work,{OR:[{caseNo:contains},{destination:contains},{customer:{name:contains}},{travellers:{some:{traveller:{fullName:contains}}}},...(sensitive?[{travellers:{some:{traveller:{passportNumber:contains}}}}]:[])]}]},include:{customer:true,stage:true},take:8}):[],
+ can("visa:view")?prisma.visaCase.findMany({where:{AND:[work,{OR:[{caseNo:contains},{destination:contains},{customer:{name:contains}},{travellers:{some:{traveller:{fullName:contains}}}},...(sensitive?[{travellers:{some:{traveller:passportFilter}}}]:[])]}]},include:{customer:true,stage:true},take:8}):[],
  can("ticketing:view")?prisma.booking.findMany({where:{AND:[work,{OR:[{bookingNo:contains},{pnr:contains},{sector:contains},{customer:{name:contains}}]}]},include:{customer:true},take:8}):[],
- can("traveller:view")?prisma.traveller.findMany({where:{customer:{is:customer},OR:[{fullName:contains},...(sensitive?[{passportNumber:contains}]:[])]},include:{customer:true},take:6}):[],
+ can("traveller:view")?prisma.traveller.findMany({where:{customer:{is:customer},OR:[{fullName:contains},...(sensitive?[passportFilter]:[])]},include:{customer:true},take:6}):[],
  can("ticketing:view")?prisma.ticket.findMany({where:{booking:{is:work},OR:[{ticketNo:contains},{passenger:contains}]},include:{booking:true},take:6}):[],
  can("invoice:view")?prisma.invoice.findMany({where:{customer:{is:customer},OR:[{invoiceNo:contains},{description:contains},{customer:{name:contains}}]},include:{customer:true},take:6}):[],
  can("payment:view")?prisma.payment.findMany({where:{customer:{is:customer},OR:[{receiptNo:contains},{customer:{name:contains}}]},include:{customer:true},take:6}):[],

@@ -65,6 +65,7 @@ export async function customerFor(tx: Prisma.TransactionClient, user: SessionUse
   const customer = await tx.customer.findUnique({ where: { id } });
   if (!customer) throw new ApiError(404, "Customer not found.");
   if (!canTouchRecord(user, customer)) throw new ApiError(403, "This customer is outside your workspace access.");
+  if(customer.mergedIntoId)throw new ApiError(409,"This customer profile was consolidated. Open its retained customer profile before creating work.");
   return customer;
 }
 export async function relatedFor(tx: Prisma.TransactionClient, user: SessionUser, customerId: string, bookingId: string | null, visaCaseId: string | null) {

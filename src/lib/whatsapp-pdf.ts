@@ -1,4 +1,5 @@
 import "server-only";
+import {scanUpload} from "./upload-scan";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
@@ -28,7 +29,7 @@ export function pdfFilename(value: string) {
   return `${name.replace(/\.pdf$/i, "") || "travel-document"}.pdf`;
 }
 export async function savePdf(bytes: Buffer) {
-  validatePdf(bytes); const storageKey = `${randomUUID()}.pdf`;
+  validatePdf(bytes); await scanUpload(bytes); const storageKey = `${randomUUID()}.pdf`;
   await mkdir(root(), { recursive: true, mode: 0o700 });
   await writeFile(filePath(storageKey), bytes, { flag: "wx", mode: 0o600 });
   return { storageKey, sha256: createHash("sha256").update(bytes).digest("hex"), size: bytes.length };

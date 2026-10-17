@@ -17,6 +17,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         const owner = assignedToId ? await tx.user.findUnique({ where: { id: assignedToId } }) : null;
         if (!owner?.active || owner.branchId !== current.branchId) throw new ApiError(400, "Choose an active relationship manager in this customer's branch.");
         if (b.handoverWork === true) {
+          await tx.salesLead.updateMany({where:{customerId:id,ownerId:current.assignedToId??user.id,stage:{notIn:["WON","LOST"]}},data:{ownerId:owner.id}});
           await tx.booking.updateMany({ where: { customerId: id, ownerId: current.assignedToId ?? user.id }, data: { ownerId: owner.id } });
           await tx.visaCase.updateMany({ where: { customerId: id, ownerId: current.assignedToId ?? user.id }, data: { ownerId: owner.id } });
           await tx.task.updateMany({ where: { customerId: id, ownerId: current.assignedToId ?? user.id, status: { in: ["OPEN", "IN_PROGRESS"] } }, data: { ownerId: owner.id } });

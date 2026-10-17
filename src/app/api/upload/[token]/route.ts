@@ -1,3 +1,4 @@
+import {scanUpload} from "@/lib/upload-scan";
 import { prisma } from "@/lib/db";
 import { mkdir,writeFile,unlink } from "fs/promises";
 import path from "path";
@@ -54,6 +55,7 @@ export async function POST(req:Request,ctx:{params:Promise<{token:string}>}){let
  if(!["pdf","jpg","png"].includes(normalized)||!allowed.includes(normalized))throw new ApiError(400,`Allowed file types: ${allowed.join(", ")}.`);
  const max=Math.min(15,item?.maxSizeMb??15);if(file.size>max*1024*1024)throw new ApiError(413,`This document allows files up to ${max} MB.`);
  const buffer=Buffer.from(await file.arrayBuffer());const valid=normalized==="pdf"?buffer.subarray(0,5).toString()==="%PDF-":normalized==="jpg"?buffer[0]===255&&buffer[1]===216&&buffer[2]===255:buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));if(!valid)throw new ApiError(400,"File content does not match its PDF or image extension.");
+ await scanUpload(buffer);
  await mkdir(ROOT,{recursive:true});const storageName=`${randomUUID()}.${normalized}`;saved=path.join(ROOT,storageName);await writeFile(saved,buffer);
  const doc=await prisma.$transaction(async tx=>{
  const current=await tx.uploadLink.findUnique({where:{id:link.id}});if(!current||current.revoked||current.expiresAt<new Date())throw new ApiError(410,"Link expired while uploading.");

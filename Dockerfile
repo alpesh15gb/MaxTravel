@@ -64,7 +64,7 @@ COPY prisma ./prisma
 
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY scripts/backup.mjs scripts/restore.mjs ./scripts/
-COPY scripts/reconcile-reporting.mjs ./scripts/
+COPY scripts/reconcile-reporting.mjs scripts/encrypt-sensitive.mjs scripts/staff-recovery.mjs ./scripts/
 COPY scripts/whatsapp-worker.mjs scripts/configure-evolution.mjs ./scripts/
 # COPY preserves source modes. A root checkout created with umask 077 can otherwise
 # leave package.json/schema/scripts unreadable to the unprivileged runtime user.

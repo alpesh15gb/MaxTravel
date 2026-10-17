@@ -17,9 +17,11 @@ export function middleware(request: NextRequest) {
       return NextResponse.json({ error: "This action must be completed from your agency workspace." }, { status: 403 });
     }
   }
-  const response = NextResponse.next();
+  const forwarded = new Headers(request.headers);
+  forwarded.set("x-crm-route",request.nextUrl.pathname);
+  const response = NextResponse.next({request:{headers:forwarded}});
   response.headers.set("Cache-Control", "private, no-store");
   return response;
 }
 
-export const config = { matcher: ["/api/:path*"] };
+export const config = { matcher: ["/api/:path*", "/((?!_next|favicon.ico|.*\\..*).*)"] };

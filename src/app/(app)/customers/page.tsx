@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function CustomersPage() {
   const user = await requirePage("customer:view");
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = {mergedIntoId:null};
   if (user.accessMode === "BRANCH") where.branchId = user.branchId;
   if (user.accessMode === "ASSIGNED") where.OR = [{ assignedToId: user.id }, { id: user.id }];
 

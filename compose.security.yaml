@@ -1,0 +1,28 @@
+# Add to the existing CRM Compose invocation: -f compose.security.yaml
+services:
+  app:
+    environment:
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
+      UPLOAD_SCAN_REQUIRED: "true"
+    depends_on:
+      clamav:
+        condition: service_healthy
+  clamav:
+    image: clamav/clamav:stable
+    restart: unless-stopped
+    volumes:
+      - clamav-signatures:/var/lib/clamav
+    healthcheck:
+      test: [CMD, clamdscan, --ping, "3"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 180s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  clamav-signatures:

@@ -11,18 +11,22 @@ import Brand from "./Brand";
 export interface ShellUser { name: string; roleName: string; branchName: string | null; employeeCode: string; permissions: string[]; }
 const NAV: { href: string; label: string; icon: IconName; perm: string; group: string }[] = [
   { href:"/dashboard",label:"Agency pulse",icon:"dashboard",perm:"dashboard:view",group:"Workspace" },
+  { href:"/sales",label:"Enquiries & quotes",icon:"customers",perm:"customer:view",group:"Workspace" },
   { href:"/customers",label:"Customers",icon:"customers",perm:"customer:view",group:"Workspace" },
   { href:"/visa",label:"Visa cases",icon:"visa",perm:"visa:view",group:"Workspace" },
   { href:"/ticketing",label:"Ticketing",icon:"plane",perm:"ticketing:view",group:"Workspace" },
   { href:"/online-bookings",label:"Online bookings",icon:"plane",perm:"ticketing:view",group:"Workspace" },
   { href:"/documents",label:"Documents",icon:"documents",perm:"document:view",group:"Workspace" },
   { href:"/payments",label:"Money & invoices",icon:"wallet",perm:"payment:view",group:"Finance" },
+  { href:"/advances",label:"Customer advances",icon:"wallet",perm:"payment:view",group:"Finance" },
   { href:"/reports",label:"Reports & insights",icon:"dashboard",perm:"payment:view",group:"Finance" },
   { href:"/refunds",label:"Refunds",icon:"refund",perm:"refund:view",group:"Finance" },
   { href:"/suppliers",label:"Suppliers",icon:"suppliers",perm:"supplier:view",group:"Finance" },
   { href:"/tasks",label:"Tasks & follow-ups",icon:"tasks",perm:"task:view",group:"Operations" },
+  { href:"/incoming-documents",label:"Incoming documents",icon:"documents",perm:"whatsapp:view",group:"Operations" },
   { href:"/whatsapp",label:"WhatsApp desk",icon:"message",perm:"whatsapp:view",group:"Operations" },
   { href:"/employees",label:"Team",icon:"customers",perm:"employee:view",group:"Operations" },
+  { href:"/customer-tools",label:"Customer import",icon:"customers",perm:"customer:create",group:"Manage" },
   { href:"/checklists",label:"Visa checklists",icon:"check",perm:"checklist:view",group:"Manage" },
   { href:"/audit",label:"Audit trail",icon:"audit",perm:"audit:view",group:"Manage" },
   { href:"/settings",label:"Agency settings",icon:"settings",perm:"settings:manage",group:"Manage" },
@@ -30,6 +34,7 @@ const NAV: { href: string; label: string; icon: IconName; perm: string; group: s
 const QUICK: { href: string; label: string; icon: IconName; perm: string }[] = [
   { href:"/visa/new",label:"New visa case",icon:"visa",perm:"visa:create" },
   { href:"/ticketing/new",label:"New booking",icon:"plane",perm:"ticketing:create" },
+  { href:"/sales",label:"Enquiries & quotes",icon:"customers",perm:"customer:view" },
   { href:"/customers",label:"Find a customer",icon:"customers",perm:"customer:view" },
   { href:"/tasks",label:"Add a follow-up task",icon:"tasks",perm:"task:create" },
 ];
@@ -85,6 +90,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
             {/* Density lives in the account menu rather than a module toolbar: it applies to every
                 screen, and this is the one control reachable from all of them at every width. */}
             <DensityControl mode="menu" />
+            <Link role="menuitem" className="menu-item" href="/account-security" onClick={()=>setUserOpen(false)}>Account security</Link>
             <button role="menuitem" className="menu-item" onClick={() => { setUserOpen(false); setPwOpen(true); }}><Icon name="shield" size={16} className="text-slate-500" />Change password</button>
             <button role="menuitem" className="menu-item text-rose-700" onClick={() => { setUserOpen(false); logout(); }}><Icon name="logout" size={16} />Sign out</button>
           </div>}

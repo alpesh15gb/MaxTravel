@@ -1,0 +1,3 @@
+import {z} from "zod";
+export const quoteItemSchema=z.object({description:z.string().trim().min(1).max(500),quantity:z.number().int().min(1).max(1000),priceMinor:z.number().int().min(0).max(100000000),costMinor:z.number().int().min(0).max(100000000)}).strict();
+export function quoteTotals(items:z.infer<typeof quoteItemSchema>[]){if(!items.length||items.length>100)throw Error("Use between 1 and 100 quotation items.");const result=items.reduce((s,i)=>({totalMinor:s.totalMinor+i.quantity*i.priceMinor,costMinor:s.costMinor+i.quantity*i.costMinor}),{totalMinor:0,costMinor:0});if(result.totalMinor<=0||result.totalMinor>2000000000||result.costMinor>2000000000)throw Error("Quotation total exceeds the supported range.");return result;}
