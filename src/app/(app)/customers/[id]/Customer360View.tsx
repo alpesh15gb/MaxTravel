@@ -112,7 +112,8 @@ export default function Customer360View({ data, perms, initialTab, permsExtra, o
       </div>
 
       {/* Underline tabs */}
-      <div aria-label="Customer sections" className="mb-4 flex gap-0 overflow-x-auto border-b border-slate-200 tos-scroll">
+      <label className="mb-4 block sm:hidden"><span className="field-label">Customer section</span><select aria-label="Customer section" className="control w-full" value={tab} onChange={event => setTab(event.target.value)}>{TABS.filter(([key]) => !p.visibleTabs || p.visibleTabs.includes(key)).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+      <div aria-label="Customer sections" className="mb-4 hidden gap-0 overflow-x-auto border-b border-slate-200 tos-scroll sm:flex">
         {TABS.filter(([key]) => !p.visibleTabs || p.visibleTabs.includes(key)).map(([key, label]) => (
           <button
             key={key}

@@ -150,6 +150,14 @@ const ROUTES = [
   ["notifications", "/notifications"],
 ];
 
+// Sales handoff and the booking-platform sync desk were added after the first screen inventory.
+// Cover them at both breakpoints without applying the per-screen primary-action metric to a record
+// collection whose actions are intentionally scoped to each row.
+const FLOW_ROUTES = [
+  ["sales-workflow", "/sales"],
+  ["online-bookings", "/online-bookings"],
+];
+
 const probe = () => {
   const leaves = [...document.querySelectorAll("main *")].filter(e => e.children.length === 0 && e.textContent.trim());
   // The scale allows exactly one tier below 13px: a 12px UPPERCASE, letter-spaced label (eyebrows and
@@ -260,6 +268,34 @@ try {
     rows.push({ route: url, name, ...measured });
     await page.screenshot({ path: path.join(shotDir, `desktop-${name}.png`), fullPage: false });
   }
+  for (const [name, url] of FLOW_ROUTES) {
+    const response = await page.goto(base + url, { waitUntil: "networkidle" });
+    if (!response || response.status() >= 400) { fail(`${url} did not load (${response ? response.status() : "no response"})`); continue; }
+    if (!await page.locator("main h1").count()) fail(`${url} did not render a page heading`);
+    const overflows = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+    if (overflows) fail(`${url} overflows the desktop viewport`);
+    await page.screenshot({ path: path.join(shotDir, `desktop-${name}.png`), fullPage: false });
+  }
+  await page.goto(`${base}/sales`, { waitUntil: "networkidle" });
+  const enquiry = page.locator("article").filter({ hasText: "Dubai family holiday" }).first();
+  if (!await enquiry.count()) fail("sales handoff did not render its accepted enquiry fixture");
+  else {
+    const convert = enquiry.getByRole("button", { name: "Create CRM booking from accepted quote" });
+    if (!await convert.count()) fail("accepted enquiry has no CRM booking handoff action");
+    else {
+      await convert.click();
+      const linkedBooking = enquiry.getByRole("link", { name: "Open linked booking" });
+      await linkedBooking.waitFor({ timeout: 10000 });
+      const bookingPath = await linkedBooking.getAttribute("href");
+      const handoff = await page.goto(base + bookingPath, { waitUntil: "networkidle" });
+      if (!handoff || handoff.status() >= 400) fail("accepted quotation did not open its created CRM booking");
+    }
+  }
+  await page.goto(`${base}/ticketing`, { waitUntil: "networkidle" });
+  if (!await page.locator("main table").isVisible()) fail("ticketing desktop table is not visible");
+  if (await page.getByRole("list", { name: "Bookings at mobile width" }).isVisible()) fail("ticketing mobile cards should be hidden on desktop");
+  await page.goto(`${base}/online-bookings`, { waitUntil: "networkidle" });
+  if (!await page.locator("main table").isVisible()) fail("online booking desktop table is not visible");
 
   // Phone width, for the fill and overflow numbers where they are worst.
   const phone = await browser.newContext({ baseURL: base, viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
@@ -271,6 +307,27 @@ try {
     if (!res || res.status() >= 400) { fail(`${url} did not load at 390px (${res ? res.status() : "no response"})`); continue; }
     await phonePage.screenshot({ path: path.join(shotDir, `phone-${name}.png`), fullPage: false });
   }
+  for (const [name, url] of FLOW_ROUTES) {
+    const response = await phonePage.goto(base + url, { waitUntil: "networkidle" });
+    if (!response || response.status() >= 400) { fail(`${url} did not load at 390px (${response ? response.status() : "no response"})`); continue; }
+    if (!await phonePage.locator("main h1").count()) fail(`${url} did not render a page heading at 390px`);
+    const overflows = await phonePage.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+    if (overflows) fail(`${url} overflows the phone viewport`);
+    await phonePage.screenshot({ path: path.join(shotDir, `phone-${name}.png`), fullPage: false });
+  }
+  await phonePage.goto(`${base}/ticketing`, { waitUntil: "networkidle" });
+  if (!await phonePage.getByRole("list", { name: "Bookings at mobile width" }).isVisible()) fail("ticketing mobile booking cards are not visible");
+  if (await phonePage.locator("main table").isVisible()) fail("ticketing desktop table should be hidden on mobile");
+  await phonePage.goto(`${base}/payments`, { waitUntil: "networkidle" });
+  if (!await phonePage.getByRole("list", { name: "Invoices and balances" }).isVisible()) fail("mobile invoices and balances are not visible");
+  if (await phonePage.locator("main table").isVisible()) fail("payment desktop table should be hidden on mobile");
+  await phonePage.getByRole("button", { name: /Receipts/ }).click();
+  if (!await phonePage.getByRole("list", { name: "Payment receipts" }).isVisible()) fail("mobile receipt cards are not visible");
+  await phonePage.goto(`${base}/online-bookings`, { waitUntil: "networkidle" });
+  if (!await phonePage.getByRole("list", { name: "Online bookings at mobile width" }).isVisible()) fail("online booking mobile cards are not visible");
+  if (await phonePage.locator("main table").isVisible()) fail("online booking desktop table should be hidden on mobile");
+  await phonePage.goto(base + resolve("/customers/{customerId}"), { waitUntil: "networkidle" });
+  if (!await phonePage.getByLabel("Customer section", { exact: true }).isVisible()) fail("customer record sections need a mobile selector");
   await phone.close();
 
   const density = await measureDensity(page, base);

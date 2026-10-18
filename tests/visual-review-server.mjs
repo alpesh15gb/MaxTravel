@@ -54,11 +54,36 @@ await ok(`/api/visa/cases/${v1.caseId}/stage`, { stageId: await stageId("ASSESSM
 await ok(`/api/visa/cases/${v2.caseId}/stage`, { stageId: await stageId("DOCUMENTS_PENDING") }, owner);
 const booking = await ok("/api/bookings", { customerId: meera.id, travellerIds: [meeraT.id], pnr: "SKY7QX", sector: "BOM → FRA", airline: "Lufthansa", deadlineHours: 20, fare: 32000, taxes: 4500, markup: 2000, serviceFee: 1500 }, owner);
 await ok("/api/bookings", { customerId: arjun.id, travellerIds: [arjunT.id], sector: "BOM → DXB", fare: 18500, taxes: 2800 }, owner);
+const reviewUser = await prisma.user.findUniqueOrThrow({ where: { email: "review@visual.test" } });
+const meeraRecord = await prisma.customer.findUniqueOrThrow({ where: { id: meera.id } });
+const acceptedLead = await prisma.salesLead.create({ data: {
+  customerId: meera.id, branchId: meeraRecord.branchId, ownerId: reviewUser.id,
+  title: "Dubai family holiday", source: "Website", product: "FLIGHT", stage: "QUOTED",
+  budgetMinor: 2800000, destination: "Mumbai → Dubai", travelDate: new Date("2027-02-15T00:00:00.000Z"),
+  followUpAt: new Date(Date.now() + 48 * 60 * 60 * 1000), notes: "Family of three; morning departure preferred.",
+} });
+await prisma.salesQuote.create({ data: {
+  leadId: acceptedLead.id, version: 1,
+  items: JSON.stringify([{ description: "BOM–DXB return airfare · 2 adults, 1 child", quantity: 1, priceMinor: 2800000, costMinor: 2580000 }]),
+  terms: "Fare is subject to supplier confirmation. Cancellation fees follow the airline rules shown at booking.",
+  totalMinor: 2800000, costMinor: 2580000, expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+  state: "ACCEPTED", acceptedName: "Meera Sharma", acceptedAt: new Date(), createdBy: reviewUser.id,
+} });
+const onlineBooking = await prisma.booking.create({ data: {
+  bookingNo: "ON-2026-0001", customerId: meera.id, product: "HOTEL", hotelName: "The Leela Goa",
+  hotelCheckIn: new Date("2026-12-20T00:00:00.000Z"), hotelCheckOut: new Date("2026-12-24T00:00:00.000Z"),
+  status: "CONFIRMED", gdsSource: "TRIPJACK_API", sector: "Goa · 4 nights",
+  fare: 46000, sellingPrice: 48900, supplierCost: 46000, ownerId: reviewUser.id, branchId: meeraRecord.branchId,
+} });
+await prisma.platformBookingLink.create({ data: {
+  platformId: "tripjack-uat-booking-001", bookingId: onlineBooking.id, revision: 4,
+  supplierReference: "TJ-DEMO-5201", platformStatus: "CONFIRMED", documentsCurrent: false,
+} });
 await ok("/api/payments", { customerId: meera.id, bookingId: booking.bookingId, amount: 20000, mode: "UPI", note: "Advance towards Europe trip" }, owner);
 await ok("/api/invoices", { customerId: meera.id, amount: 2500, description: "Visa service charge", dueDate: "2026-11-01" }, owner);
 await ok("/api/tasks", { title: "Call Meera about travel insurance", priority: "HIGH", customerId: meera.id, details: "She asked about Schengen insurance cover on WhatsApp." }, owner);
 await ok("/api/tasks", { title: "Collect Arjun's bank statements", priority: "MEDIUM", customerId: arjun.id }, owner);
-writeFileSync(path.join(ROOT, "tests", ".runtime", "visual-review-current.json"), JSON.stringify({ runtime, base: BASE, serverPid: server.pid, dev, customerId: meera.id, visaCaseId: v1.caseId, bookingId: booking.bookingId }, null, 2));
+writeFileSync(path.join(ROOT, "tests", ".runtime", "visual-review-current.json"), JSON.stringify({ runtime, base: BASE, serverPid: server.pid, dev, customerId: meera.id, visaCaseId: v1.caseId, bookingId: booking.bookingId, salesLeadId: acceptedLead.id, onlineBookingId: onlineBooking.id }, null, 2));
 console.log(`VISUAL REVIEW READY ${BASE} pid=${server.pid}`);
 console.log(`Review login: review@visual.test / ${password}`);
 server.on("exit", code => { console.log(`Server exited ${code}`); log.end(); process.exitCode = code ?? 1; });
