@@ -65,7 +65,7 @@ export async function buildReport(user: SessionUser, params: URLSearchParams) {
   const outstanding = [
     ...live.map(b=>({reference:b.bookingNo,customer:b.customer.name,type:"Booking",amount:balanceOf(b.sellingPrice,netReceived(sum(b.payments.map(p=>p.amount)),b.refunds)),href:"/ticketing/"+b.id})),
     ...cases.map(c=>({reference:c.caseNo,customer:c.customer.name,type:"Visa case",amount:balanceOf(c.sellingPrice,c.amountReceived),href:"/visa/"+c.id})),
-    ...invoices.filter(i=>!i.bookingId&&!i.visaCaseId&&i.status!=="PAID").map(i=>({reference:i.invoiceNo,customer:i.customer.name,type:"Invoice",amount:balanceOf(i.amount,i.amountPaid),href:"/payments"})),
+    ...invoices.filter(i=>!i.bookingId&&!i.visaCaseId&&i.status!=="PAID"&&i.status!=="CREDITED").map(i=>({reference:i.invoiceNo,customer:i.customer.name,type:"Invoice",amount:balanceOf(i.amount,i.amountPaid),href:"/payments"})),
   ].filter(r=>r.amount>0).sort((a,b)=>b.amount-a.amount);
   return {period:{from:period.from,to:period.to},generatedAt:new Date().toISOString(),sales,collected,returned,netCollections:round2(collected-returned),receivables,
     margin:sum(costed.map(b=>round2(b.sellingPrice-b.supplierCost))),uncosted:periodBookings.length-costed.length,

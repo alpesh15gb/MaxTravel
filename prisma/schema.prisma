@@ -87,6 +87,7 @@ model User {
   caseStatusUpdates VisaCaseStatus[]
   managedCustomers  Customer[]
   auditLogs         AuditLog[]
+  invoiceCreditNotes InvoiceCreditNote[] @relation("InvoiceCreditNoteIssuer")
 }
 
 // ── Customers & Travellers ──────────────────────────────────────────────────
@@ -480,6 +481,8 @@ model Payment {
 model Invoice {
   id          String    @id @default(cuid())
   invoiceNo   String    @unique // INV-4001
+  documentKind String   @default("OPERATIONAL") // OPERATIONAL | TAX_INVOICE
+  taxSnapshot String?
   customerId  String
   customer    Customer  @relation(fields: [customerId], references: [id])
   visaCaseId  String?
@@ -494,8 +497,22 @@ model Invoice {
   dueDate     DateTime?
   payments    Payment[]
   refunds     Refund[]
+  creditNote  InvoiceCreditNote?
 
   @@index([customerId])
+}
+
+model InvoiceCreditNote {
+  id           String   @id @default(cuid())
+  creditNoteNo String   @unique
+  invoiceId    String   @unique
+  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  reason       String
+  amount       Float
+  taxSnapshot  String?
+  issuedById   String?
+  issuedBy     User?    @relation("InvoiceCreditNoteIssuer", fields: [issuedById], references: [id], onDelete: SetNull)
+  issuedOn     DateTime @default(now())
 }
 
 model Supplier {

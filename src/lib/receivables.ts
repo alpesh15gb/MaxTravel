@@ -123,7 +123,7 @@ export function receivablesFrom({
   visaCases?: ReceivableCase[];
 }): ReceivableBreakdown {
   const openStandalone = invoices.filter(
-    (i) => i.status !== "PAID" && !i.bookingId && !i.visaCaseId && balanceOf(i.amount, i.amountPaid) > 0,
+    (i) => i.status !== "PAID" && i.status !== "CREDITED" && !i.bookingId && !i.visaCaseId && balanceOf(i.amount, i.amountPaid) > 0,
   );
   const unlinkedInvoices = round2(openStandalone.reduce((s, i) => s + balanceOf(i.amount, i.amountPaid), 0));
 

@@ -20,6 +20,7 @@ export async function POST(req: Request) {
       const invoice = invoiceId ? await tx.invoice.findUnique({ where: { id: invoiceId } }) : null;
       if (invoiceId && !invoice) throw new ApiError(404, "Invoice not found.");
       if (invoice && invoice.customerId !== customerId) throw new ApiError(400, "Invoice belongs to a different customer.");
+      if (invoice?.status === "CREDITED") throw new ApiError(409, "This invoice has been credited in full and cannot receive another payment.");
       let bookingId = optionalId(b.bookingId); let visaCaseId = optionalId(b.visaCaseId);
       if (invoice) {
         if ((bookingId && bookingId !== invoice.bookingId) || (visaCaseId && visaCaseId !== invoice.visaCaseId)) throw new ApiError(400, "Payment allocation must match the invoice's linked work.");
@@ -63,7 +64,8 @@ export async function POST(req: Request) {
       }
       if (invoice) {
         const paid = (Math.round(invoice.amountPaid * 100) + Math.round(amount * 100)) / 100;
-        await tx.invoice.update({ where: { id: invoice.id }, data: { amountPaid: paid, status: Math.round(paid * 100) === Math.round(invoice.amount * 100) ? "PAID" : "PARTIAL" } });
+        const changed = await tx.invoice.updateMany({ where: { id: invoice.id, status: invoice.status, amountPaid: invoice.amountPaid }, data: { amountPaid: paid, status: Math.round(paid * 100) === Math.round(invoice.amount * 100) ? "PAID" : "PARTIAL" } });
+        if (changed.count !== 1) throw new ApiError(409, "The invoice changed while this receipt was being saved. Refresh and check the current balance.");
       }
       if (visaCase) {
         const paid = await tx.payment.aggregate({ where: { visaCaseId: visaCase.id }, _sum: { amount: true } });

@@ -14,6 +14,7 @@ const COUNTERS: Record<string, (tx: Prisma.TransactionClient, code: string) => P
   VC: (tx, code) => tx.visaCase.count({ where: { caseNo: code } }),
   BK: (tx, code) => tx.booking.count({ where: { bookingNo: code } }),
   INV: (tx, code) => tx.invoice.count({ where: { invoiceNo: code } }),
+  CN: (tx, code) => tx.invoiceCreditNote.count({ where: { creditNoteNo: code } }),
   RCP: (tx, code) => tx.payment.count({ where: { receiptNo: code } }),
   RF: (tx, code) => tx.refund.count({ where: { refundNo: code } }),
   DOC: (tx, code) => tx.document.count({ where: { docNo: code } }),

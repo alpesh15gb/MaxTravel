@@ -38,6 +38,7 @@ export async function POST(req: Request) {
       const invoiceId = optionalId(b.invoiceId);
       const invoice = invoiceId ? await tx.invoice.findUnique({ where: { id: invoiceId } }) : null;
       if (invoiceId && (!invoice || invoice.customerId !== customerId)) throw new ApiError(400, "Invoice must belong to this customer.");
+      if (invoice?.status === "CREDITED") throw new ApiError(409, "This invoice has been credited in full and cannot be sent as a payment request.");
       const agency = await tx.settings.findUnique({ where: { key: "agency.name" } });
       const vars: Record<string, string> = { customer: customer.name, agency: agency?.value ?? "Your agency", outstanding: "the confirmed balance (ask your agency)", ref: "your travel services", pnr: booking?.pnr ?? booking?.bookingNo ?? "your booking (confirm the reference)", deadline: (booking?.ticketingDeadline ? dateTimeLabel(booking.ticketingDeadline) : undefined) ?? "to be confirmed by your agency", case: visaCase?.caseNo ?? "your visa application", docs: "the documents listed by your agency", stage: "awaiting an agency status confirmation", uploadLink: "Contact your agency for a private upload link.", uploadExpiry:"Contact your agency to confirm link expiry.", date: (visaCase?.appointmentDate ? dateTimeLabel(visaCase.appointmentDate) : undefined) ?? "Appointment date and time must be confirmed with your agency." };
       if (booking) {

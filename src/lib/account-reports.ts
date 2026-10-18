@@ -80,6 +80,8 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
    // Receipt/refund allocations are immutable in this app; journal limits them by the cutoff.
    const payments=!supplier?await tx.payment.findMany({where:{id:{in:[...balances.values()].filter(b=>b.type==="Payment").map(b=>b.id)}}}):[];
    const refunds=!supplier?await tx.refund.findMany({where:{id:{in:[...balances.values()].filter(b=>b.type==="Refund").map(b=>b.id)}}}):[];
+   const creditNotes=!supplier?await tx.invoiceCreditNote.findMany({where:{id:{in:[...balances.values()].filter(b=>b.type==="InvoiceCreditNote").map(b=>b.id)}},select:{id:true,invoiceId:true}}):[];
+   for(const note of creditNotes){const invoice=balances.get(`Invoice:${note.invoiceId}`),credit=balances.get(`InvoiceCreditNote:${note.id}`);if(invoice&&credit)invoice.amount+=credit.amount;}
    let unallocated=0;
    for(const p of payments){const value=balances.get(`Payment:${p.id}`)?.amount||0;const target=p.bookingId?`Booking:${p.bookingId}`:p.visaCaseId?`VisaCase:${p.visaCaseId}`:p.invoiceId?`Invoice:${p.invoiceId}`:null;const b=target?balances.get(target):undefined;if(b)b.amount+=value;else unallocated+=value;}
    for(const r of refunds){const value=balances.get(`Refund:${r.id}`)?.amount||0;const target=r.bookingId?`Booking:${r.bookingId}`:r.invoiceId?`Invoice:${r.invoiceId}`:null;const b=target?balances.get(target):undefined;if(b)b.amount+=value;else unallocated+=value;}

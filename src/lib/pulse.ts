@@ -59,7 +59,7 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
     items.push({id:`pnr:${b.id}`,kind:"PNR_DEADLINE",severity:hours<=urgent?"URGENT":"HIGH",title:`${b.pnr??b.bookingNo} · ${hours<0?"ticketing deadline passed":`ticketing due in ${Math.max(1,Math.round(hours))}h`}`,detail:`${b.customer.name} · ${b.sector??"Route pending"}${can("payment:view")?` · Balance ${money(balance)}`:""}`,href,at:b.ticketingDeadline.toISOString(),actions});
   }
   for(const inv of invoices){
-    if(inv.status==="PAID"||!(inv.dueDate?inv.dueDate.getTime()<now:inv.issuedOn.getTime()<now-7*24*H))continue;
+    if(inv.status==="PAID"||inv.status==="CREDITED"||!(inv.dueDate?inv.dueDate.getTime()<now:inv.issuedOn.getTime()<now-7*24*H))continue;
     const href=`/payments?focus=${inv.id}`,actions=[open("Open invoices",href)];
     if(can("payment:record"))actions.push(open("Record payment",`/payments?action=record&customer=${inv.customerId}&invoice=${inv.id}`));
     if(can("whatsapp:send"))actions.push(log("Log reminder",{customerId:inv.customerId,template:"PAYMENT_REMINDER",invoiceId:inv.id}));

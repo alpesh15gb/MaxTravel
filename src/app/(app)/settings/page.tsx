@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { requirePage } from "@/lib/guard";
 import { can } from "@/lib/rbac";
 import SettingsClient from "./SettingsClient";
+import { readInvoiceConfig } from "@/lib/invoice-config";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export default async function SettingsPage() {
   return (
     <SettingsClient
       settings={map}
+      invoiceConfig={readInvoiceConfig(map["invoice.configuration"])}
       stages={stages.map((s) => ({ id: s.id, key: s.key, name: s.name, seq: s.seq, system: s.system, active: s.active }))}
       canEdit={can(user.permissions, "settings:manage")}
     />

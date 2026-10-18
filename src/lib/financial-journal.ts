@@ -34,6 +34,9 @@ export async function journalEntity(tx:Tx, entity:string, id:string, actorId:str
   } else if(entity==="Invoice") {
     const i=await tx.invoice.findUniqueOrThrow({where:{id}});
     await postPosition(tx,{partyType:"CUSTOMER",partyId:i.customerId,sourceType:entity,sourceId:id,amountMinor:i.bookingId||i.visaCaseId?0:Math.round(i.amount*100),reference:i.invoiceNo,description:i.description||"Invoice charge / adjustment",dueDate:i.dueDate},actorId);
+  } else if(entity==="InvoiceCreditNote") {
+    const note=await tx.invoiceCreditNote.findUniqueOrThrow({where:{id},include:{invoice:true}});
+    await postPosition(tx,{partyType:"CUSTOMER",partyId:note.invoice.customerId,sourceType:entity,sourceId:id,amountMinor:-Math.round(note.amount*100),reference:note.creditNoteNo,description:`Full credit against ${note.invoice.invoiceNo}: ${note.reason}`},actorId);
   } else if(entity==="Payment") {
     const p=await tx.payment.findUniqueOrThrow({where:{id},include:{booking:true,visaCase:true,invoice:true}});
     if(p.booking&&p.booking.currency!=="INR")return;

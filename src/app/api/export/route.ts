@@ -4,6 +4,7 @@ import { can } from "@/lib/rbac";
 import { balanceOf } from "@/lib/receivables";
 import type { Permission } from "@/lib/permissions";
 import { audit } from "@/lib/audit";
+import { readInvoiceTaxSnapshot } from "@/lib/invoice-config";
 
 export const dynamic = "force-dynamic";
 
@@ -82,8 +83,11 @@ export async function GET(req: Request) {
       const data = await prisma.payment.findMany({ where: { customer: { is: scopeWhere(user, null, undefined, "assignedToId") } }, include: { customer: true }, orderBy: { receivedOn: "desc" }, take: 5000 });
       rows = data.map((p) => ({ receiptNo: p.receiptNo, customer: p.customer.name, amount: p.amount, mode: p.mode, receivedOn: p.receivedOn.toISOString().slice(0, 10) }));
     } else if (entity === "invoices") {
-      const data = await prisma.invoice.findMany({ where: { customer: { is: scopeWhere(user, null, undefined, "assignedToId") } }, include: { customer: true }, orderBy: { invoiceNo: "asc" } });
-      rows = data.map((i) => ({ invoiceNo: i.invoiceNo, customer: i.customer.name, description: i.description ?? "", amount: i.amount, amountPaid: i.amountPaid, status: i.status, dueDate: i.dueDate?.toISOString().slice(0, 10) ?? "" }));
+      const data = await prisma.invoice.findMany({ where: { customer: { is: scopeWhere(user, null, undefined, "assignedToId") } }, include: { customer: true, creditNote: true }, orderBy: { invoiceNo: "asc" } });
+      rows = data.map((i) => {
+        const tax = readInvoiceTaxSnapshot(i.taxSnapshot);
+        return { invoiceNo: i.invoiceNo, documentKind: i.documentKind, customer: i.customer.name, description: i.description ?? "", taxableSubtotal: tax ? tax.subtotalMinor / 100 : i.amount, taxAmount: tax ? tax.taxMinor / 100 : 0, taxProfile: tax?.profile.label ?? "", sellerGSTIN: tax?.issuer.gstin ?? "", buyerGSTIN: tax?.buyer.gstin ?? "", placeOfSupply: tax?.placeOfSupply ?? "", amount: i.amount, amountPaid: i.amountPaid, status: i.status, creditNoteNo: i.creditNote?.creditNoteNo ?? "", creditedAmount: i.creditNote?.amount ?? 0, creditReason: i.creditNote?.reason ?? "", dueDate: i.dueDate?.toISOString().slice(0, 10) ?? "" };
+      });
     } else if (entity === "refunds") {
       const data = await prisma.refund.findMany({ where: { customer: { is: scopeWhere(user, null, undefined, "assignedToId") } }, include: { customer: true }, orderBy: { refundNo: "asc" } });
       rows = data.map((r) => ({ refundNo: r.refundNo, customer: r.customer.name, amount: r.amount, status: r.status, requestedOn: r.requestedOn.toISOString().slice(0, 10), paidOn: r.paidOn?.toISOString().slice(0, 10) ?? "" }));
