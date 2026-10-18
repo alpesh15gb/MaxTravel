@@ -77,6 +77,8 @@ model User {
   tasks             Task[]              @relation("TaskOwner")
   visaCases         VisaCase[]          @relation("VisaCaseOwner")
   bookings          Booking[]           @relation("BookingOwner")
+  supplierSettlements SupplierSettlement[] @relation("SupplierSettlementRecorder")
+  supplierReversals   SupplierSettlement[] @relation("SupplierSettlementReverser")
   documentsVerified Document[]          @relation("Verifier")
   notes             Note[]
   activity          Activity[]
@@ -407,6 +409,7 @@ model Booking {
   reissueChain      Reissue[]          @relation("OriginalBooking")
   reissuesIssued    Reissue[]          @relation("ReissueBooking")
   Invoice           Invoice[]
+  supplierDues      SupplierDue[]
 
   @@index([customerId])
   @@index([pnr])
@@ -518,7 +521,7 @@ model InvoiceCreditNote {
 model Supplier {
   id             String        @id @default(cuid())
   name           String        @unique
-  type           String        @default("VISA_PROCESSOR") // VISA_PROCESSOR CONSOLIDATOR CONSULTANT
+  type           String        @default("VISA_PROCESSOR") // AIRLINE HOTEL BOOKING_PLATFORM VISA_PROCESSOR CONSOLIDATOR CONSULTANT OTHER
   contact        String?
   phone          String?
   city           String?
@@ -527,17 +530,47 @@ model Supplier {
   bookings       Booking[]
   reissues       Reissue[]
   dues           SupplierDue[]
-}model SupplierDue {
-  id          String    @id @default(cuid())
-  supplierId  String
-  supplier    Supplier  @relation(fields: [supplierId], references: [id])
-  description String
-  amount      Float
-  paidAmount  Float     @default(0)
-  dueDate     DateTime
-  paid        Boolean   @default(false)
-  paidOn      DateTime?
-  createdAt   DateTime @default(now())
+}
+
+model SupplierDue {
+  id                 String                 @id @default(cuid())
+  supplierId         String
+  supplier           Supplier               @relation(fields: [supplierId], references: [id])
+  bookingId          String?
+  booking            Booking?               @relation(fields: [bookingId], references: [id])
+  description        String
+  supplierInvoiceNo String?
+  amount             Float
+  paidAmount         Float                  @default(0)
+  dueDate            DateTime
+  paid               Boolean                @default(false)
+  paidOn             DateTime?
+  createdAt          DateTime               @default(now())
+  settlements        SupplierSettlement[]
+
+  @@index([supplierId, dueDate])
+  @@index([bookingId])
+}
+
+model SupplierSettlement {
+  id             String      @id @default(cuid())
+  dueId          String
+  due            SupplierDue @relation(fields: [dueId], references: [id], onDelete: Restrict)
+  amount         Float
+  method         String      @default("OTHER") // CASH UPI NEFT CARD CHEQUE BANK_TRANSFER OTHER MIGRATED
+  reference      String?
+  note           String?
+  settledOn      DateTime    @default(now())
+  recordedById   String?
+  recordedBy     User?       @relation("SupplierSettlementRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  requestKey     String      @unique
+  reversedOn     DateTime?
+  reversedById   String?
+  reversedBy    User?       @relation("SupplierSettlementReverser", fields: [reversedById], references: [id], onDelete: SetNull)
+  reversalReason String?
+  createdAt      DateTime    @default(now())
+
+  @@index([dueId, settledOn])
 }
 
 model Refund {

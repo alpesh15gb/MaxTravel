@@ -1,6 +1,6 @@
 {
-  "verifiedAt": "2026-10-12T23:08:48.988Z",
-  "passed": 198,
+  "verifiedAt": "2026-10-18T07:55:12.886Z",
+  "passed": 199,
   "checks": [
     "Fresh root routes to one-time setup",
     "Setup has no prefilled accounts or demo credentials",
@@ -153,8 +153,9 @@
     "A completed refund does not overwrite a cancellation",
     "Selling price cannot drop below money received",
     "A refused price change leaves the case untouched",
-    "Reopening a payable clears the recorded settlement",
-    "A reopened payable can be settled again",
+    "Supplier settlement reversal requires a reason",
+    "Reversal preserves the original supplier settlement",
+    "A reversed payable can be settled again",
     "HR cannot reset a peer's password",
     "A refused password reset leaves the account active",
     "No invoice for a withdrawn booking",

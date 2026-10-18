@@ -27,8 +27,10 @@ async function run(){
  await prisma.$executeRaw`INSERT INTO "Booking" ("id","bookingNo","customerId","branchId","ownerId","sellingPrice","supplierCost","status","pnr","updatedAt") VALUES (${booking.id},'BK-RP',${customer.id},${branch.id},${owner.id},120,80,'PNR_CREATED','RP1234',${new Date()})`;
  await prisma.payment.create({data:{receiptNo:"RCP-OLD",customerId:customer.id,bookingId:booking.id,amount:30}});
  const supplier=await prisma.supplier.create({data:{name:"Reporting Supplier"}});
- const due=await prisma.supplierDue.create({data:{supplierId:supplier.id,description:"Ticket bill",amount:100,paidAmount:20,dueDate:new Date("2026-01-01")}});
+ const legacyDue={id:"reporting-legacy-supplier-due"};
+ await prisma.$executeRaw`INSERT INTO "SupplierDue" ("id","supplierId","description","amount","paidAmount","dueDate","paid","paidOn","createdAt") VALUES (${legacyDue.id},${supplier.id},'Ticket bill',100,20,${new Date("2026-01-01")},0,NULL,${new Date("2026-01-01")})`;
  execFileSync(process.execPath,[cli,"migrate","deploy"],{env:process.env,stdio:"pipe"});
+ const due=await prisma.supplierDue.findUniqueOrThrow({where:{id:legacyDue.id}});
  const {journalEntity}=await import("../src/lib/financial-journal");const {buildAccountReport}=await import("../src/lib/account-reports");
  const {accountCsv,accountWorkbook,accountPdf}=await import("../src/lib/report-export");
  let passed=0;function check(name:string,fn:()=>void){fn();passed++;console.log(`✓ ${name}`);}

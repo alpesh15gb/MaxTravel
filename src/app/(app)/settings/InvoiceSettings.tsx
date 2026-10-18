@@ -47,6 +47,6 @@ export default function InvoiceSettings({ initial, canEdit }: { initial: Invoice
       <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-950"><input type="checkbox" className="mt-1" checked={config.accountantApproved} disabled={!canEdit} onChange={(event) => setConfig({ ...config, accountantApproved: event.target.checked })}/><span>I confirm the issuer details, document title, tax labels, rates and invoice treatment above were reviewed and approved by our accountant. The CRM applies configured arithmetic and does not determine legal tax applicability.</span></label>
     </>}
     {error&&<div role="alert" className="form-error">{error}</div>}{saved&&<div role="status" className="form-success">Invoice settings saved. New invoices will use a frozen copy of these values.</div>}
-    {canEdit&&<button className="btn-primary" disabled={busy}>{busy?"Saving…":"Save invoice settings"}<Icon name="check" size={16}/></button>}
+    {canEdit&&<button className="btn-secondary" disabled={busy}>{busy?"Saving…":"Save invoice settings"}<Icon name="check" size={16}/></button>}
   </form>;
 }

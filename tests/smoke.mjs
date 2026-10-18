@@ -117,7 +117,7 @@ async function run() {
   check("A rejected refund neither cancels nor refunds the sale", () => assert.equal(afterReject.status, "TICKETED"));
   const supplier = await ok("/api/suppliers", { name: "Real test supplier", type: "CONSOLIDATOR", paymentDueDays: 15 }, owner.cookie);
   const payable = await ok("/api/suppliers/dues", { supplierId: supplier.supplier.id, description: "Actual test payable", amount: 12.34, dueDate: "2020-01-01" }, owner.cookie);
-  await ok("/api/suppliers/dues", { dueId: payable.due.id, paid: true }, owner.cookie);
+  const supplierSettlement = await ok("/api/suppliers/dues", { dueId: payable.due.id, amount: 12.34, method: "NEFT", requestKey: `smoke-${randomBytes(8).toString("hex")}` }, owner.cookie);
   const task = await ok("/api/tasks", { title: "Follow up regression", customerId: alice.id, dueAt: "2020-01-01", priority: "HIGH" }, owner.cookie);
   await ok("/api/tasks/status", { taskId: task.task.id, status: "DONE" }, owner.cookie);
   await ok("/api/notes", { customerId: alice.id, body: "Real customer preference" }, owner.cookie);
@@ -400,13 +400,13 @@ async function run() {
   const priceBefore = (await prisma.visaCase.findUniqueOrThrow({ where: { id: visa.caseId } })).sellingPrice;
   check("A refused price change leaves the case untouched", () => assert.equal(priceBefore, 100.10));
 
-  // Reopening a settled payable used to keep paidAmount, so the balance read zero and no settlement —
-  // the default one or a typed one — could ever be accepted again.
-  await ok("/api/suppliers/dues", { dueId: payable.due.id, paid: false }, owner.cookie);
-  const clearedPaid = (await prisma.supplierDue.findUniqueOrThrow({ where: { id: payable.due.id } })).paidAmount;
-  check("Reopening a payable clears the recorded settlement", () => assert.equal(clearedPaid, 0));
-  const resettled = await ok("/api/suppliers/dues", { dueId: payable.due.id, paid: true }, owner.cookie);
-  check("A reopened payable can be settled again", () => { assert.equal(resettled.due.paid, true); assert.equal(resettled.due.paidAmount, 12.34); });
+  await status("Supplier settlement reversal requires a reason", "/api/suppliers/dues", { action: "reverse", dueId: payable.due.id, settlementId: supplierSettlement.settlement.id, reason: "bad" }, owner.cookie, 400);
+  await ok("/api/suppliers/dues", { action: "reverse", dueId: payable.due.id, settlementId: supplierSettlement.settlement.id, reason: "Duplicate supplier payment" }, owner.cookie);
+  const reversedDue = await prisma.supplierDue.findUniqueOrThrow({ where: { id: payable.due.id } });
+  const reversalRecord = await prisma.supplierSettlement.findUniqueOrThrow({ where: { id: supplierSettlement.settlement.id } });
+  check("Reversal preserves the original supplier settlement", () => { assert.equal(reversedDue.paidAmount, 0); assert(reversalRecord.reversedOn); assert.equal(reversalRecord.reversalReason, "Duplicate supplier payment"); });
+  const resettled = await ok("/api/suppliers/dues", { dueId: payable.due.id, amount: 12.34, method: "BANK_TRANSFER", requestKey: `smoke-${randomBytes(8).toString("hex")}` }, owner.cookie);
+  check("A reversed payable can be settled again", () => { assert.equal(resettled.due.paid, true); assert.equal(resettled.due.paidAmount, 12.34); });
 
   // HR may administer HR and read-only accounts, but resetting a colleague's password hands over
   // that person's whole account, salary and bank details included.

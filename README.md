@@ -6,6 +6,8 @@ Use the official [Meta Cloud API setup](META-WHATSAPP-SETUP.md) for WhatsApp. Th
 
 Latest additions and rollout: [CRM completion update](docs/crm-completion-2026-10-18.md). Includes staff MFA/sessions, encryption, enquiries/quotes, incoming documents, applicant checklists, customer import and advance allocation; the document explicitly records remaining finance and release work.
 
+Travel workflow benchmark and prioritized roadmap: [Travel CRM benchmark](docs/travel-crm-benchmark-2026-10-18.md). The supplier desk includes booking-linked payables and an auditable settlement ledger; imported statement reconciliation is still a later workflow.
+
 Operational system for visa processing, air ticketing, payment collection, document
 collection/verification, WhatsApp communication, employee tasks, and supplier/refund
 tracking. Built around: **Search anyone, know everything, see what is pending, take action.**
