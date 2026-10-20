@@ -176,7 +176,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
                   <button type="button" disabled={busy} onClick={() => post("/api/bookings/extend-deadline", { bookingId: b.id, hours: Number(extendHrs) }, "✓ Deadline extended")} className="font-semibold text-teal-700 hover:underline">Extend</button>
                 </span>
               )}
-              {perms.edit && <button type="button" disabled={busy} onClick={() => setShowTickets(true)} className="btn-primary min-h-8 px-3 py-1.5 text-xs">Record actual tickets</button>}
+              {perms.edit && <button type="button" disabled={busy} onClick={() => setShowTickets(true)} className="btn-secondary min-h-8 px-3 py-1.5 text-xs">Record actual tickets</button>}
             </div>
           </div>
         </div>
