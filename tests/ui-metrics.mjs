@@ -382,9 +382,6 @@ try {
   if (!(density.compact < density.comfortable)) fail(`compact rows (${density.compact}px) are not shorter than comfortable rows (${density.comfortable}px)`);
   if (density.restored !== density.comfortable) fail(`switching back to comfortable did not restore ${density.comfortable}px rows (got ${density.restored}px)`);
 
-  await checkStaffHandoffs(page, base, fixture);
-  await context.close();
-
   // ---- report
   const pad = (s, n) => String(s ?? "").padEnd(n);
   console.log(`\n${pad("route", 34)}${pad("txt", 6)}${pad("<13px", 7)}${pad("micro", 7)}${pad("med", 5)}${pad("dead%", 7)}${pad("ovfl", 6)}${pad("prim", 6)}ctrls`);
@@ -414,6 +411,8 @@ try {
   } else {
     console.log(`\nUI metrics gate passed. Screenshots: ${path.relative(ROOT, shotDir)} (desktop 1440 + phone 390, ${ROUTES.length} routes each).`);
   }
+  await checkStaffHandoffs(page, base, fixture);
+  await context.close();
 } catch (error) {
   console.error(`UI metrics gate could not complete: ${error.message}`);
   process.exitCode = 1;

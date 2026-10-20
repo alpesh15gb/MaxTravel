@@ -884,3 +884,15 @@ model StaffAuthFailure {
  at DateTime @default(now())
  @@index([keyHash,at])
 }
+
+// Durable, actor-scoped financial-create replay protection. No raw request body is retained.
+model FinancialMutation {
+  id String @id @default(cuid())
+  actorId String
+  operation String
+  requestKey String
+  requestHash String
+  responseJson String
+  createdAt DateTime @default(now())
+  @@unique([actorId, operation, requestKey])
+}

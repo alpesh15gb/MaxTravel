@@ -1,3 +1,4 @@
+import { financialRequestKey, financialRequestHash, replayFinancialRequest, rememberFinancialRequest, financialConflict } from "@/lib/financial-idempotency";
 import { inrAmount } from "@/lib/money";
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { isWithdrawnBooking } from "@/lib/receivables";
@@ -8,16 +9,20 @@ import { readInvoiceConfig, validateTaxInvoiceConfiguration, buildInvoiceTaxSnap
 export async function POST(req: Request) {
   try {
     const user = await requireSession("invoice:create"); const b = await boundedJson(req);
+    const requestKey = financialRequestKey(b.requestKey);
     const customerId = optionalId(b.customerId);
     if (!customerId) throw new ApiError(400, "Select a customer.");
     const requestedAmount = money(b.amount, "Invoice amount", true); const dueDate = date(b.dueDate, "Due date");
     const documentKind = b.documentKind === "TAX_INVOICE" ? "TAX_INVOICE" : "OPERATIONAL";
     if (b.documentKind !== undefined && !["OPERATIONAL", "TAX_INVOICE"].includes(String(b.documentKind))) throw new ApiError(400, "Choose a supported invoice document.");
     const description = text(b.description, "Description", 500);
-    const invoice = await prisma.$transaction(async tx => {
+    const response = await prisma.$transaction(async tx => {
       const customer = await customerFor(tx, user, customerId);
       const bookingId = optionalId(b.bookingId); const visaCaseId = optionalId(b.visaCaseId);
       const { booking, visaCase } = await relatedFor(tx, user, customerId, bookingId, visaCaseId);
+      const requestHash = financialRequestHash({ customerId, bookingId, visaCaseId, requestedAmount, dueDate: dueDate?.toISOString() ?? null, documentKind, description, taxProfileId: documentKind === "TAX_INVOICE" ? optionalId(b.taxProfileId) : null, buyerState: documentKind === "TAX_INVOICE" ? text(b.buyerState, "Customer state", 80) : null, placeOfSupply: documentKind === "TAX_INVOICE" ? text(b.placeOfSupply, "Place of supply", 80) : null, sac: documentKind === "TAX_INVOICE" ? text(b.sac, "Service code", 20) : null });
+      const replay = await replayFinancialRequest(tx, user.id, "INVOICE_CREATE", requestKey, requestHash);
+      if (replay) return replay;
       if (booking?.gdsSource === "TRIPJACK_API") throw new ApiError(409,"Online booking money is managed by the booking platform.");
       // A withdrawn booking is no longer a demand. Billing it leaves an invoice that can never be
       // paid, sitting in receivables forever, for a trip that was cancelled or already refunded.
@@ -60,8 +65,10 @@ export async function POST(req: Request) {
       const record = await tx.invoice.create({ data: { invoiceNo: await nextReference(tx, "INV"), documentKind, taxSnapshot, customerId, bookingId, visaCaseId, amount, dueDate, description } });
       await tx.activity.create({ data: { customerId, actorId: user.id, type: "INVOICE", summary: `Invoice ${record.invoiceNo} issued — ${inrAmount(amount)}`, link: `/payments?focus=${record.id}` } });
       await transactionAudit(tx, user, "CREATE", "Invoice", record.id, record.invoiceNo);
-      return record;
+      const response = { ok: true, invoiceId: record.id, invoiceNo: record.invoiceNo };
+      await rememberFinancialRequest(tx, user.id, "INVOICE_CREATE", requestKey, requestHash, response);
+      return response;
     });
-    return Response.json({ ok: true, invoiceId: invoice.id, invoiceNo: invoice.invoiceNo });
-  } catch (e) { return jsonError(e); }
+    return Response.json(response);
+  } catch (e) { return jsonError(financialConflict(e)); }
 }

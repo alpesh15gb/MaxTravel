@@ -28,6 +28,8 @@ try{
  const downloadPromise=page.waitForEvent("download");await page.getByRole("link",{name:"Download XLSX",exact:true}).click();const download=await downloadPromise;await download.saveAs(path.join(root,"test-artifacts/reporting/customer-statement.xlsx"));
  await page.getByRole("button",{name:"Outstanding & ageing",exact:true}).click();await page.getByRole("button",{name:"Generate report",exact:true}).click();await page.getByRole("table",{name:"Customer outstanding and ageing",exact:true}).waitFor();
  await page.getByRole("button",{name:"Set payment terms",exact:true}).click();await page.getByRole("heading",{name:"Set payment terms",exact:true}).waitFor();
+ assert.equal(await page.getByRole("combobox",{name:"Obligation",exact:true}).getByRole("option",{name:/ON-2026-0001/}).count(),0,"Platform-managed terms must not be offered for editing");
+ assert.match(await page.getByRole("combobox",{name:"Obligation",exact:true}).locator("option:checked").innerText(),/BK-2026-0001/,"Largest eligible local booking is selected by default");
  await page.getByLabel("Payment due date",{exact:true}).fill(new Date(Date.now()+330*60000-86400000).toISOString().slice(0,10));await page.getByRole("button",{name:"Save payment terms",exact:true}).click();await page.getByRole("heading",{name:"Set payment terms",exact:true}).waitFor({state:"hidden"});await page.getByRole("table",{name:"Customer outstanding and ageing",exact:true}).waitFor();assert(await page.getByText("1 days overdue",{exact:true}).count()>=1);
  await page.getByRole("button",{name:"Sales & margin",exact:true}).click();
  await page.getByRole("combobox",{name:"Staff / owner",exact:true}).selectOption({label:"Asha Verma"});

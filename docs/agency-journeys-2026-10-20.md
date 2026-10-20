@@ -57,8 +57,11 @@ The following are not implied by passing application tests:
 - Reissue fare differences are nonnegative incremental charges. Fare-decrease supplier credits
   and customer refunds require their separate explicit workflows, not an automatic offset.
 - Historical branch snapshots for audit logs; restricted users see only currently authorized records, while full administrators retain deleted/global activity.
-- Durable idempotency for every create endpoint. Inputs are retained and duplicate clicks guarded,
-  but after an ambiguous network failure staff must check for an already-created record before retrying.
+- Durable idempotency for every create endpoint. Receipt and invoice forms now keep a per-user
+  request key across ambiguous retries so the same save returns the original record; API callers
+  must send the key to opt in. Other create flows, including visa intake, still require checking
+  for an already-created record after an ambiguous network failure. See
+  [financial retry protection](financial-create-idempotency.md).
 - Automatic supplier balance reconciliation after cancellation. Retained fee values must come from
   actual terms, and supplier recovery must be recorded/reconciled separately.
 

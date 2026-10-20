@@ -1,3 +1,5 @@
+import { financialRequestKey, financialRequestHash, replayFinancialRequest, rememberFinancialRequest, financialConflict } from "@/lib/financial-idempotency";
+import { boundedJson } from "@/lib/bounded-json";
 import { inrAmount } from "@/lib/money";
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { prisma } from "@/lib/db";
@@ -8,26 +10,32 @@ import { bookingCharge, hasCancellationAllocation, isWithdrawnBooking, netOfRefu
 export async function POST(req: Request) {
   try {
     const user = await requireSession("payment:record");
-    const b = await req.json();
+    const b = await boundedJson(req);
+    const requestKey = financialRequestKey(b.requestKey);
     const customerId = optionalId(b.customerId);
     if (!customerId) throw new ApiError(400, "Select a customer.");
     const amount = money(b.amount, "Payment amount", true);
     const mode = String(b.mode ?? "UPI");
     if (!["UPI", "NEFT", "CASH", "CARD", "CHEQUE"].includes(mode)) throw new ApiError(400, "Select a valid payment mode.");
-    const payment = await prisma.$transaction(async tx => {
+    const response = await prisma.$transaction(async tx => {
       await customerFor(tx, user, customerId);
       const invoiceId = optionalId(b.invoiceId);
       const invoice = invoiceId ? await tx.invoice.findUnique({ where: { id: invoiceId } }) : null;
       if (invoiceId && !invoice) throw new ApiError(404, "Invoice not found.");
       if (invoice && invoice.customerId !== customerId) throw new ApiError(400, "Invoice belongs to a different customer.");
-      if (invoice?.status === "CREDITED") throw new ApiError(409, "This invoice has been credited in full and cannot receive another payment.");
+
       let bookingId = optionalId(b.bookingId); let visaCaseId = optionalId(b.visaCaseId);
       if (invoice) {
         if ((bookingId && bookingId !== invoice.bookingId) || (visaCaseId && visaCaseId !== invoice.visaCaseId)) throw new ApiError(400, "Payment allocation must match the invoice's linked work.");
         bookingId = invoice.bookingId; visaCaseId = invoice.visaCaseId;
-        if (Math.round(amount * 100) > Math.round((invoice.amount - invoice.amountPaid) * 100)) throw new ApiError(400, "Payment exceeds the invoice balance.");
+
       }
       const { booking, visaCase } = await relatedFor(tx, user, customerId, bookingId, visaCaseId);
+      const requestHash = financialRequestHash({ customerId, amount, mode, invoiceId, bookingId, visaCaseId, note: optionalId(b.note) });
+      const replay = await replayFinancialRequest(tx, user.id, "PAYMENT_CREATE", requestKey, requestHash);
+      if (replay) return replay;
+      if (invoice?.status === "CREDITED") throw new ApiError(409, "This invoice has been credited in full and cannot receive another payment.");
+      if (invoice && Math.round(amount * 100) > Math.round((invoice.amount - invoice.amountPaid) * 100)) throw new ApiError(400, "Payment exceeds the invoice balance.");
       if (booking?.gdsSource === "TRIPJACK_API") throw new ApiError(409,"Online booking money is managed by the booking platform.");
       if (invoice && booking && isWithdrawnBooking(booking.status)) throw new ApiError(409, "This invoice describes withdrawn travel. Reconcile it separately and collect any explicit cancellation charges directly against the booking.");
       // A withdrawn booking is closed and is not a receivable, so it must not absorb new receipts.
@@ -75,8 +83,10 @@ export async function POST(req: Request) {
       await tx.activity.create({ data: { customerId, actorId: user.id, type: "PAYMENT", summary: `Payment ${inrAmount(amount)} recorded (${mode}) — ${record.receiptNo}`, link: `/customers/${customerId}?tab=payments` } });
       await transactionAudit(tx, user, "RECORD", "Payment", record.id, `${record.receiptNo} ₹${amount}`);
       await queuePaymentAcknowledgement(tx, record.id);
-      return record;
+      const response = { ok: true, receiptNo: record.receiptNo, payment: requestKey ? { id: record.id, receiptNo: record.receiptNo, amount: record.amount, mode: record.mode, customerId, bookingId, visaCaseId, invoiceId } : record };
+      await rememberFinancialRequest(tx, user.id, "PAYMENT_CREATE", requestKey, requestHash, response);
+      return response;
     });
-    return Response.json({ ok: true, receiptNo: payment.receiptNo, payment });
-  } catch (e) { return jsonError(e); }
+    return Response.json(response);
+  } catch (e) { return jsonError(financialConflict(e)); }
 }

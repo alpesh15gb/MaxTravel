@@ -13,6 +13,7 @@ export async function checkStaffHandoffs(page, base, fixture) {
     await page.goto(`${base}/customers/${fixture.customerId}?tab=tasks`, { waitUntil: "networkidle" });
     const task = page.locator('a[href^="/tasks?focus="]').first();
     await task.click();
+    await page.waitForURL(/\/tasks\?focus=/);
     assert.match(page.url(), /\/tasks\?focus=/, "Customer task must hand off to actionable task desk");
 
     original = await db.document.findFirstOrThrow({ where: { customerId: fixture.customerId } });
@@ -43,11 +44,33 @@ export async function checkStaffHandoffs(page, base, fixture) {
 
     await page.goto(`${base}/payments?action=record&customer=${fixture.customerId}`, { waitUntil: "networkidle" });
     await page.getByLabel("03 / Amount received (INR) *", { exact: true }).fill("1.00");
+    const paymentCountBefore = await db.payment.count({ where: { customerId: fixture.customerId } });
+    let committedPayment;
+    let originalRequestKey;
+    let paymentRequests = 0;
+    await page.route("**/api/payments", async route => {
+      paymentRequests++;
+      originalRequestKey = route.request().postDataJSON().requestKey;
+      assert.match(originalRequestKey, /^[0-9a-f-]{36}$/i, "Opened form owns a durable request key");
+      const committed = await route.fetch();
+      assert.ok(committed.ok(), "First request must commit before losing its response");
+      committedPayment = await committed.json();
+      await route.abort("failed");
+    });
+    await page.getByRole("button", { name: "Save receipt", exact: true }).click();
+    await page.getByRole("dialog").getByRole("alert").waitFor();
+    assert.equal(await page.getByLabel("03 / Amount received (INR) *", { exact: true }).inputValue(), "1.00", "Lost response preserves form details");
+    assert.equal(paymentRequests, 1, "Failure must wait for staff retry, not automatically replay");
+    assert.equal(await db.payment.count({ where: { customerId: fixture.customerId } }), paymentCountBefore + 1);
+    await page.unroute("**/api/payments");
     const saved = page.waitForResponse(response => response.url().endsWith("/api/payments") && response.request().method() === "POST");
     await page.getByRole("button", { name: "Save receipt", exact: true }).click();
     const response = await saved;
     assert.ok(response.ok());
     const result = await response.json();
+    assert.equal(response.request().postDataJSON().requestKey, originalRequestKey, "Staff retry reuses original request key");
+    assert.equal(result.payment.id, committedPayment.payment.id, "Retry recovers the same receipt");
+    assert.equal(await db.payment.count({ where: { customerId: fixture.customerId } }), paymentCountBefore + 1, "Lost-response retry must not duplicate money");
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     assert.equal(await page.getByRole("button", { name: "Receipts", exact: true }).getAttribute("aria-pressed"), "true", "Saved receipt opens receipts context");
     await page.locator(`[role="status"] a[href="/payments/print?receipt=${result.payment.id}"]`).waitFor();
@@ -71,6 +94,7 @@ export async function checkStaffHandoffs(page, base, fixture) {
     console.log("Staff handoffs passed: customer task/document links, reason-preserving document rejection, receipt result context.");
   } finally {
     await page.unroute("**/api/documents/verify").catch(() => {});
+    await page.unroute("**/api/payments").catch(() => {});
     if (refund) await db.refund.delete({ where: { id: refund.id } });
     if (original) await db.document.update({ where: { id: original.id }, data: { status: original.status, storagePath: original.storagePath, rejectionReason: original.rejectionReason, verificationStatus: original.verificationStatus, verifiedById: original.verifiedById, verifiedAt: original.verifiedAt } });
     await db.$disconnect();

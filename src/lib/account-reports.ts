@@ -85,6 +85,20 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
    for(const p of payments){const value=balances.get(`Payment:${p.id}`)?.amount||0;const target=p.bookingId?`Booking:${p.bookingId}`:p.visaCaseId?`VisaCase:${p.visaCaseId}`:p.invoiceId?`Invoice:${p.invoiceId}`:null;const b=target?balances.get(target):undefined;if(b)b.amount+=value;else unallocated+=value;}
    for(const r of refunds){const value=balances.get(`Refund:${r.id}`)?.amount||0;const target=r.bookingId?`Booking:${r.bookingId}`:r.invoiceId?`Invoice:${r.invoiceId}`:null;const b=target?balances.get(target):undefined;if(b)b.amount+=value;else unallocated+=value;}
    if(supplier)for(const b of balances.values())if(b.type==="SupplierSettlement"){const target=balances.get(`SupplierDue:${b.id}`);if(target)target.amount+=b.amount;}
+   // Editability reflects current source ownership, not historical journal state.
+   // Platform terms and now-credited/linked invoices must never be offered as local edits.
+   const sources=[...balances.values()];
+   const editableTerms=new Set<string>();
+   if(!supplier){
+    const [localBookings,currentCases,localInvoices]=await Promise.all([
+     tx.booking.findMany({where:{id:{in:sources.filter(b=>b.type==="Booking").map(b=>b.id)},OR:[{gdsSource:null},{gdsSource:{not:"TRIPJACK_API"}}]},select:{id:true}}),
+     tx.visaCase.findMany({where:{id:{in:sources.filter(b=>b.type==="VisaCase").map(b=>b.id)}},select:{id:true}}),
+     tx.invoice.findMany({where:{id:{in:sources.filter(b=>b.type==="Invoice").map(b=>b.id)},bookingId:null,visaCaseId:null,status:{not:"CREDITED"}},select:{id:true}}),
+    ]);
+    for(const b of localBookings)editableTerms.add(`Booking:${b.id}`);
+    for(const c of currentCases)editableTerms.add(`VisaCase:${c.id}`);
+    for(const i of localInvoices)editableTerms.add(`Invoice:${i.id}`);
+   }
    const totals=[0,0,0,0,0,0];let credit=-Math.min(0,unallocated);
    for(const b of balances.values()){
     if(!["Booking","VisaCase","Invoice","SupplierDue"].includes(b.type))continue;
@@ -92,14 +106,14 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
     const days=b.due?Math.max(0,Math.floor((new Date(`${period.to}T00:00:00+05:30`).getTime()-new Date(`${day(b.due)}T00:00:00+05:30`).getTime())/86400000)):null;
     const bucket=days===null?5:days===0?0:days<=30?1:days<=60?2:days<=90?3:4;
     totals[bucket]+=b.amount;
-    result.rows.push({customer:supplier?names.get(b.partyId)||"Supplier":byCustomer.get(b.partyId)?.name||"Customer",reference:b.reference,service:b.type,due:b.due?day(b.due):"No due date",age:days===null?"No due date":days===0?"Not overdue":`${days} days overdue`,bucket:["Not due","1–30","31–60","61–90","90+","No due date"][bucket],outstanding:rupees(b.amount),_type:b.type,_id:b.id,_href:supplier?"/suppliers":sourceHref(b.type,b.id,b.partyId),_customerHref:supplier?"/suppliers":`/reports?report=statement&customerId=${b.partyId}`});
+    result.rows.push({customer:supplier?names.get(b.partyId)||"Supplier":byCustomer.get(b.partyId)?.name||"Customer",reference:b.reference,service:b.type,due:b.due?day(b.due):"No due date",age:days===null?"No due date":days===0?"Not overdue":`${days} days overdue`,bucket:["Not due","1–30","31–60","61–90","90+","No due date"][bucket],outstanding:rupees(b.amount),_type:b.type,_id:b.id,_termsEditable:editableTerms.has(`${b.type}:${b.id}`)?1:0,_href:supplier?"/suppliers":sourceHref(b.type,b.id,b.partyId),_customerHref:supplier?"/suppliers":`/reports?report=statement&customerId=${b.partyId}`});
    }
    result.rows.sort((a,b)=>Number(b.outstanding)-Number(a.outstanding));
    result.title=supplier?"Supplier payables and ageing":"Customer outstanding and ageing";
    result.description=`Open obligations as of ${period.to}; unallocated credits are disclosed separately, not silently offset against other debts.`;
    result.columns=[field("customer",supplier?"Supplier":"Customer"),field("reference","Reference"),field("service","Service"),field("due","Due date"),field("age","Age"),field("bucket","Bucket"),field("outstanding","Outstanding",true)];
    result.summary=[metric("Total open obligations",totals.reduce((s,n)=>s+n,0)),...totals.map((n,i)=>metric(["Not due","Overdue 1–30","Overdue 31–60","Overdue 61–90","Overdue 90+","No due date"][i],n)),metric("Credits / unapplied receipts",credit)];
-   warnings.push("Set explicit payment terms on bookings and visa cases to include them in overdue buckets. Missing dates remain unclassified. Linked invoice dates do not automatically apply to the entire work charge.");
+   warnings.push("Set explicit payment terms on bookings and visa cases to include them in overdue buckets. Missing dates remain unclassified. Platform-managed booking terms cannot be edited here. Linked invoice dates do not automatically apply to the entire work charge.");
   } else if(key==="receipts") {
    const [payments,refunds]=await Promise.all([tx.payment.findMany({where:{customerId:{in:selectedIds},receivedOn:range,OR:[{bookingId:null},{booking:{currency:"INR"}}]},include:{booking:true,visaCase:true,invoice:true},orderBy:{receivedOn:"asc"}}),tx.refund.findMany({where:{customerId:{in:selectedIds},status:"PAID",paidOn:range,OR:[{bookingId:null},{booking:{currency:"INR"}}]},orderBy:{paidOn:"asc"}})]);
    result.title="Receipt and refund register";result.description="Recorded customer cash movements; this app does not transfer funds. Supplier payments and overheads are not included.";
