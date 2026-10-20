@@ -3,7 +3,7 @@ import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { prisma } from "@/lib/db";
 import { queuePaymentAcknowledgement } from "@/lib/whatsapp-queue";
 import { customerFor, relatedFor, optionalId, nextReference, money, transactionAudit } from "@/lib/transactions";
-import { isWithdrawnBooking, netOfRefundTotal } from "@/lib/receivables";
+import { bookingCharge, hasCancellationAllocation, isWithdrawnBooking, netOfRefundTotal } from "@/lib/receivables";
 
 export async function POST(req: Request) {
   try {
@@ -29,14 +29,15 @@ export async function POST(req: Request) {
       }
       const { booking, visaCase } = await relatedFor(tx, user, customerId, bookingId, visaCaseId);
       if (booking?.gdsSource === "TRIPJACK_API") throw new ApiError(409,"Online booking money is managed by the booking platform.");
+      if (invoice && booking && isWithdrawnBooking(booking.status)) throw new ApiError(409, "This invoice describes withdrawn travel. Reconcile it separately and collect any explicit cancellation charges directly against the booking.");
       // A withdrawn booking is closed and is not a receivable, so it must not absorb new receipts.
-      if (booking && isWithdrawnBooking(booking.status)) throw new ApiError(400, "This booking is cancelled, void or refunded. Allocate the money to open work, or record it as a customer advance.");
+      if (booking && isWithdrawnBooking(booking.status) && !hasCancellationAllocation(booking)) throw new ApiError(400, "This booking is cancelled, void or refunded. Allocate the money to open work, or record it as a customer advance.");
 
       // The work this receipt settles, and the ceiling it may not pass.
       const bookingFilter = booking ? { bookingId: booking.id } : null;
       const workWhere: { bookingId: string } | { visaCaseId: string } | null =
         bookingFilter ?? (visaCase ? { visaCaseId: visaCase.id } : null);
-      const ceiling = booking ? booking.sellingPrice : visaCase ? visaCase.sellingPrice : 0;
+      const ceiling = booking ? bookingCharge(booking) : visaCase ? visaCase.sellingPrice : 0;
       // Money already returned to the customer cannot be collected again.
       const receivedNow = async () => {
         if (!workWhere) return 0;

@@ -389,6 +389,10 @@ model Booking {
   serviceFee        Float              @default(0)
   sellingPrice      Float              @default(0)
   paymentDueDate    DateTime?
+  cancellationSupplierCharge Float?
+  cancellationAgencyFee Float?
+  cancellationReason String?
+  cancelledAt DateTime?
   supplierCost      Float              @default(0)
   currency          String             @default("INR")
   owner             User               @relation("BookingOwner", fields: [ownerId], references: [id])

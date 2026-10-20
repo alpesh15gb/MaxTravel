@@ -27,6 +27,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   ]);
   return (
     <TasksClient
+      canAudit={user.permissions.includes("audit:view")}
       owners={owners} customers={customers} currentUserId={user.id} canCreate={can(user.permissions, "task:create")}
       canExport={can(user.permissions, "export:data")}
       tasks={tasks.map((t) => ({

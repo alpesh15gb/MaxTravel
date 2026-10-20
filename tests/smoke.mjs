@@ -216,12 +216,16 @@ async function run() {
     assert(moneyPage.includes("Outstanding receivables"));
     assert(moneyPage.includes("₹635.30"));
   });
-  // --- A refund that returns every receipt withdraws the sale ----------------------------
+  // --- Cash refunds do not implicitly cancel an active sale ----------------------------
   await ok("/api/payments", { customerId: alice.id, bookingId: booking2.bookingId, amount: 50, mode: "UPI" }, owner.cookie);
+  const beforeFullRefundStatus = (await prisma.booking.findUniqueOrThrow({ where: { id: booking2.bookingId } })).status;
   const fullRefund = await ok("/api/refunds", { customerId: alice.id, bookingId: booking2.bookingId, amount: 50, reason: "Trip cancelled" }, owner.cookie);
   for (const stage of ["SUPPLIER_PENDING", "SUPPLIER_RECEIVED", "APPROVED", "PROCESSED", "PAID"]) await ok("/api/refunds/update", { refundId: fullRefund.refund.id, status: stage }, owner.cookie);
   const refundedBooking = await prisma.booking.findUniqueOrThrow({ where: { id: booking2.bookingId } });
-  check("A refund covering every receipt withdraws the sale", () => assert.equal(refundedBooking.status, "REFUNDED"));
+  check("Returning every receipt does not implicitly cancel the sale", () => assert.equal(refundedBooking.status, beforeFullRefundStatus));
+  moneyPulse = await (await get("/api/pulse", owner.cookie)).json();
+  check("Cash refund alone preserves the agreed customer demand", () => assert.equal(moneyPulse.receivables.total, 635.30));
+  await ok("/api/bookings/status", { bookingId: booking2.bookingId, status: "CANCELLED", refundAmount: 0, cancellationSupplierCharge: 0, cancellationAgencyFee: 0, cancellationReason: "Explicit cancellation after deposit return" }, owner.cookie);
   moneyPulse = await (await get("/api/pulse", owner.cookie)).json();
   check("A withdrawn booking drops out of receivables", () => {
     assert.equal(moneyPulse.receivables.bookings, 170.30);
@@ -234,7 +238,7 @@ async function run() {
   await status("A sale cannot be marked refunded by hand", "/api/bookings/status", { bookingId: booking.bookingId, status: "REFUNDED" }, owner.cookie, 400);
   assert.equal((await prisma.booking.findUniqueOrThrow({ where: { id: booking.bookingId } })).status, "TICKETED");
   await status("A withdrawn sale stays closed", "/api/bookings/status", { bookingId: booking2.bookingId, status: "TICKETED" }, owner.cookie, 400);
-  assert.equal((await prisma.booking.findUniqueOrThrow({ where: { id: booking2.bookingId } })).status, "REFUNDED");
+  assert.equal((await prisma.booking.findUniqueOrThrow({ where: { id: booking2.bookingId } })).status, "CANCELLED");
   assert(booking2.bookingId && case2.caseId);
   const refundBookingPage = await (await get(`/ticketing/${booking.bookingId}`, owner.cookie)).text();
   check("A partly refunded booking shows its refunds and net receipts on the sale", () => {
@@ -375,14 +379,14 @@ async function run() {
   const ticketingExecRole = await prisma.role.findUniqueOrThrow({ where: { key: "TICKETING_EXECUTIVE" } });
   await ok("/api/employees", { name: "Ticketing Exec Regression", email: "ticketingexec@example.test", roleId: ticketingExecRole.id, password }, owner.cookie);
   const ticketingExec = await login("ticketingexec@example.test");
-  await status("Cancelling a paid booking needs refund permission", "/api/bookings/status", { bookingId: paidBooking.bookingId, status: "CANCELLED", refundAmount: 30 }, ticketingExec.cookie, 403);
+  await status("Cancelling a paid booking needs refund permission", "/api/bookings/status", { bookingId: paidBooking.bookingId, status: "CANCELLED", refundAmount: 30, cancellationSupplierCharge: 0, cancellationAgencyFee: 0, cancellationReason: "Synthetic full-refund cancellation" }, ticketingExec.cookie, 403);
   const stillOpen = await bookingStatus(paidBooking.bookingId);
   check("A refused cancellation leaves the booking open", () => assert.equal(stillOpen, "PNR_CREATED"));
   await status("Cancelling without saying what to refund is refused", "/api/bookings/status", { bookingId: paidBooking.bookingId, status: "CANCELLED" }, owner.cookie, 400);
-  await status("A refund larger than the money held is refused", "/api/bookings/status", { bookingId: paidBooking.bookingId, status: "CANCELLED", refundAmount: 31 }, owner.cookie, 400);
+  await status("A refund larger than the money held is refused", "/api/bookings/status", { bookingId: paidBooking.bookingId, status: "CANCELLED", refundAmount: 31, cancellationSupplierCharge: 0, cancellationAgencyFee: 0, cancellationReason: "Synthetic excessive-refund check" }, owner.cookie, 400);
   const refundsBefore = await prisma.refund.count({ where: { bookingId: paidBooking.bookingId } });
   check("No refund is raised by a refused cancellation", () => assert.equal(refundsBefore, 0));
-  const cancelled = await ok("/api/bookings/status", { bookingId: paidBooking.bookingId, status: "CANCELLED", refundAmount: 30 }, owner.cookie);
+  const cancelled = await ok("/api/bookings/status", { bookingId: paidBooking.bookingId, status: "CANCELLED", refundAmount: 30, cancellationSupplierCharge: 0, cancellationAgencyFee: 0, cancellationReason: "Synthetic full-refund cancellation" }, owner.cookie);
   const raised = await prisma.refund.findFirstOrThrow({ where: { bookingId: paidBooking.bookingId } });
   check("Cancelling a paid booking raises the refund it owes", () => {
     assert.equal(raised.amount, 30);

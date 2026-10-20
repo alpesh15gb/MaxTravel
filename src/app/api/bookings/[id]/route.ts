@@ -1,7 +1,7 @@
 import { isReservedBookingSource } from "@/lib/booking-policy";
 import { requireSession, jsonError, ApiError, canTouchRecord } from "@/lib/guard";
 import { prisma } from "@/lib/db";
-import { optionalId, money, date, transactionAudit } from "@/lib/transactions";
+import { optionalId, money, date, transactionAudit, travellersFor } from "@/lib/transactions";
 import { isWithdrawnBooking } from "@/lib/receivables";
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -13,6 +13,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       if (current.gdsSource === "TRIPJACK_API") throw new ApiError(409,"Manage online bookings from the booking platform.");
       if (!canTouchRecord(user, current)) throw new ApiError(403, "Booking is outside your access.");
       if (isWithdrawnBooking(current.status)) throw new ApiError(400, "Closed bookings cannot be amended.");
+      if (b.travellerIds !== undefined) {
+        if (current.tickets.length) throw new ApiError(400, "Issued tickets lock the passenger list. Use a reissue or a new booking for passenger changes.");
+        const travellers = await travellersFor(tx, current.customerId, b.travellerIds);
+        await tx.bookingTraveller.deleteMany({ where: { bookingId: id } });
+        await tx.bookingTraveller.createMany({ data: travellers.map(traveller => ({ bookingId: id, travellerId: traveller.id })) });
+      }
       const pnr = b.pnr === undefined ? current.pnr : optionalId(b.pnr);
       if (current.tickets.length && pnr !== current.pnr) throw new ApiError(400, "Issued tickets need a reissue workflow to change PNR.");
       const financial = ["fare", "taxes", "markup", "serviceFee", "supplierCost"] as const;

@@ -1,6 +1,7 @@
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { prisma } from "@/lib/db";
 import { customerFor, optionalId, transactionAudit, text } from "@/lib/transactions";
+import { changedFieldNames } from "@/lib/audit-changes";
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireSession("customer:edit");
@@ -26,8 +27,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       // City was previously cut at 150 characters with a silent slice, so saving could store something
       // different from what was typed and the edit looked like it had worked. Refuse it instead.
       const city = b.city === undefined ? current.city : text(b.city, "City", 150) ?? "";
-      await tx.customer.update({ where: { id }, data: { name, phone, email, type, status, assignedToId, city, address: b.address === undefined ? current.address : text(b.address, "Address", 1000), companyName: b.companyName === undefined ? current.companyName : text(b.companyName, "Company name", 200) } });
-      await transactionAudit(tx, user, "EDIT", "Customer", id, assignedToId !== current.assignedToId ? "Profile corrected and ownership handed over" : "Profile corrected");
+      const changes = { name, phone, email, type, status, assignedToId, city, address: b.address === undefined ? current.address : text(b.address, "Address", 1000), companyName: b.companyName === undefined ? current.companyName : text(b.companyName, "Company name", 200) };
+      const fields = changedFieldNames(current, changes, ["name", "phone", "email", "type", "status", "assignedToId", "city", "address", "companyName"]);
+      if (!fields.length) return;
+      await tx.customer.update({ where: { id }, data: changes });
+      await transactionAudit(tx, user, "EDIT", "Customer", id, JSON.stringify({ reference: current.code, fields, ...(status !== current.status ? { status: { from: current.status, to: status } } : {}), ...(assignedToId !== current.assignedToId ? { assignment: { from: current.assignedToId, to: assignedToId }, relatedWorkHandover: b.handoverWork === true } : {}) }));
       await tx.activity.create({ data: { customerId: id, actorId: user.id, type: "EDIT", summary: "Customer profile updated", link: `/customers/${id}` } });
     });
     return Response.json({ ok: true });

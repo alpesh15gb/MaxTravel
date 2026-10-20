@@ -66,7 +66,7 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
         })),
         documents: (can(user.permissions, "document:view") ? vc.documents : []).map((d) => ({
           id: d.id, docNo: d.docNo, docType: d.docType, status: d.status,
-          traveller: d.traveller?.fullName ?? null,
+          traveller: d.traveller?.fullName ?? null, travellerId: d.travellerId,
           uploadedAt: d.uploadedAt?.toISOString() ?? null, uploadSource: d.uploadSource,
           verificationStatus: d.verificationStatus, verifiedBy: d.verifiedBy?.name ?? null,
           expiryDate: d.expiryDate?.toISOString() ?? null,
@@ -77,7 +77,7 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
           extractionConfirmed: !!d.extractedConfirmedAt,
         })),
         history: vc.history.map((h) => ({
-          id: h.id, stage: h.stage.name, note: h.note, by: h.by?.name ?? "System",
+          id: h.id, stageId: h.stageId, stage: h.stage.name, note: h.note, by: h.by?.name ?? "System",
           at: h.at.toISOString(),
         })),
         tasks: vc.tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, owner: t.owner.name, dueAt: t.dueAt?.toISOString() ?? null })),
@@ -92,6 +92,7 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
       stages={stages.map((s) => ({ id: s.id, key: s.key, name: s.name, seq: s.seq }))}
       suppliers={suppliers}
       perms={{
+        audit: can(user.permissions, "audit:view"),
         edit: can(user.permissions, "visa:edit"),
         verify: can(user.permissions, "document:verify"),
         send: can(user.permissions, "whatsapp:send"),

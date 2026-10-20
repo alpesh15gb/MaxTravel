@@ -14,24 +14,27 @@ const reports=[
  {key:"supplier-statement",label:"Supplier statement",hint:"Bills, settlements and running payable balance."},
  {key:"supplier-payables",label:"Supplier payables",hint:"Open supplier obligations and due dates."},
  {key:"refunds",label:"Refund exposure",hint:"Pending customer refunds and supplier milestones."},
+ {key:"cancellations",label:"Cancellations",hint:"Cancelled in the period: retained charges, fees, refunds and customer balance."},
  {key:"sales",label:"Sales & margin",hint:"Confirmed booking value, quotes and cost coverage."},
  {key:"operations",label:"Work & travel",hint:"Visa work, ticketing deadlines, owners and travel dates."},
 ];
-type Options={customers:{id:string;name:string;code:string}[];suppliers:{id:string;name:string}[];cutover:string|null};
+type Options={customers:{id:string;name:string;code:string}[];suppliers:{id:string;name:string}[];staff:{id:string;name:string}[];statuses:string[];cutover:string|null};
 export default function ReportCentreClient({canExport,canSupplier,canRefund,canTerms,initialReport,initialCustomer}:{canExport:boolean;canSupplier:boolean;canRefund:boolean;canTerms:boolean;initialReport?:string;initialCustomer?:string}){
  const available=reports.filter(r=>(!r.key.startsWith("supplier")||canSupplier)&&(r.key!=="refunds"||canRefund));
  const [selected,setSelected]=useState(available.some(r=>r.key===initialReport)?initialReport!:"ageing");
  const [options,setOptions]=useState<Options|null>(null),[customerId,setCustomer]=useState(initialCustomer||""),[supplierId,setSupplier]=useState("");
+ const [ownerId,setOwner]=useState(""),[status,setStatus]=useState("");
  const [from,setFrom]=useState(""),[to,setTo]=useState("");
  const [data,setData]=useState<AccountReport|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false);
  const [terms,setTerms]=useState(false);
  const [applied,setApplied]=useState("");const request=useRef<AbortController|null>(null);
  useEffect(()=>{const c=new AbortController();fetch("/api/reports/accounts?options=1",{signal:c.signal}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||"Could not load report accounts.");setOptions(d);const today=new Date(Date.now()+330*60000).toISOString().slice(0,10);setTo(today);const cutoffDay=d.cutover?new Date(new Date(d.cutover).getTime()+330*60000).toISOString().slice(0,10):today;setFrom(cutoffDay>today.slice(0,7)+"-01"?cutoffDay:today.slice(0,7)+"-01");}).catch(e=>{if(!c.signal.aborted)setError(e.message);});return()=>{c.abort();request.current?.abort();};},[]);
+ const workReport=["sales","operations","cancellations"].includes(selected);
  const supplier=selected.startsWith("supplier");const statement=["statement","supplier-statement"].includes(selected);
  function choose(key:string){request.current?.abort();setSelected(key);setData(null);setError("");setBusy(false);setApplied("");}
  async function load(page=1,query?:string){
   request.current?.abort();const c=new AbortController();request.current=c;setBusy(true);setError("");setData(null);
-  const p=query?new URLSearchParams(query):new URLSearchParams({report:selected,from,to,...(customerId&&!supplier?{customerId}:{}),...(supplierId&&supplier?{supplierId}:{})});p.set("page",String(page));
+  const p=query?new URLSearchParams(query):new URLSearchParams({report:selected,from,to,...(customerId&&!supplier?{customerId}:{}),...(supplierId&&supplier?{supplierId}:{}),...(workReport&&ownerId?{ownerId}:{}),...(workReport&&status?{status}:{})});p.set("page",String(page));
   try{const r=await fetch("/api/reports/accounts?"+p,{signal:c.signal});const d=await r.json();if(!r.ok)throw new Error(d.error||"Could not load report.");setData(d);p.delete("page");setApplied(p.toString());}catch(e){if(!c.signal.aborted)setError(e instanceof Error?e.message:"Could not load report.");}finally{if(!c.signal.aborted)setBusy(false);}
  }
  const appliedCustomer=new URLSearchParams(applied).get("customerId");
@@ -43,10 +46,11 @@ export default function ReportCentreClient({canExport,canSupplier,canRefund,canT
    <form className="panel mb-5 p-5 space-y-4" onSubmit={e=>{e.preventDefault();void load();}}>
     <div className="form-grid">
      {!supplier?<Field label={statement?"Customer *":"Customer"}><select required={statement} value={customerId} onChange={e=>setCustomer(e.target.value)}><option value="">{statement?"Choose customer":"All permitted customers"}</option>{options?.customers.map(c=><option key={c.id} value={c.id}>{c.name} · {c.code}</option>)}</select></Field>:selected==="supplier-statement"?<Field label="Supplier *"><select required value={supplierId} onChange={e=>setSupplier(e.target.value)}><option value="">Choose supplier</option>{options?.suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>:null}
+     {workReport&&<><Field label="Staff / owner"><select value={ownerId} onChange={e=>setOwner(e.target.value)}><option value="">All permitted staff</option>{options?.staff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field><Field label="Current status / stage"><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option>{options?.statuses.map(s=><option key={s} value={s}>{s}</option>)}</select></Field></>}
      <Field label={selected.includes("ageing")||selected==="supplier-payables"?"From (not used for balance cutoff)":"From"}><input type="date" required value={from} onChange={e=>setFrom(e.target.value)}/></Field>
      <Field label={selected==="ageing"||selected==="supplier-payables"?"Balance as of":"Through"}><input type="date" required min={from} value={to} onChange={e=>setTo(e.target.value)}/></Field>
     </div>
-    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-500">India calendar · INR · maximum 366 days{options?.cutover?` · Preserved balances from ${new Date(new Date(options.cutover).getTime()+330*60000).toISOString().slice(0,10)}`:""}</p><button className="btn-primary" disabled={busy||!options}>{busy?"Generating…":"Generate report"}</button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-500">India calendar · INR · maximum 366 days{selected==="cancellations"?" · Filtered by cancellation date, not booking date":""}{options?.cutover?` · Preserved balances from ${new Date(new Date(options.cutover).getTime()+330*60000).toISOString().slice(0,10)}`:""}</p><button className="btn-primary" disabled={busy||!options}>{busy?"Generating…":"Generate report"}</button></div>
    </form>
    {error&&<p role="alert" className="form-error mb-5">{error}</p>}
    {busy&&<p role="status" className="panel p-5">Loading report…</p>}
@@ -66,5 +70,5 @@ export default function ReportCentreClient({canExport,canSupplier,canRefund,canT
 function PaymentTerms({rows,onClose,onSaved}:{rows:AccountReport["rows"];onClose:()=>void;onSaved:()=>void}){
  const [selected,setSelected]=useState("0"),[dueDate,setDue]=useState(/^\d{4}-\d{2}-\d{2}$/.test(String(rows[0]?.due))?String(rows[0].due):""),[busy,setBusy]=useState(false),[error,setError]=useState("");
  async function save(e:React.FormEvent){e.preventDefault();setBusy(true);setError("");const row=rows[Number(selected)];try{const r=await fetch("/api/reports/terms",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:row._type,id:row._id,dueDate:dueDate||null})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Could not save terms.");onSaved();}catch(e){setError(e instanceof Error?e.message:"Connection failed.");}finally{setBusy(false);}}
- return <Modal label="Payment terms" onClose={onClose} busy={busy}><form className="space-y-5" onSubmit={save}><h2 className="text-xl font-semibold">Set payment terms</h2><p className="text-sm text-slate-500">Choose an obligation from this report page. The date applies from this change onward; past ageing stays preserved. Leave the date empty to clear it.</p><Field label="Obligation"><select value={selected} onChange={e=>{setSelected(e.target.value);setDue("");}}>{rows.map((r,i)=><option key={String(r._id)} value={String(i)}>{r.customer} · {r.reference} · {r.due}</option>)}</select></Field><Field label="Payment due date"><input type="date" value={dueDate} onChange={e=>setDue(e.target.value)}/></Field>{error&&<p role="alert" className="form-error">{error}</p>}<div className="flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={busy}>{busy?"Saving…":"Save payment terms"}</button></div></form></Modal>;
+ return <Modal label="Payment terms" onClose={onClose} busy={busy}><form className="space-y-5" onSubmit={save}><h2 className="text-xl font-semibold">Set payment terms</h2><p className="text-sm text-slate-500">Choose an obligation from this report page. The date applies from this change onward; past ageing stays preserved. Leave the date empty to clear it.</p><Field label="Obligation"><select value={selected} onChange={e=>{setSelected(e.target.value);const due=String(rows[Number(e.target.value)]?.due);setDue(/^\d{4}-\d{2}-\d{2}$/.test(due)?due:"");}}>{rows.map((r,i)=><option key={String(r._id)} value={String(i)}>{r.customer} · {r.reference} · {r.due}</option>)}</select></Field><Field label="Payment due date"><input type="date" value={dueDate} onChange={e=>setDue(e.target.value)}/></Field>{error&&<p role="alert" className="form-error">{error}</p>}<div className="flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={busy}>{busy?"Saving…":"Save payment terms"}</button></div></form></Modal>;
 }

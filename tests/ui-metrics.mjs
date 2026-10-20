@@ -23,6 +23,7 @@
 // A metrics run that cannot cover the screens is not a pass: a route that fails to load, or a walk
 // that collected no text nodes, fails the gate rather than being skipped.
 import assert from "node:assert/strict";
+import { checkStaffHandoffs } from "./staff-handoff-browser.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
@@ -381,6 +382,8 @@ try {
   assert.equal(density.afterReload, "compact", "the stored choice must survive a reload, applied before paint");
   if (!(density.compact < density.comfortable)) fail(`compact rows (${density.compact}px) are not shorter than comfortable rows (${density.comfortable}px)`);
   if (density.restored !== density.comfortable) fail(`switching back to comfortable did not restore ${density.comfortable}px rows (got ${density.restored}px)`);
+
+  await checkStaffHandoffs(page, base, fixture);
 
   // ---- report
   const pad = (s, n) => String(s ?? "").padEnd(n);

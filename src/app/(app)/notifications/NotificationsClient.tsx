@@ -20,7 +20,7 @@ export default function NotificationsClient({ notifications }: { notifications: 
   const router = useRouter();
   async function markAllRead() {
     setBusy(true);setError("");
-    try { const r=await fetch("/api/notifications",{method:"POST"}); if(!r.ok)throw new Error();router.refresh(); }
+    try { const r=await fetch("/api/notifications",{method:"POST"}); if(!r.ok)throw new Error();window.dispatchEvent(new Event("notifications:changed"));router.refresh(); }
     catch { setError("Could not mark notifications read. Please try again."); }
     finally { setBusy(false); }
   }

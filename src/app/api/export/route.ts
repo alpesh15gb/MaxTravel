@@ -4,6 +4,7 @@ import { can } from "@/lib/rbac";
 import { balanceOf } from "@/lib/receivables";
 import type { Permission } from "@/lib/permissions";
 import { audit } from "@/lib/audit";
+import { auditFilters, auditWhere } from "@/lib/audit-query";
 import { readInvoiceTaxSnapshot } from "@/lib/invoice-config";
 
 export const dynamic = "force-dynamic";
@@ -104,7 +105,8 @@ export async function GET(req: Request) {
       // The audit trail is the one report a manager most often needs outside the app, and exporting it
       // is the same action as the other modules': a scoped CSV plus its own EXPORT audit entry below.
       const data = await prisma.auditLog.findMany({
-        orderBy: { at: "desc" }, take: 5000,
+        where: await auditWhere(prisma, user, auditFilters(new URL(req.url).searchParams)),
+        orderBy: [{ at: "desc" }, { id: "desc" }], take: 5000,
         include: { user: { select: { name: true, employeeCode: true } } },
       });
       rows = data.map((l) => ({

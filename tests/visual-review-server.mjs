@@ -48,7 +48,8 @@ const arjunT = await prisma.traveller.findFirstOrThrow({ where: { customerId: ar
 const raviT = await prisma.traveller.findFirstOrThrow({ where: { customerId: ravi.id } });
 const checklist = await ok("/api/checklists", { country: "Schengen (Germany)", visaType: "Tourist", applicantType: "STANDARD", items: [{ name: "Passport", required: true, fileTypes: "pdf,jpg", maxSizeMb: 5, needsVerification: true }, { name: "Bank statement", required: true, fileTypes: "pdf", maxSizeMb: 10, needsVerification: true }] }, owner);
 const v1 = await ok("/api/visa/cases", { customerId: meera.id, travellerIds: [meeraT.id], destination: "Schengen (Germany)", visaType: "Tourist", checklistId: checklist.checklist.id, visaFee: 7500, serviceFee: 2500, travelDate: "2026-12-15" }, owner);
-const v2 = await ok("/api/visa/cases", { customerId: arjun.id, travellerIds: [arjunT.id], destination: "United Kingdom", visaType: "Visitor", checklistId: checklist.checklist.id, visaFee: 9000, serviceFee: 3000, travelDate: "2027-01-10" }, owner);
+const ukChecklist = await ok("/api/checklists", { country: "United Kingdom", visaType: "Visitor", applicantType: "STANDARD", items: [{ name: "Passport", required: true, fileTypes: "pdf,jpg", maxSizeMb: 5, needsVerification: true }, { name: "Bank statement", required: true, fileTypes: "pdf", maxSizeMb: 10, needsVerification: true }] }, owner);
+const v2 = await ok("/api/visa/cases", { customerId: arjun.id, travellerIds: [arjunT.id], destination: "United Kingdom", visaType: "Visitor", checklistId: ukChecklist.checklist.id, visaFee: 9000, serviceFee: 3000, travelDate: "2027-01-10" }, owner);
 await ok("/api/visa/cases", { customerId: ravi.id, travellerIds: [raviT.id], destination: "Schengen (Germany)", visaType: "Tourist", checklistId: checklist.checklist.id, visaFee: 7500, serviceFee: 2500 }, owner);
 await ok(`/api/visa/cases/${v1.caseId}/stage`, { stageId: await stageId("ASSESSMENT") }, owner);
 await ok(`/api/visa/cases/${v2.caseId}/stage`, { stageId: await stageId("DOCUMENTS_PENDING") }, owner);
@@ -78,6 +79,14 @@ const onlineBooking = await prisma.booking.create({ data: {
 await prisma.platformBookingLink.create({ data: {
   platformId: "tripjack-uat-booking-001", bookingId: onlineBooking.id, revision: 4,
   supplierReference: "TJ-DEMO-5201", platformStatus: "CONFIRMED", documentsCurrent: false,
+} });
+// The synthetic platform booking is inserted directly above, so include the
+// journal position that the real signed receiver writes in the same transaction.
+await prisma.financialEntry.create({ data: {
+  partyType: "CUSTOMER", partyId: meera.id, sourceType: "Booking", sourceId: onlineBooking.id,
+  revision: 1, amountMinor: BigInt(Math.round(onlineBooking.sellingPrice * 100)),
+  reference: onlineBooking.bookingNo, description: "Synthetic online hotel charge",
+  actorId: reviewUser.id,
 } });
 await ok("/api/payments", { customerId: meera.id, bookingId: booking.bookingId, amount: 20000, mode: "UPI", note: "Advance towards Europe trip" }, owner);
 await ok("/api/invoices", { customerId: meera.id, amount: 2500, description: "Visa service charge", dueDate: "2026-11-01" }, owner);

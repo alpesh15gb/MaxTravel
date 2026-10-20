@@ -129,6 +129,8 @@ jobs:
         run: npm run build
       - name: Run the test chain
         run: npm test
+      - name: Verify complete agency journeys
+        run: npm run test:journeys
       - name: Collect UI diagnostics after a failed test chain
         if: failure()
         run: node tests/ui-metrics.mjs
@@ -140,6 +142,8 @@ jobs:
           path: |
             test-artifacts/ui/
             test-artifacts/ui-gate-server.log
+            test-artifacts/reporting/
+            test-artifacts/journeys/
             test-artifacts/a11y/report.json
             test-artifacts/a11y/report.md
             test-artifacts/a11y/gate.json

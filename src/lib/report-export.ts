@@ -5,13 +5,13 @@ const PDF_COLORS:Record<"ink"|"muted"|"surface"|"line",[number,number,number]>={
 const money=(v:number)=>`INR ${v.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 const csvCell=(value:unknown)=>{let text=String(value??"");if(typeof value==="string"&&/^\s*[=+\-@\t\r]/.test(text))text="'"+text;return '"'+text.replaceAll('"','""')+'"';};
 export function accountCsv(r:AccountReport){
- const rows:unknown[][]=[[r.agency,r.title],["Period",r.period.from,r.period.to],["Account",r.party?.name??"All permitted accounts"],["Currency","INR"],["Generated",r.generatedAt],...[...r.summary].map(s=>[s.label,s.value]),[],r.columns.map(c=>c.label),...r.rows.map(row=>r.columns.map(c=>row[c.key])),[],["Definitions"],...r.warnings.map(w=>[w])];
+ const rows:unknown[][]=[[r.agency,r.title],["Basis",r.description],["Period",r.period.from,r.period.to],["Account",r.party?.name??"All permitted accounts"],["Currency","INR"],["Generated",r.generatedAt],...[...r.summary].map(s=>[s.label,s.value]),[],r.columns.map(c=>c.label),...r.rows.map(row=>r.columns.map(c=>row[c.key])),[],["Definitions"],...r.warnings.map(w=>[w])];
  return "\uFEFF"+rows.map(row=>row.map(csvCell).join(",")).join("\r\n");
 }
 export async function accountWorkbook(r:AccountReport){
  const {default:ExcelJS}=await import("exceljs");const book=new ExcelJS.Workbook();book.creator=r.agency;
  const summary=book.addWorksheet("Report details");
- summary.columns=[{width:38},{width:95}];summary.addRows([[r.agency,r.title],["From",r.period.from],["Through",r.period.to],["Account",r.party?.name??"All permitted accounts"],["Currency","INR"],["Generated",r.generatedAt],...r.summary.map(s=>[s.label,s.value]),[],...r.warnings.map(w=>["Definition",w])]);
+ summary.columns=[{width:38},{width:95}];summary.addRows([[r.agency,r.title],["Basis",r.description],["From",r.period.from],["Through",r.period.to],["Account",r.party?.name??"All permitted accounts"],["Currency","INR"],["Generated",r.generatedAt],...r.summary.map(s=>[s.label,s.value]),[],...r.warnings.map(w=>["Definition",w])]);
  summary.eachRow(row=>{row.alignment={vertical:"top",wrapText:true};});
  const sheet=book.addWorksheet("Transactions",{views:[{state:"frozen",ySplit:1}]});
  sheet.columns=r.columns.map(c=>({header:c.label,key:c.key,width:c.money?22:c.key==="description"?65:28}));

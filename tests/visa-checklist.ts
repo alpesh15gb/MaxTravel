@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {requirementApplies,appointmentInput,appointmentValue,checklistMatches} from '../src/lib/visa-checklist';
+assert(requirementApplies('MINOR',new Date('2010-10-20'),new Date('2028-10-19')));
+assert(!requirementApplies('MINOR',new Date('2010-10-20'),new Date('2028-10-20')));
+assert(requirementApplies('ADULT',new Date('2010-10-20'),new Date('2028-10-20')));
+assert(requirementApplies('ALL',null,new Date()));
+assert.throws(()=>requirementApplies('MINOR',null,new Date()));
+assert.equal(appointmentInput('2029-01-04T22:30:00Z'),'2029-01-05T04:00');
+assert.equal(new Date(appointmentValue('2029-01-05T04:00')).toISOString(),'2029-01-04T22:30:00.000Z');
+assert(checklistMatches({country:' India ',visaType:'TOURIST'},'india','tourist'));
+console.log('PASS exact birthday boundary, missing DOB applicability, IST date rollover and checklist normalization');

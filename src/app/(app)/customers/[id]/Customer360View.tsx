@@ -135,7 +135,7 @@ export default function Customer360View({ data, perms, initialTab, permsExtra, o
       )}
       {tab === "visa" && <VisaCases data={data} finance={!!p.finance} />}
       {tab === "tickets" && <Tickets data={data} />}
-      {tab === "trips" && <Trips data={data} />}
+      {tab === "trips" && <Trips data={data} finance={!!p.finance} />}
       {tab === "documents" && <Documents data={data} perms={perms} onToast={show} />}
       {tab === "payments" && <Payments data={data} />}
       {tab === "refunds" && <Refunds data={data} />}
@@ -334,7 +334,7 @@ function Tickets({ data }: { data: Data }) {
   );
 }
 
-function Trips({ data }: { data: Data }) {
+function Trips({ data, finance }: { data: Data; finance: boolean }) {
   return (
     <div className="space-y-3">
       {data.bookings.map((b) => (
@@ -348,7 +348,7 @@ function Trips({ data }: { data: Data }) {
           </div>
           <div className="text-right">
             <Status tone={toneOf(b.status)}>{enumLabel(b.status)}</Status>
-            <div className="mt-1.5 text-xs text-slate-500">Travel {dOnly(b.travelDate)}</div>
+            <div className="mt-1.5 text-xs text-slate-500">Travel {dOnly(b.travelDate)}</div>{finance&&["CANCELLED","VOID","REFUNDED"].includes(b.status)&&<p className="mt-2 text-xs text-amber-800">{b.cancellationCharge===null?"Cancellation charges not recorded":`Cancellation charges ${money(b.cancellationCharge)} · balance ${money(b.cancellationBalance)}`} · Trip closed</p>}
           </div>
         </Link>
       ))}
@@ -430,6 +430,7 @@ function Documents({ data, perms, onToast }: { data: Data; perms: Perms; onToast
                   View (signed)
                 </button>
               )}
+              <Link href={`/documents?focus=${d.id}`} className="btn-secondary min-h-8 px-3 py-1.5 text-xs">Open document desk</Link>
               {openDoc === d.id && <span className="text-xs text-slate-500">panel below</span>}
             </div>
           </div>
@@ -497,28 +498,36 @@ function ExtractionReview({ doc, onDone, onToast }: { doc: Data["documents"][num
 function Payments({ data }: { data: Data }) {
   return (
     <div className="panel overflow-x-auto">
-      <table className="min-w-[640px] text-sm">
+      <table aria-label="Customer receipts" className="min-w-[640px] text-sm">
+        <caption className="p-4 text-left font-semibold">Receipts · money received</caption>
         <thead><tr><Th>Receipt</Th><Th>Amount</Th><Th>Mode</Th><Th>Against</Th><Th>Received</Th></tr></thead>
         <tbody>
           {data.payments.map((p) => (
             <tr key={p.id} className="border-t border-slate-100">
-              <td className="px-4 py-3 font-mono text-xs">{p.receiptNo}</td>
+              <td className="px-4 py-3 font-mono text-xs"><a href={`/payments/print?receipt=${p.id}`} target="_blank" rel="noopener noreferrer" className="text-teal-700 hover:underline">{p.receiptNo} · Print</a></td>
               <td className="px-4 py-3 font-medium tabular-nums">{money(p.amount)}</td>
               <td className="px-4 py-3 text-xs text-slate-500">{p.mode}</td>
               <td className="px-4 py-3 text-xs text-slate-500">{p.ref ?? "—"}</td>
               <td className="px-4 py-3 text-xs text-slate-500">{dt(p.receivedOn)}</td>
             </tr>
           ))}
+          {data.payments.length === 0 && <tr><td colSpan={5}><Empty>No receipts recorded.</Empty></td></tr>}
+        </tbody>
+      </table>
+      <table aria-label="Customer invoices" className="mt-5 min-w-[640px] text-sm">
+        <caption className="p-4 text-left font-semibold">Invoices · amounts billed</caption>
+        <thead><tr><Th>Invoice</Th><Th>Amount / paid</Th><Th>Status</Th><Th>Description</Th><Th>Due date</Th></tr></thead>
+        <tbody>
           {data.invoices.map((i) => (
             <tr key={i.id} className="border-t border-slate-100 bg-slate-50/60">
-              <td className="px-4 py-3 font-mono text-xs text-slate-500">{i.invoiceNo}</td>
+              <td className="px-4 py-3 font-mono text-xs"><Link href={`/payments?focus=${i.id}`} className="text-teal-700 hover:underline">{i.invoiceNo} · Open invoice</Link></td>
               <td className="px-4 py-3 tabular-nums">{money(i.amount)} <span className="text-xs text-slate-500">/ paid {money(i.amountPaid)}</span></td>
               <td className="px-4 py-3"><Status tone={toneOf(i.status)}>{i.status}</Status></td>
               <td className="max-w-52 truncate px-4 py-3 text-xs text-slate-500">{i.description ?? "—"}</td>
               <td className="px-4 py-3 text-xs text-slate-500">due {dOnly(i.dueDate)}</td>
             </tr>
           ))}
-          {data.payments.length === 0 && data.invoices.length === 0 && <tr><td colSpan={5}><Empty>No payments or invoices.</Empty></td></tr>}
+          {data.invoices.length === 0 && <tr><td colSpan={5}><Empty>No invoices issued.</Empty></td></tr>}
         </tbody>
       </table>
     </div>
@@ -532,7 +541,7 @@ function Refunds({ data }: { data: Data }) {
         <div key={r.id} className="panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div>
             <div className="flex flex-wrap items-center gap-3">
-              <span className="font-mono text-xs text-slate-500">{r.refundNo}</span>
+              <Link href={`/refunds?focus=${r.id}#${r.id}`} className="font-mono text-xs text-teal-700 hover:underline">{r.refundNo} · Open refund</Link>
               <span className="font-semibold tabular-nums">{money(r.amount)}</span>
             </div>
             <div className="mt-1 text-xs text-slate-500">{r.reason}{r.booking ? ` · ${r.booking}` : ""} · requested {dOnly(r.requestedOn)}</div>
@@ -573,7 +582,7 @@ function Tasks({ data }: { data: Data }) {
       {data.tasks.map((t) => (
         <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div className="min-w-0">
-            <div className="text-sm font-medium">{t.title}</div>
+            <Link href={`/tasks?focus=${t.id}`} className="text-sm font-medium text-teal-700 hover:underline">{t.title}</Link>
             <div className="mt-0.5 text-xs text-slate-500">{t.owner} · due {dOnly(t.dueAt)}</div>
           </div>
           <div className="flex gap-2">

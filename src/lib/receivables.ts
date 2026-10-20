@@ -18,14 +18,30 @@ import { inrAmount } from "@/lib/money";
 
 export const WITHDRAWN_BOOKING_STATUSES = ["CANCELLED", "VOID", "REFUNDED"] as const;
 
-/** A booking whose sale has been withdrawn: it is no longer a demand and takes no new receipts. */
+/** Travel sale withdrawn; explicitly recorded cancellation charges can still be collectible. */
 export const isWithdrawnBooking = (status: string) =>
   (WITHDRAWN_BOOKING_STATUSES as readonly string[]).includes(status);
 
+/** Null means legacy/unclassified; never infer a split from retained cash. */
+export interface CancellationAmounts {
+  status: string;
+  sellingPrice: number;
+  cancellationSupplierCharge?: number | null;
+  cancellationAgencyFee?: number | null;
+}
+export const hasCancellationAllocation = (b: CancellationAmounts) =>
+  b.cancellationSupplierCharge != null && b.cancellationAgencyFee != null;
+export const bookingCharge = (b: CancellationAmounts) => !isWithdrawnBooking(b.status)
+  ? b.sellingPrice : hasCancellationAllocation(b)
+    ? round2(b.cancellationSupplierCharge! + b.cancellationAgencyFee!) : 0;
+/** Cash ceiling after cancellation charges and all existing non-rejected refunds. */
+export const cancellationRefundAvailable = (charge: number, received: number, refunds: RefundLike[] = []) =>
+  Math.max(0, round2(netReceived(received, refunds) - promisedTotal(refunds) - charge));
+
 // ── Refunds ──────────────────────────────────────────────────────────────────────────────────
 // A refund is money leaving the agency, not a status of the sale. Only a COMPLETED refund moves
-// money, and only a refund that returns every rupee recorded as received withdraws the booking.
-// A partial refund leaves the trip exactly as sold (the customer is simply owed less), and a
+// money. Even a full cash refund leaves the sale demand untouched; cancellation is explicit.
+// A cash refund leaves the trip exactly as sold (the customer owes that cash again), and a
 // rejected refund changes nothing at all.
 
 export interface RefundLike {
@@ -80,7 +96,7 @@ export interface ReceivableInvoice {
   visaCaseId?: string | null;
 }
 
-export interface ReceivableBooking {
+export interface ReceivableBooking extends CancellationAmounts {
   status: string;
   sellingPrice: number;
   received: number;
@@ -128,8 +144,7 @@ export function receivablesFrom({
   const unlinkedInvoices = round2(openStandalone.reduce((s, i) => s + balanceOf(i.amount, i.amountPaid), 0));
 
   const owedBookings = bookings
-    .filter((b) => !isWithdrawnBooking(b.status))
-    .map((b) => balanceOf(b.sellingPrice, netReceived(b.received, b.refunds)))
+    .map((b) => balanceOf(bookingCharge(b), netReceived(b.received, b.refunds)))
     .filter((n) => n > 0);
   const bookingsOwed = round2(owedBookings.reduce((s, n) => s + n, 0));
 

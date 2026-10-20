@@ -89,14 +89,19 @@ it are credited to both). Cancelled, void and refunded bookings are withdrawn sa
 receivables and they accept no new receipts. The receivables card always shows its breakdown
 (`bookings ₹… · visa ₹… · invoices ₹…`).
 
-**Refunds are money leaving, not a status of the sale.** Requesting a refund, and every stage of its
-supplier pipeline, leave the booking exactly as sold; a rejected refund changes nothing; only a
-completed refund that returns **every rupee recorded as received** withdraws the booking as
-`REFUNDED`. Money returned reduces money received everywhere (receivables, the money desk's maximum,
-the booking workspace, the ticketing list and the payment-reminder templates), so a partly refunded
-booking correctly owes *more*, and the booking workspace shows a Refunds panel with
-`receipts · refunded · net received` plus a derived chip (`₹10 refunded`, or `refund in progress`
-while the pipeline runs) instead of rewriting the sale status.
+**Refunds are cash movements, not cancellation instructions.** A requested or completed
+refund never silently changes an active booking's sale status. Returning a deposit leaves the
+agreed sale in place until staff explicitly cancel or void it. Refunds reduce net receipts;
+refund requests reserve the refundable cash and completed refunds record money returned.
+
+**Cancellation has an explicit, reviewable financial breakup.** Staff enter the actual supplier
+cancellation charge, the agency cancellation fee (zero is valid), and the reason/terms. The
+customer's replacement demand is the sum of those charges. The app shows the amount to return
+or still collect before saving; it does not guess fees or send money. Reports separate gross
+cancellation charges, supplier cost and agency margin. Earlier cancelled records with no
+recorded breakup remain unclassified rather than acquiring invented revenue or cost. Supplier
+cash recovery and settlement reconciliation are separate explicit actions; a customer refund
+does not prove that the supplier returned money. See the [end-to-end journey review](docs/agency-journeys-2026-10-20.md).
 
 This module **logs receipts**; it does not charge cards, settle refunds or move money.
 

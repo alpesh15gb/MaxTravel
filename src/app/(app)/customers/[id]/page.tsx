@@ -5,6 +5,7 @@ import { loadCustomer360 } from "@/lib/customer360";
 import { can } from "@/lib/rbac";
 import Customer360View from "./Customer360View";
 import { prisma } from "@/lib/db";
+import { AuditTrailLink } from "@/components/AuditTrailLink";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ export default async function Customer360Page({
 
   return (
     <>
+    <div className="mb-3 flex justify-end"><AuditTrailLink entity="Customer" entityId={id} allowed={can(user.permissions,"audit:view")} /></div>
     {can(user.permissions,"payment:view")&&<div className="mb-4 flex justify-end"><a className="btn-secondary" href={`/reports?report=statement&customerId=${encodeURIComponent(id)}`}>Customer statement</a></div>}
     <Customer360View
       data={data}

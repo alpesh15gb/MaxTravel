@@ -5,7 +5,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { SessionUser } from "./session";
 import type { Permission } from "./permissions";
 import { scopeWhere } from "./guard";
-import { netReceived, receivablesFrom, receivablesNote } from "./receivables";
+import { bookingCharge, hasCancellationAllocation, isWithdrawnBooking, balanceOf, netReceived, receivablesFrom, receivablesNote } from "./receivables";
 export type PulseSeverity = "URGENT" | "HIGH" | "MEDIUM";
 export interface PulseAction { label:string;api?:string;method?:string;body?:Record<string,unknown>;href?:string }
 export interface PulseItem { id:string;kind:string;severity:PulseSeverity;title:string;detail:string;href:string;actions:PulseAction[];at?:string }
@@ -32,7 +32,7 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
   const [bookings,cases,invoices,documents,passports,tasks,refunds,dues,threads,customerCount]=await Promise.all([
     can("ticketing:view")?prisma.booking.findMany({where:work,include:{customer:{select:{name:true}},payments:{select:{amount:true}},refunds:{select:{amount:true,status:true}}}}):[],
     can("visa:view")?prisma.visaCase.findMany({where:work,include:{stage:true,customer:{select:{name:true}},documents:{select:{status:true}}}}):[],
-    can("invoice:view")?prisma.invoice.findMany({where:{customer:{is:customer}},include:{customer:{select:{name:true}}}}):[],
+    can("invoice:view")?prisma.invoice.findMany({where:{customer:{is:customer}},include:{customer:{select:{name:true}},booking:{select:{status:true}}}}):[],
     can("document:view")?bounded(prisma.document.findMany({where:{customer:{is:customer},OR:[{status:{in:["RECEIVED","UNDER_REVIEW"]},verificationStatus:"PENDING"},{status:"REUPLOAD_REQUESTED"}]},include:{customer:{select:{name:true}},traveller:{select:{fullName:true}},visaCase:{select:{id:true,caseNo:true,travelDate:true,destination:true}}},take:ITEM_LIMIT+1}),"documents"):[],
     // Passports are found by the columns the expiry rule actually needs (a recorded expiry and a
     // trip to compare it against), and the rule itself still runs in TypeScript below, so a
@@ -50,15 +50,24 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
   const open=(label:string,href:string):PulseAction=>({label,href});
   const log=(label:string,body:Record<string,unknown>):PulseAction=>({label,api:"/api/whatsapp/send",body});
   for(const b of bookings){
+    if(isWithdrawnBooking(b.status)) {
+      const balance=balanceOf(bookingCharge(b),netReceived(b.payments.reduce((s,p)=>s+p.amount,0),b.refunds));
+      if(can("payment:view")&&hasCancellationAllocation(b)&&balance>0) {
+        const href=`/ticketing/${b.id}`;
+        items.push({id:`cancelpay:${b.id}`,kind:"PAYMENT_OVERDUE",severity:"MEDIUM",title:`${money(balance)} cancellation charges due · ${b.bookingNo}`,detail:`${b.customer.name} · ${enumLabel(b.status)} — trip remains closed`,href,actions:[open("Review cancellation charges",href),...(can("payment:record")&&b.gdsSource!=="TRIPJACK_API"?[open("Record cancellation payment",`/payments?action=record&customer=${b.customerId}&booking=${b.id}`)]:[])]});
+      }
+      continue;
+    }
     if(!b.ticketingDeadline||!["PNR_CREATED","ON_HOLD","PAYMENT_AWAITED","QUOTE_SENT"].includes(b.status))continue;
     const hours=(b.ticketingDeadline.getTime()-now)/H;if(hours>warn)continue;
-    const href=`/ticketing/${b.id}`,balance=b.sellingPrice-netReceived(b.payments.reduce((s,p)=>s+p.amount,0),b.refunds);
+    const href=`/ticketing/${b.id}`,balance=bookingCharge(b)-netReceived(b.payments.reduce((s,p)=>s+p.amount,0),b.refunds);
     const actions=[open("Open booking",href)];
     if(can("payment:record"))actions.push(open("Record payment",`/payments?action=record&customer=${b.customerId}&booking=${b.id}`));
     if(can("ticketing:edit"))actions.push({label:"Extend 24 hours",api:"/api/bookings/extend-deadline",body:{bookingId:b.id,hours:24}});
     items.push({id:`pnr:${b.id}`,kind:"PNR_DEADLINE",severity:hours<=urgent?"URGENT":"HIGH",title:`${b.pnr??b.bookingNo} · ${hours<0?"ticketing deadline passed":`ticketing due in ${Math.max(1,Math.round(hours))}h`}`,detail:`${b.customer.name} · ${b.sector??"Route pending"}${can("payment:view")?` · Balance ${money(balance)}`:""}`,href,at:b.ticketingDeadline.toISOString(),actions});
   }
   for(const inv of invoices){
+    if(inv.booking&&isWithdrawnBooking(inv.booking.status))continue;
     if(inv.status==="PAID"||inv.status==="CREDITED"||!(inv.dueDate?inv.dueDate.getTime()<now:inv.issuedOn.getTime()<now-7*24*H))continue;
     const href=`/payments?focus=${inv.id}`,actions=[open("Open invoices",href)];
     if(can("payment:record"))actions.push(open("Record payment",`/payments?action=record&customer=${inv.customerId}&invoice=${inv.id}`));
@@ -95,7 +104,7 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
   // and a customer's profile can never show three different answers to the same question.
   const receivables=receivablesFrom({
     invoices,
-    bookings:bookings.map(b=>({status:b.status,sellingPrice:b.sellingPrice,received:b.payments.reduce((s,p)=>s+p.amount,0),refunds:b.refunds})),
+    bookings:bookings.map(b=>({status:b.status,sellingPrice:b.sellingPrice,cancellationSupplierCharge:b.cancellationSupplierCharge,cancellationAgencyFee:b.cancellationAgencyFee,received:b.payments.reduce((s,p)=>s+p.amount,0),refunds:b.refunds})),
     visaCases:cases.map(c=>({sellingPrice:c.sellingPrice,received:c.amountReceived})),
   });
   // Icons and notes travel with the card: the list is permission-filtered, so the client must

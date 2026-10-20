@@ -10,11 +10,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const { stageId, note } = await req.json();
     if (!stageId) throw new ApiError(400, "Choose a workflow stage.");
     await prisma.$transaction(async tx => {
-      const vc = await tx.visaCase.findUnique({ where: { id }, include: { stage: true, documents: true } });
+      const vc = await tx.visaCase.findUnique({ where: { id }, include: { stage: true, documents: true, travellers: true, checklistLinks: true } });
       if (!vc) throw new ApiError(404, "Case not found.");
       if (!canTouchRecord(user, vc)) throw new ApiError(403, "Case is outside your access.");
       const target = await tx.visaStage.findUnique({ where: { id: String(stageId) } });
       if (!target?.active) throw new ApiError(400, "Choose an active stage.");
+      if (target.id === vc.stageId) return; // Retry must not rewrite decision dates or duplicate history.
+      if (target.key === "APPOINTMENT_BOOKED" && !vc.appointmentDate) throw new ApiError(400, "Enter the appointment date and time in Edit Case before marking the appointment booked.");
       const decision = ["APPROVED", "REJECTED"].includes(target.key);
       const ready = await tx.visaStage.findUnique({ where: { key: "READY_FOR_SUBMISSION" } });
       const reopening = Boolean(vc.visaOutcome) && ready && target.seq < ready.seq;
@@ -22,6 +24,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       // stage let anyone with visa:edit quietly reopen an APPROVED case and erase the outcome.
       if ((decision || reopening) && !user.permissions.includes("visa:approve")) throw new ApiError(403, "Visa decisions require approval permission.");
       if (ready && target.seq >= ready.seq && !["REJECTED", "CLOSED"].includes(target.key)) {
+        if (!vc.travellers.length || vc.travellers.some(t => !vc.checklistLinks.some(link => link.travellerId === t.travellerId))) throw new ApiError(400, "Assign a checklist to every applicant in Manage applicant checklists before submission. Use an explicitly configured checklist even when no documents are required.");
         const items = await tx.checklistItem.findMany({ where: { id: { in: vc.documents.flatMap(d => d.checklistItemId ? [d.checklistItemId] : []) } } });
         const incomplete = vc.documents.filter(d => {
           const item = items.find(i => i.id === d.checklistItemId);
@@ -43,7 +46,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       const history = await tx.visaCaseStatus.create({ data: { caseId: id, stageId: target.id, note: optionalId(note), byId: user.id } });
       if (vc.stageId !== target.id) await queueStageUpdate(tx, vc.customerId, id, history.id, target.name);
       await tx.activity.create({ data: { customerId: vc.customerId, actorId: user.id, type: "STATUS", summary: `${vc.caseNo} moved to ${target.name}`, link: `/visa/${id}` } });
-      await transactionAudit(tx, user, "STAGE", "VisaCase", id, reopening ? `${target.name} · ${vc.visaOutcome} decision cleared` : target.name);
+      await transactionAudit(tx, user, "STAGE", "VisaCase", id, JSON.stringify({ from: vc.stage.key, to: target.key, decisionCleared: reopening ? vc.visaOutcome : null }));
     });
     return Response.json({ ok: true });
   } catch (e) { return jsonError(e); }

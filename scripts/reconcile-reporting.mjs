@@ -11,7 +11,7 @@ try{
   const totals=new Map();for(const e of entries){const key=`${e.sourceType}:${e.sourceId}`;totals.set(key,(totals.get(key)||0n)+e.amountMinor);}
   const supported=new Set(bookings.filter(b=>b.currency==="INR").map(b=>b.id));
   const expected=[];const minor=n=>BigInt(Math.round(n*100));
-  for(const b of bookings)if(supported.has(b.id))expected.push(["Booking",b.id,b.bookingNo,["CANCELLED","VOID","REFUNDED"].includes(b.status)?0n:minor(b.sellingPrice)]);
+  for(const b of bookings)if(supported.has(b.id))expected.push(["Booking",b.id,b.bookingNo,["CANCELLED","VOID","REFUNDED"].includes(b.status)?(b.cancellationSupplierCharge!=null&&b.cancellationAgencyFee!=null?minor(b.cancellationSupplierCharge+b.cancellationAgencyFee):0n):minor(b.sellingPrice)]);
   for(const c of cases)expected.push(["VisaCase",c.id,c.caseNo,minor(c.sellingPrice)]);
   for(const i of invoices)expected.push(["Invoice",i.id,i.invoiceNo,i.bookingId||i.visaCaseId?0n:minor(i.amount)]);
   for(const c of creditNotes)expected.push(["InvoiceCreditNote",c.id,c.creditNoteNo,-minor(c.amount)]);

@@ -2,7 +2,7 @@ import { prisma } from "./db";
 import type { SessionUser } from "./session";
 import { maskPassportFor } from "./serialize";
 import { canTouchRecord } from "./guard";
-import { netReceived, refundedTotal, receivablesFrom } from "./receivables";
+import { bookingCharge, hasCancellationAllocation, isWithdrawnBooking, balanceOf, netReceived, refundedTotal, receivablesFrom } from "./receivables";
 
 // All dates → ISO strings; sensitive fields masked per permissions before leaving the server.
 
@@ -58,7 +58,7 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
   }
   if (!can("payment:view")) {
     c.visaCases = c.visaCases.map(v => ({ ...v, visaFee: 0, serviceFee: 0, sellingPrice: 0, amountReceived: 0 }));
-    c.bookings = c.bookings.map(b => ({ ...b, fare: 0, taxes: 0, markup: 0, serviceFee: 0, sellingPrice: 0, supplierCost: 0, payments: [], refunds: [] }));
+    c.bookings = c.bookings.map(b => ({ ...b, fare: 0, taxes: 0, markup: 0, serviceFee: 0, sellingPrice: 0, supplierCost: 0, cancellationSupplierCharge: null, cancellationAgencyFee: null, payments: [], refunds: [] }));
   }
   if (!can("sensitive:view")) c.documents = c.documents.map(d => ({ ...d, extracted: null, warnings: null }));
   // Cross-module activity can contain money or sensitive details; restrict this consolidated feed.
@@ -67,7 +67,7 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
   // Shared definition (lib/receivables): standalone invoices plus unpaid bookings and visa cases.
   const outstanding = receivablesFrom({
     invoices: c.invoices,
-    bookings: c.bookings.map((b) => ({ status: b.status, sellingPrice: b.sellingPrice, received: b.payments.reduce((s, p) => s + p.amount, 0), refunds: b.refunds })),
+    bookings: c.bookings.map((b) => ({ status: b.status, sellingPrice: b.sellingPrice, cancellationSupplierCharge: b.cancellationSupplierCharge, cancellationAgencyFee: b.cancellationAgencyFee, received: b.payments.reduce((s, p) => s + p.amount, 0), refunds: b.refunds })),
     visaCases: c.visaCases.map((v) => ({ sellingPrice: v.sellingPrice, received: v.amountReceived })),
   }).total;
   const activeVisaCases = c.visaCases.filter((v) => !["CLOSED", "DELIVERED"].includes(v.stage.key)).length;
@@ -123,6 +123,8 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
       status: b.status, travelDate: b.travelDate?.toISOString() ?? null,
       ticketingDeadline: b.ticketingDeadline?.toISOString() ?? null,
       sellingPrice: b.sellingPrice,
+      cancellationCharge: isWithdrawnBooking(b.status) && hasCancellationAllocation(b) ? bookingCharge(b) : null,
+      cancellationBalance: isWithdrawnBooking(b.status) && hasCancellationAllocation(b) ? balanceOf(bookingCharge(b), netReceived(b.payments.reduce((s, p) => s + p.amount, 0), b.refunds)) : null,
       paid: b.payments.reduce((s, p) => s + p.amount, 0),
       refunded: refundedTotal(b.refunds),
       netPaid: netReceived(b.payments.reduce((s, p) => s + p.amount, 0), b.refunds),

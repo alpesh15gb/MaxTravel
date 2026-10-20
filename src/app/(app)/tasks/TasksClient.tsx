@@ -1,4 +1,5 @@
 "use client";
+import { AuditTrailLink } from "@/components/AuditTrailLink";
 import { enumLabel } from "@/lib/labels";
 import { dateTimeLabel } from "@/lib/dates";
 import Link from "next/link";
@@ -45,7 +46,7 @@ function groupsFor(list: T[], tab: Tab): Group[] {
     .map(([label, items]) => ({ label, tone: label === "Overdue" ? "overdue" as const : "normal" as const, items: [...items].sort((a, b) => (a.dueAt ? new Date(a.dueAt).getTime() : Infinity) - (b.dueAt ? new Date(b.dueAt).getTime() : Infinity)) }));
 }
 
-export default function TasksClient({ tasks, focus, canEdit, canExport, canCreate, owners, customers, currentUserId }: { tasks: T[]; focus: string | null; canEdit: boolean; canExport?: boolean; canCreate: boolean; owners: { id: string; name: string }[]; customers: { id: string; name: string }[]; currentUserId: string }) {
+export default function TasksClient({ tasks, focus, canEdit, canExport, canAudit, canCreate, owners, customers, currentUserId }: { tasks: T[]; focus: string | null; canEdit: boolean; canExport?: boolean; canAudit: boolean; canCreate: boolean; owners: { id: string; name: string }[]; customers: { id: string; name: string }[]; currentUserId: string }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>(() => {
     const focused = tasks.find(t => t.id === focus);
@@ -109,6 +110,7 @@ export default function TasksClient({ tasks, focus, canEdit, canExport, canCreat
       <div className="flex flex-wrap items-center gap-2 pl-9 md:justify-end md:pl-0">
         <Status tone={t.priority === "URGENT" ? "danger" : t.priority === "HIGH" ? "warning" : "neutral"}>{enumLabel(t.priority)}</Status>
         <Status tone={t.status === "DONE" ? "success" : "info"}>{enumLabel(t.status)}</Status>
+        <AuditTrailLink entity="Task" entityId={t.id} allowed={canAudit} compact />
         {canEdit && isOpen(t) && <RecordEditor title="Edit task" buttonLabel="Edit" endpoint={`/api/tasks/${t.id}`} values={{ title: t.title, details: t.details ?? "", priority: t.priority, ownerId: t.ownerId, dueAt: t.dueAt ? new Date(new Date(t.dueAt).getTime() - new Date(t.dueAt).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "" }} fields={[{ key: "title", label: "Task", required: true }, { key: "ownerId", label: "Owner", type: "select", options: (owners.some(o => o.id === t.ownerId) ? owners : [{ id: t.ownerId, name: `${t.owner} (current owner)` }, ...owners]).map(o => ({ value: o.id, label: o.name })) }, { key: "priority", label: "Priority", type: "select", options: ["LOW", "MEDIUM", "HIGH", "URGENT"].map(v => ({ value: v, label: v })) }, { key: "dueAt", label: "Due date & time", type: "datetime-local" }, { key: "details", label: "Details", type: "textarea" }]} />}
         {canEdit && isOpen(t) && <button disabled={!!busy} className="btn-secondary min-h-8 px-3 py-1.5 text-sm" onClick={() => setCancelTarget(t)}>Cancel task</button>}
         {canEdit && <button disabled={!!busy} className="btn-secondary min-h-8 border-brand-200 bg-brand-50 px-3 py-1.5 text-sm text-brand-800" onClick={() => status(t.id, isOpen(t) ? "DONE" : "OPEN")}>{busy === t.id ? "Saving…" : isOpen(t) ? "Mark done" : "Reopen"}</button>}

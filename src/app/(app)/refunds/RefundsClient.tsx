@@ -1,4 +1,5 @@
 "use client";
+import { AuditTrailLink } from "@/components/AuditTrailLink";
 
 import { enumLabel } from "@/lib/labels";
 import { dateLabel } from "@/lib/dates";
@@ -12,7 +13,7 @@ import Modal from "@/components/Modal";
 import { useToast } from "@/lib/useToast";
 
 type R = {
-  id: string; refundNo: string; customer: string; customerId: string; amount: number;
+  externallyManaged: boolean; id: string; refundNo: string; customer: string; customerId: string; amount: number;
   reason: string | null; status: string; requestedOn: string;
   supplierSentOn: string | null; supplierReceivedOn: string | null; paidOn: string | null;
   booking: { bookingNo: string; id: string } | null;
@@ -65,14 +66,16 @@ function Progress({ status }: { status: string }) {
 function RefundForm({ bookings, onClose }: { bookings: BookingOption[]; onClose: () => void }) {
   const router = useRouter(); const [bookingId, setBooking] = useState(""); const [amount, setAmount] = useState(""); const [reason, setReason] = useState(""); const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const booking = bookings.find(b => b.id === bookingId);
   async function submit(e: React.FormEvent) { e.preventDefault(); setBusy(true); setError(""); try { const r = await fetch("/api/refunds", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customerId: booking?.customerId, bookingId, amount: Number(amount), reason }) }); const d = await r.json().catch(() => ({})); if (!r.ok) { setError(d.error ?? "Could not request refund."); return; } onClose(); router.refresh(); } catch { setError("Connection failed. Please try again."); } finally { setBusy(false); } }
-  return <Modal label="Request refund" onClose={onClose} width="max-w-lg" busy={busy}><form className="space-y-5" onSubmit={submit}><h2 className="text-xl font-semibold">Request a refund</h2><Field label="Booking *"><select required value={bookingId} onChange={e => { setBooking(e.target.value); setAmount(""); }}><option value="">Choose a booking</option>{bookings.filter(b => b.refundable > 0).map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</select></Field>{booking && <p className="rounded-xl bg-teal-50 p-3 text-xs text-teal-800">Available recorded receipts: {money(booking.refundable)}</p>}<Field label="Requested amount (INR) *"><input required type="number" min="0.01" step="0.01" max={booking?.refundable} value={amount} onChange={e => setAmount(e.target.value)} /></Field><Field label="Reason *"><textarea required rows={3} value={reason} onChange={e => setReason(e.target.value)} /></Field>{!bookings.some(b => b.refundable > 0) && <p className="text-xs text-slate-500">No bookings have refundable recorded receipts yet.</p>}{error && <div role="alert" className="form-error">{error}</div>}<div className="flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={busy}>{busy ? "Creating…" : "Create refund request"}</button></div></form></Modal>;
+  return <Modal label="Request refund" onClose={onClose} width="max-w-lg" busy={busy}><form className="space-y-5" onSubmit={submit}><h2 className="text-xl font-semibold">Request a refund</h2><Field label="Booking *"><select required value={bookingId} onChange={e => { setBooking(e.target.value); setAmount(""); }}><option value="">Choose a booking</option>{bookings.filter(b => b.refundable > 0).map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</select></Field>{booking && <p className="rounded-xl bg-teal-50 p-3 text-xs text-teal-800">Maximum available refund after existing refunds and recorded cancellation charges: {money(booking.refundable)}</p>}<Field label="Requested amount (INR) *"><input required type="number" min="0.01" step="0.01" max={booking?.refundable} value={amount} onChange={e => setAmount(e.target.value)} /></Field><Field label="Reason *"><textarea required rows={3} value={reason} onChange={e => setReason(e.target.value)} /></Field>{!bookings.some(b => b.refundable > 0) && <p className="text-xs text-slate-500">No accessible manually managed bookings have a refundable balance after existing refunds and recorded cancellation charges. Online refunds are managed in Online bookings.</p>}{error && <div role="alert" className="form-error">{error}</div>}<div className="flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={busy||!booking||booking.refundable<=0}>{busy ? "Creating…" : "Create refund request"}</button></div></form></Modal>;
 }
 
 type BookingOption = { id: string; customerId: string; label: string; refundable: number };
 
-export default function RefundsClient({ refunds, focus, canManage, canExport, canApprove, bookings }: { refunds: R[]; focus: string | null; canManage: boolean; canExport?: boolean; canApprove: boolean; bookings: BookingOption[] }) {
+export default function RefundsClient({ refunds, focus, canManage, canExport, canAudit, canViewBookings, canApprove, bookings }: { refunds: R[]; focus: string | null; canManage: boolean; canExport?: boolean; canAudit: boolean; canViewBookings: boolean; canApprove: boolean; bookings: BookingOption[] }) {
   const router = useRouter();
   const { show, toast } = useToast();
+  const [advanceTarget, setAdvanceTarget] = useState<R | null>(null);
+  const [advanceError, setAdvanceError] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<R | null>(null);
   const [rejectError, setRejectError] = useState("");
@@ -87,6 +90,7 @@ export default function RefundsClient({ refunds, focus, canManage, canExport, ca
     if (next === "SUPPLIER_RECEIVED") extra.supplierReceivedOn = new Date().toISOString();
     if (next === "PAID") extra.paidOn = new Date().toISOString();
     setBusy(true);
+    setAdvanceError("");
     try {
       const res = await fetch("/api/refunds/update", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -94,13 +98,14 @@ export default function RefundsClient({ refunds, focus, canManage, canExport, ca
       });
       const result = await res.json().catch(() => ({}));
       if (res.ok) {
+        setAdvanceTarget(null);
         show(`${r.refundNo} → ${enumLabel(next)}`);
         router.refresh();
       } else {
-        show(result.error ?? "Could not update refund.", "error");
+        setAdvanceError(result.error ?? "Could not update refund.");
       }
     } catch {
-      show("Connection failed. The refund was not changed.", "error");
+      setAdvanceError("Connection failed. Please check the current refund status before retrying.");
     } finally {
       setBusy(false);
     }
@@ -160,12 +165,14 @@ export default function RefundsClient({ refunds, focus, canManage, canExport, ca
         <Progress status={r.status} />
       </div>
       <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-        {canManage && next && (next !== "APPROVED" || canApprove) && (
-          <button type="button" disabled={busy} onClick={() => advance(r)} className="btn-secondary min-h-8 px-3 py-1.5 text-xs">
-            → {enumLabel(next)}
+        {r.externallyManaged && <div className="text-xs text-slate-600">Managed by booking platform. {canViewBookings && <Link href="/online-bookings" className="text-teal-700 underline">Open online bookings</Link>}</div>}
+        <AuditTrailLink entity="Refund" entityId={r.id} allowed={canAudit} compact />
+        {canManage && !r.externallyManaged && next && (next !== "APPROVED" || canApprove) && (
+          <button type="button" disabled={busy} onClick={() => {setAdvanceError("");setAdvanceTarget(r);}} className="btn-secondary min-h-8 px-3 py-1.5 text-xs">
+            {({SUPPLIER_PENDING:"Record request sent to supplier",SUPPLIER_RECEIVED:"Record supplier response",APPROVED:"Approve refund",PROCESSED:"Record payout processing",PAID:"Record completed customer payout"} as Record<string,string>)[next]}
           </button>
         )}
-        {canManage && !["PAID", "REJECTED"].includes(r.status) && (
+        {canManage && !r.externallyManaged && canApprove && !["PAID", "REJECTED", "PROCESSED"].includes(r.status) && (
           <button type="button" disabled={busy} onClick={() => { setRejectError(""); setRejectTarget(r); }} className="min-h-8 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:border-rose-300">
             Reject
           </button>
@@ -197,6 +204,7 @@ export default function RefundsClient({ refunds, focus, canManage, canExport, ca
 
       {showNew && <RefundForm bookings={bookings} onClose={() => setShowNew(false)} />}
 
+      {advanceTarget && <ActionDialog title={PIPELINE[advanceTarget.status] === "PAID" ? "Record completed customer payout?" : "Record refund milestone?"} description={`${advanceTarget.refundNo} · ${advanceTarget.customer} · ${money(advanceTarget.amount)}. Current status: ${enumLabel(advanceTarget.status)}. ${PIPELINE[advanceTarget.status] === "PAID" ? "Confirm the customer has already received this amount outside this app. Check your bank/payment evidence first; this screen does not store a bank payout reference. This only records completion and updates the balance — it does not transfer money." : `Record ${enumLabel(PIPELINE[advanceTarget.status]!)} only after this step has actually occurred. This does not contact the supplier or transfer money.`}`} confirmLabel={PIPELINE[advanceTarget.status] === "PAID" ? "Confirm payout already completed" : "Confirm milestone"} busy={busy} error={advanceError} onClose={() => {if(!busy)setAdvanceTarget(null);}} onConfirm={() => void advance(advanceTarget)} />}
       {rejectTarget && <ActionDialog
         title={`Reject ${rejectTarget.refundNo}?`}
         description="The refund is closed as rejected and the reason is written to the audit trail. This cannot be undone from this screen."

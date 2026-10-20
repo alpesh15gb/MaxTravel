@@ -1,13 +1,16 @@
 "use client";
 
+import { appointmentInput, appointmentValue } from "@/lib/visa-checklist";
 import { enumLabel } from "@/lib/labels";
 import { dateLabel, dateTimeLabel } from "@/lib/dates";
 import { inrAmount } from "@/lib/money";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
 import { Status } from "@/components/ui";
+import { AuditTrailLink } from "@/components/AuditTrailLink";
+import ActionDialog from "@/components/ActionDialog";
 import Modal from "@/components/Modal";
 import { openSignedFile } from "@/lib/openSignedFile";
 import { useToast } from "@/lib/useToast";
@@ -20,7 +23,7 @@ const dInput = (s: string | null | undefined) => (s ? new Date(s).toISOString().
 type Tone = "neutral" | "success" | "warning" | "danger" | "info";
 
 type Doc = {
-  id: string; docNo: string; docType: string; status: string; traveller: string | null;
+  id: string; docNo: string; docType: string; status: string; traveller: string | null; travellerId: string | null;
   uploadedAt: string | null; uploadSource: string | null; verificationStatus: string;
   verifiedBy: string | null; expiryDate: string | null; rejectionReason: string | null;
   hasFile: boolean; version: number;
@@ -42,13 +45,13 @@ type VC = {
   supplierId: string | null; supplier: string | null; owner: string; branch: string; internalNotes: string | null;
   travellers: { id: string; fullName: string; relation: string; passportNumber: string | null; passportExpiry: string | null; applicantType: string }[];
   documents: Doc[];
-  history: { id: string; stage: string; note: string | null; by: string; at: string }[];
+  history: { id: string; stageId: string; stage: string; note: string | null; by: string; at: string }[];
   tasks: { id: string; title: string; status: string; priority: string; owner: string; dueAt: string | null }[];
   checklist: { country: string; visaType: string; applicantType: string; version: number; items: { name: string; required: boolean; instructions: string | null }[] } | null;
 };
 
 type Stage = { id: string; key: string; name: string; seq: number };
-type Perms = { edit: boolean; verify: boolean; send: boolean; record: boolean; money: boolean };
+type Perms = { audit: boolean; edit: boolean; verify: boolean; send: boolean; record: boolean; money: boolean };
 
 // Document states use the same tones as every other status badge in the app.
 const docTone = (s: string): Tone => {
@@ -67,8 +70,13 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
   const [busy, setBusy] = useState(false);
   const [stageId, setStageId] = useState(vc.stage.id);
   const [showEdit, setShowEdit] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<Doc | null>(null);
+  const [reviewError, setReviewError] = useState("");
+  const saving = useRef(false);
 
   async function post(url: string, body: unknown, okMsg: string) {
+    if (saving.current) return false;
+    saving.current = true;
     setBusy(true);
     try {
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -76,23 +84,27 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
       if (r.ok) {
         show(d.status === "LOGGED" ? "Message logged—not sent. Open WhatsApp desk to send it." : okMsg);
         router.refresh();
+        return true;
       } else {
         show(d.error ?? "That change was not saved.", "error");
         setStageId(vc.stage.id);
+        setReviewError(d.error ?? "That change was not saved.");
       }
     } catch {
-      show("Connection failed. Nothing was changed — please try again.", "error");
+      show("Connection failed. Refresh to confirm whether the change was saved before retrying.", "error");
+      setReviewError("Connection failed. Your reason is preserved; confirm whether the change was saved before retrying.");
       setStageId(vc.stage.id);
-    } finally { setBusy(false); }
+    } finally { saving.current = false; setBusy(false); }
+    return false;
   }
 
   const outstanding = vc.sellingPrice - vc.amountReceived;
-  const currentIndex = stages.findIndex((x) => x.key === vc.stage.key);
+  const visitedStages = new Set(vc.history.map(h => h.stageId));
 
   const byTraveller = useMemo(() => {
     const map = new Map<string, Doc[]>();
     for (const d of vc.documents) {
-      const key = d.traveller ?? "—";
+      const key = d.travellerId ?? "—";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(d);
     }
@@ -122,6 +134,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <AuditTrailLink entity="VisaCase" entityId={vc.id} allowed={perms.audit} />
             {perms.edit && (
               <>
                 <button type="button" onClick={() => setShowEdit(true)} className="btn-secondary min-h-9 px-3 py-2 text-xs">Edit Case</button>
@@ -135,7 +148,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
               </>
             )}
             {perms.send && (
-              <button type="button" onClick={() => post("/api/whatsapp/send", { customerId: vc.customer.id, template: "STATUS_UPDATE", visaCaseId: vc.id }, "Status update logged—not sent")} className="btn-primary min-h-9 px-3 py-2 text-xs">
+              <button type="button" disabled={busy} onClick={() => post("/api/whatsapp/send", { customerId: vc.customer.id, template: "STATUS_UPDATE", visaCaseId: vc.id }, "Status update logged—not sent")} className="btn-primary min-h-9 px-3 py-2 text-xs">
                 WhatsApp Update
               </button>
             )}
@@ -154,9 +167,9 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
             {/* Wraps instead of scrolling: the 16 chips fit in four rows, and a strip that scrolled sideways
                 inside the page was a nested scroll region the reader had to discover. */}
             <div className="flex flex-wrap gap-1.5 pb-2">
-              {stages.map((s, i) => {
+              {stages.map((s) => {
                 const current = s.key === vc.stage.key;
-                const passed = i < currentIndex;
+                const passed = visitedStages.has(s.id);
                 const look = `inline-flex min-h-8 shrink-0 items-center rounded-lg border px-2.5 py-1 text-small ${
                   current ? "border-teal-300 bg-teal-50 font-semibold text-teal-800" :
                   passed ? "border-slate-200 bg-slate-100 text-slate-600" : "border-slate-200 bg-white text-slate-500"
@@ -206,7 +219,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
             </div>
             <div className="space-y-6">
               {vc.travellers.map((t) => {
-                const docs = byTraveller.get(t.fullName) ?? [];
+                const docs = byTraveller.get(t.id) ?? [];
                 const done = docs.filter((d) => ["ACCEPTED", "SUBMITTED"].includes(d.status)).length;
                 const total = docs.length;
                 return (
@@ -220,7 +233,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
                     <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
                       {docs.map((d) => (
                         <div key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-white px-4 py-3 text-xs">
-                          <span className="w-40 shrink-0 truncate font-medium">{d.docType}</span>
+                          <Link href={`/documents?focus=${d.id}`} className="w-40 shrink-0 truncate font-medium text-teal-700 hover:underline">{d.docType}</Link>
                           <Status tone={docTone(d.status)}>{enumLabel(d.status)}</Status>
                           <span className="min-w-0 truncate text-slate-500">
                             {d.uploadedAt ? `${d.uploadSource ?? "staff"} · ${dt(d.uploadedAt)}` : "awaiting upload"}
@@ -245,8 +258,8 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
                             )}
                             {perms.verify && (d.status === "RECEIVED" || d.status === "UNDER_REVIEW") && (
                               <>
-                                <button type="button" onClick={() => post("/api/documents/verify", { documentId: d.id, decision: "ACCEPTED" }, "✓ Document accepted")} className="btn-primary min-h-7 px-2.5 py-1 text-small">Accept</button>
-                                <button type="button" onClick={() => post("/api/documents/verify", { documentId: d.id, decision: "REJECTED", reason: "Quality/content issue" }, "Document rejected")} className="btn-secondary min-h-7 border-rose-200 px-2.5 py-1 text-small text-rose-700">Reject</button>
+                                <button type="button" disabled={busy || !d.hasFile} onClick={() => post("/api/documents/verify", { documentId: d.id, decision: "ACCEPTED" }, "✓ Document accepted")} className="btn-primary min-h-7 px-2.5 py-1 text-small">Accept</button>
+                                <button type="button" disabled={busy || !d.hasFile} onClick={() => { setReviewError(""); setRejectTarget(d); }} className="btn-secondary min-h-7 border-rose-200 px-2.5 py-1 text-small text-rose-700">Reject</button>
                               </>
                             )}
                           </span>
@@ -257,7 +270,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
                   </div>
                 );
               })}
-              {vc.documents.length === 0 && <div className="text-sm text-slate-500">No checklist attached — create case with a checklist to track documents.</div>}
+              {vc.documents.length === 0 && <div className="text-sm text-slate-500">No document requirements yet — use Manage applicant checklists to assign requirements to this case.</div>}
             </div>
           </section>
 
@@ -267,7 +280,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
               <div className="divide-y divide-slate-100">
                 {vc.tasks.map((t) => (
                   <div key={t.id} className="flex items-center justify-between gap-3 py-2.5 text-xs">
-                    <span className="font-medium">{t.title}</span>
+                    <Link className="font-medium text-teal-700 hover:underline" href={`/tasks?focus=${t.id}`}>{t.title}</Link><Status>{enumLabel(t.status)}</Status>
                     <span className="text-slate-500">{t.owner} · {t.priority}{t.dueAt ? ` · due ${dOnly(t.dueAt)}` : ""}</span>
                   </div>
                 ))}
@@ -317,6 +330,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
       {showEdit && (
         <EditCase vc={vc} suppliers={suppliers} canMoney={perms.money} onClose={() => setShowEdit(false)} />
       )}
+      {rejectTarget && <ActionDialog title={`Reject ${rejectTarget.docType}?`} description="Record what needs replacing. This does not send a message; contact the customer to request a replacement." fieldLabel="Reason for rejection" fieldType="textarea" required confirmLabel="Reject document" tone="danger" busy={busy} error={reviewError} onClose={() => { if (!busy) setRejectTarget(null); }} onConfirm={async reason => { if (await post("/api/documents/verify", { documentId: rejectTarget.id, decision: "REJECTED", reason }, "Document rejected. Contact the customer for a replacement.")) setRejectTarget(null); }} />}
       {toast}
     </div>
   );
@@ -326,7 +340,7 @@ function EditCase({ vc, suppliers, canMoney, onClose }: { vc: VC; suppliers: { i
   const router = useRouter();
   const [form, setForm] = useState({
     visaCategory: vc.visaCategory ?? "", travelDate: dInput(vc.travelDate), intendedStay: vc.intendedStay ?? "",
-    submissionDate: dInput(vc.submissionDate), appointmentDate: dInput(vc.appointmentDate),
+    submissionDate: dInput(vc.submissionDate), appointmentDate: appointmentInput(vc.appointmentDate),
     biometricsDate: dInput(vc.biometricsDate), expectedDecisionDate: dInput(vc.expectedDecisionDate),
     decisionDate: dInput(vc.decisionDate), visaValidityUntil: dInput(vc.visaValidityUntil),
     visaFee: String(vc.visaFee), serviceFee: String(vc.serviceFee), sellingPrice: String(vc.sellingPrice),
@@ -341,7 +355,7 @@ function EditCase({ vc, suppliers, canMoney, onClose }: { vc: VC; suppliers: { i
         onSubmit={async (e) => {
           e.preventDefault();
           setBusy(true);
-          const payload: Record<string, unknown> = { ...form, visaFee: Number(form.visaFee) || 0, serviceFee: Number(form.serviceFee) || 0, sellingPrice: Number(form.sellingPrice) || 0 };
+          const payload: Record<string, unknown> = { ...form, appointmentDate: form.appointmentDate === appointmentInput(vc.appointmentDate) ? vc.appointmentDate : appointmentValue(form.appointmentDate), visaFee: Number(form.visaFee) || 0, serviceFee: Number(form.serviceFee) || 0, sellingPrice: Number(form.sellingPrice) || 0 };
           // Without finance visibility the fee fields are hidden, so never send them back — the
           // masked zeros must not overwrite the real fees.
           if (!canMoney) { delete payload.visaFee; delete payload.serviceFee; delete payload.sellingPrice; }
@@ -353,19 +367,19 @@ function EditCase({ vc, suppliers, canMoney, onClose }: { vc: VC; suppliers: { i
             const d = await r.json().catch(() => ({}));
             if (r.ok) { onClose(); router.refresh(); } else setErr(d.error ?? "Could not save this case. Your edits are still here.");
           } catch {
-            setErr("Connection failed. Nothing was saved — please try again.");
+            setErr("Connection failed. Your edits are preserved; refresh separately to confirm whether they were saved before retrying.");
           } finally { setBusy(false); }
         }}
         className="space-y-4"
       >
         <h2 id="edit-case-title" className="text-lg font-semibold">Edit {vc.caseNo}</h2>
-        <p className="text-xs text-slate-500">All dates below are day-month-year (DD-MM-YYYY).</p>
+        <p className="text-xs text-slate-500">Appointment time is in Indian Standard Time (IST, UTC+05:30).</p>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Visa category"><input value={form.visaCategory} onChange={(e) => setForm({ ...form, visaCategory: e.target.value })} /></Field>
           <Field label="Travel date"><input type="date" value={form.travelDate} onChange={(e) => setForm({ ...form, travelDate: e.target.value })} /></Field>
           <Field label="Intended stay"><input value={form.intendedStay} onChange={(e) => setForm({ ...form, intendedStay: e.target.value })} /></Field>
           <Field label="Submission date"><input type="date" value={form.submissionDate} onChange={(e) => setForm({ ...form, submissionDate: e.target.value })} /></Field>
-          <Field label="Appointment date"><input type="date" value={form.appointmentDate} onChange={(e) => setForm({ ...form, appointmentDate: e.target.value })} /></Field>
+          <Field label="Appointment date & time (IST)"><input type="datetime-local" value={form.appointmentDate} onChange={(e) => setForm({ ...form, appointmentDate: e.target.value })} /></Field>
           <Field label="Biometrics date"><input type="date" value={form.biometricsDate} onChange={(e) => setForm({ ...form, biometricsDate: e.target.value })} /></Field>
           <Field label="Expected decision"><input type="date" value={form.expectedDecisionDate} onChange={(e) => setForm({ ...form, expectedDecisionDate: e.target.value })} /></Field>
           <Field label="Actual decision"><input type="date" value={form.decisionDate} onChange={(e) => setForm({ ...form, decisionDate: e.target.value })} /></Field>

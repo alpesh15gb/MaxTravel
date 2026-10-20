@@ -10,6 +10,8 @@ export async function POST(req: Request) {
     const b = await prisma.booking.findUnique({ where: { id: bookingId } });
     if (!b) throw new ApiError(404, "Booking not found");
     if(b.gdsSource==="TRIPJACK_API")throw new ApiError(409,"Online booking deadlines are managed by the supplier.");
+    if (["TICKETED", "REISSUED", "CANCELLED", "VOID", "REFUNDED"].includes(b.status)) throw new ApiError(400, "This booking is no longer awaiting ticketing; its deadline cannot be extended.");
+    if (!b.pnr) throw new ApiError(400, "Record the actual PNR before setting a ticketing deadline.");
     if (!canTouchRecord(user, b)) throw new ApiError(403, "Booking is outside your access.");
     if (!Number.isFinite(Number(hours)) || Number(hours) <= 0 || Number(hours) > 720) throw new ApiError(400, "Extension must be 1–720 hours.");
     const newDeadline = new Date(Math.max(Date.now(), b.ticketingDeadline?.getTime() ?? Date.now()) + Number(hours) * 3600000);

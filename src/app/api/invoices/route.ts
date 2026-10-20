@@ -17,12 +17,25 @@ export async function POST(req: Request) {
     const invoice = await prisma.$transaction(async tx => {
       const customer = await customerFor(tx, user, customerId);
       const bookingId = optionalId(b.bookingId); const visaCaseId = optionalId(b.visaCaseId);
-      const { booking } = await relatedFor(tx, user, customerId, bookingId, visaCaseId);
+      const { booking, visaCase } = await relatedFor(tx, user, customerId, bookingId, visaCaseId);
       if (booking?.gdsSource === "TRIPJACK_API") throw new ApiError(409,"Online booking money is managed by the booking platform.");
       // A withdrawn booking is no longer a demand. Billing it leaves an invoice that can never be
       // paid, sitting in receivables forever, for a trip that was cancelled or already refunded.
       if (booking && isWithdrawnBooking(booking.status)) {
-        throw new ApiError(400, "This booking is cancelled, void or refunded and is no longer a demand. Raise a refund, or invoice the customer's open work instead.");
+        throw new ApiError(400, "This booking is withdrawn. Reconcile existing travel invoices separately; collect any explicit cancellation charges directly against the booking.");
+      }
+      // Linked invoices describe parts of the existing work demand, not extra sales.
+      // Permit instalment invoices, but never issue more than the agreed selling price.
+      const work = booking ?? visaCase;
+      if (work) {
+        const issued = await tx.invoice.aggregate({
+          where: { ...(booking ? { bookingId: booking.id } : { visaCaseId: visaCase!.id }), status: { not: "CREDITED" } },
+          _sum: { amount: true },
+        });
+        const remainingMinor = Math.round(work.sellingPrice * 100) - Math.round((issued._sum.amount ?? 0) * 100);
+        if (Math.round(requestedAmount * 100) > remainingMinor) {
+          throw new ApiError(409, `Linked invoices cannot exceed this work's selling price. ${inrAmount(Math.max(0, remainingMinor) / 100)} remains available to invoice. Open the existing invoices rather than billing the same work again.`);
+        }
       }
       let amount = requestedAmount;
       let taxSnapshot: string | null = null;

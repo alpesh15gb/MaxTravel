@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { isWithdrawnBooking } from "./receivables";
+import { bookingCharge, hasCancellationAllocation, isWithdrawnBooking } from "./receivables";
 
 type Tx = Prisma.TransactionClient;
 type Position = { partyType:string; partyId:string; sourceType:string; sourceId:string; amountMinor:number; reference:string; description:string; dueDate?:Date|null };
@@ -27,7 +27,7 @@ export async function journalEntity(tx:Tx, entity:string, id:string, actorId:str
   } else if(entity==="Booking") {
     const b=await tx.booking.findUniqueOrThrow({where:{id}});
     if(b.currency!=="INR")return;
-    await postPosition(tx,{partyType:"CUSTOMER",partyId:b.customerId,sourceType:entity,sourceId:id,amountMinor:isWithdrawnBooking(b.status)?0:Math.round(b.sellingPrice*100),reference:b.bookingNo,description:`Booking charge / adjustment · ${b.status}${b.pnr?` · PNR ${b.pnr}`:""}`,dueDate:b.paymentDueDate},actorId);
+    await postPosition(tx,{partyType:"CUSTOMER",partyId:b.customerId,sourceType:entity,sourceId:id,amountMinor:Math.round(bookingCharge(b)*100),reference:b.bookingNo,description:`${isWithdrawnBooking(b.status) ? hasCancellationAllocation(b) ? `Cancellation charge · supplier ${b.cancellationSupplierCharge} + agency fee ${b.cancellationAgencyFee}` : "Withdrawn booking · legacy cancellation allocation unknown" : "Booking charge / adjustment"} · ${b.status}${b.pnr?` · PNR ${b.pnr}`:""}`,dueDate:b.paymentDueDate},actorId);
   } else if(entity==="VisaCase") {
     const c=await tx.visaCase.findUniqueOrThrow({where:{id}});
     await postPosition(tx,{partyType:"CUSTOMER",partyId:c.customerId,sourceType:entity,sourceId:id,amountMinor:Math.round(c.sellingPrice*100),reference:c.caseNo,description:`Visa charge / adjustment · ${c.destination}`,dueDate:c.paymentDueDate},actorId);

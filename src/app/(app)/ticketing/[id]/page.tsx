@@ -13,7 +13,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
   const b = await prisma.booking.findUnique({
     where: { id },
     include: {
-      customer: true,
+      customer: { include: { travellers: true } },
       supplier: true,
       owner: { select: { name: true } },
       branch: { select: { name: true } },
@@ -38,6 +38,9 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
         id: b.id, bookingNo: b.bookingNo,
         customer: { id: b.customer.id, name: b.customer.name, code: b.customer.code, phone: b.customer.phone },
         pnr: b.pnr, airline: b.airline, gdsSource: b.gdsSource, supplier: b.supplier?.name ?? null,
+        cancellationSupplierCharge: showMoney ? b.cancellationSupplierCharge : null,
+        cancellationAgencyFee: showMoney ? b.cancellationAgencyFee : null,
+        cancellationReason: b.cancellationReason,
         status: b.status, sector: b.sector, flightNo: b.flightNo,
         travelDate: b.travelDate?.toISOString() ?? null,
         bookingDate: b.bookingDate.toISOString(),
@@ -53,7 +56,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
             : bt.traveller.passportNumber ? "••••••" + (bt.traveller.passportNumber ?? "").slice(-4) : null,
         })),
         tickets: b.tickets.map((t) => ({
-          id: t.id, ticketNo: t.ticketNo, passenger: t.passenger,
+          id: t.id, travellerId: t.travellerId, ticketNo: t.ticketNo, passenger: t.passenger,
           issueDate: t.issueDate?.toISOString() ?? null, issuedBy: t.issuedBy,
           originalFare: showMoney ? t.originalFare : 0, status: t.status,
         })),
@@ -70,12 +73,15 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
         })),
         reissueOf: b.reissueOf ? { bookingNo: b.reissueOf.bookingNo, id: b.reissueOf.id, pnr: b.reissueOf.pnr } : null,
       }}
+      passengerOptions={b.customer.travellers.map(t => ({ id: t.id, fullName: t.fullName }))}
       suppliers={suppliers}
       perms={{
-        edit: can(user.permissions, "ticketing:edit"),
-        record: can(user.permissions, "payment:record"),
+        audit: can(user.permissions, "audit:view"),
+        edit: b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "ticketing:edit"),
+        record: b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "payment:record"),
+        invoice: b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "invoice:create"),
         send: can(user.permissions, "whatsapp:send"),
-        reissue: can(user.permissions, "reissue:manage") || can(user.permissions, "ticketing:edit"),
+        reissue: b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "reissue:manage"),
         money: showMoney,
         // Cancelling a sale that still holds customer money raises a refund, so it needs refund:manage.
         refund: can(user.permissions, "refund:manage"),

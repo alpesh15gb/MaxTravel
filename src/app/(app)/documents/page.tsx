@@ -9,20 +9,22 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   const user = await requirePage("document:view");
   const { focus } = await searchParams;
 
-  const documents = await prisma.document.findMany({
-    where: { customer: { is: scopeWhere(user, null, undefined, "assignedToId") } },
-    include: {
-      customer: { select: { name: true, code: true } },
-      traveller: { select: { fullName: true } },
-      visaCase: { select: { caseNo: true, id: true } },
-      verifiedBy: { select: { name: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 400,
-  });
+  const where = { customer: { is: scopeWhere(user, null, undefined, "assignedToId") } };
+  const include = {
+    customer: { select: { name: true, code: true } },
+    traveller: { select: { fullName: true } },
+    visaCase: { select: { caseNo: true, id: true } },
+    verifiedBy: { select: { name: true } },
+  } as const;
+  const [documents, focusedDocument] = await Promise.all([
+    prisma.document.findMany({ where, include, orderBy: { createdAt: "desc" }, take: 400 }),
+    focus ? prisma.document.findFirst({ where: { AND: [where, { id: focus }] }, include }) : Promise.resolve(null),
+  ]);
+  if (focusedDocument && !documents.some(document => document.id === focusedDocument.id)) documents.unshift(focusedDocument);
 
   return (
     <DocumentsClient
+      canAudit={user.permissions.includes("audit:view")}
       documents={documents.map((d) => ({
         id: d.id, docNo: d.docNo, docType: d.docType, status: d.status,
         customer: d.customer.name, customerId: d.customerId, customerCode: d.customer.code,

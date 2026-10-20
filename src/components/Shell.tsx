@@ -56,7 +56,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
   const quickRef = useRef<HTMLDivElement>(null); const userRef = useRef<HTMLDivElement>(null);
   const closeQuick = () => setQuickOpen(false); const closeUser = () => setUserOpen(false);
   useDismiss(quickRef, quickOpen, closeQuick); useDismiss(userRef, userOpen, closeUser);
-  useEffect(() => { let alive = true; fetch("/api/notifications").then(r => r.ok ? r.json() : null).then(d => { if (alive && d?.notifications) setCount(d.notifications.filter((n: { read: boolean }) => !n.read).length); }).catch(() => setCount(0)); return () => { alive = false; }; }, [path]);
+  useEffect(() => { let alive = true; const refresh = () => { fetch("/api/notifications").then(r => r.ok ? r.json() : null).then(d => { if (alive && d?.notifications) setCount(d.notifications.filter((n: { read: boolean }) => !n.read).length); }).catch(() => { if(alive)setCount(0); }); }; refresh(); window.addEventListener("notifications:changed", refresh); return () => { alive = false; window.removeEventListener("notifications:changed", refresh); }; }, [path]);
   useEffect(() => {
     if (!mobile && !pwOpen && !quickOpen && !userOpen) return;
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { setMobile(false); setPwOpen(false); setQuickOpen(false); setUserOpen(false); } };

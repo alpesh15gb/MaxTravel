@@ -22,7 +22,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
   }), canManage ? prisma.booking.findMany({ where: { supplierId: { not: null }, gdsSource: { not: "TRIPJACK_API" }, ...scopeWhere(user, "branchId", "ownerId") }, select: { id: true, bookingNo: true, product: true, supplierId: true, sector: true, hotelName: true, customer: { select: { name: true } } }, orderBy: { bookingDate: "desc" }, take: 300 }) : Promise.resolve([])]);
 
   return (
-    <SuppliersClient
+    <SuppliersClient canViewBookings={user.permissions.includes("ticketing:view")}
       suppliers={suppliers.map((s) => ({
         id: s.id, name: s.name, type: s.type, phone: s.phone, city: s.city,
         paymentDueDays: s.paymentDueDays,

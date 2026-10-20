@@ -30,6 +30,8 @@ async function run(){
  const legacyDue={id:"reporting-legacy-supplier-due"};
  await prisma.$executeRaw`INSERT INTO "SupplierDue" ("id","supplierId","description","amount","paidAmount","dueDate","paid","paidOn","createdAt") VALUES (${legacyDue.id},${supplier.id},'Ticket bill',100,20,${new Date("2026-01-01")},0,NULL,${new Date("2026-01-01")})`;
  execFileSync(process.execPath,[cli,"migrate","deploy"],{env:process.env,stdio:"pipe"});
+ // Normalize the raw legacy fixture date through Prisma (SQLite SQL defaults store text).
+ await prisma.booking.update({where:{id:booking.id},data:{bookingDate:new Date()}});
  const due=await prisma.supplierDue.findUniqueOrThrow({where:{id:legacyDue.id}});
  const {journalEntity}=await import("../src/lib/financial-journal");const {buildAccountReport}=await import("../src/lib/account-reports");
  const {accountCsv,accountWorkbook,accountPdf}=await import("../src/lib/report-export");
@@ -77,9 +79,60 @@ async function run(){
  check("CSV neutralizes formula-like text",()=>assert(accountCsv(hostile).includes("'=HYPERLINK")));
  const xlsx=await accountWorkbook(full);const {default:ExcelJS}=await import("exceljs");const workbook=new ExcelJS.Workbook();await workbook.xlsx.load(xlsx as never);check("Excel contains all movements as numeric amounts",()=>{assert.equal(workbook.getWorksheet("Transactions")!.rowCount,full.rows.length+1);assert.equal(typeof workbook.getWorksheet("Transactions")!.getCell("D2").value,"number");});
  const pdf=await accountPdf(full);writeFileSync(path.join(runtime,"customer-statement.pdf"),pdf);writeFileSync(path.join(runtime,"customer-statement.xlsx"),xlsx);writeFileSync(path.join(runtime,"statement.json"),JSON.stringify(full,null,2));check("PDF export produces a real PDF",()=>assert.equal(pdf.subarray(0,4).toString(),"%PDF"));
- const sales=await report("sales");check("Withdrawn booking is excluded from current sales",()=>assert(!sales.rows.some(row=>row.reference==="BK-RP")));
+ const sales=await report("sales");check("Legacy withdrawn booking is flagged without invented margin",()=>{const row=sales.rows.find(row=>row.reference==="BK-RP");assert(row);assert.equal(row.sales,null);assert.equal(row.margin,null);assert.match(String(row.coverage),/unknown/);});
  await prisma.$transaction(async tx=>{const i=await tx.invoice.create({data:{invoiceNo:"INV-LARGE",customerId:customer.id,amount:30000000}});await journalEntity(tx,"Invoice",i.id,owner.id);});
  const large=await statement();check("Journal supports more than 32-bit paise",()=>assert.equal(value(large,"Closing balance"),29999899.4));
+ // Dedicated scoped account keeps overview assertions independent of legacy fixture amounts.
+ const analyst=await prisma.user.create({data:{name:"Report analyst",email:"analyst@example.test",phone:"9000000002",passwordHash:"unused-test-hash",employeeCode:"EMP-RA",roleId:role.id,branchId:branch.id}});
+ const scoped={...user,id:analyst.id,accessMode:"ASSIGNED"} as SessionUser;
+ const account=await prisma.customer.create({data:{name:"Scoped report account",code:"C-RA",phone:"9000000003",city:"Pune",branchId:branch.id,assignedToId:analyst.id}});
+ const createBooking=async(bookingNo:string,status:string,sellingPrice:number,supplierCost:number,currency="INR")=>prisma.$transaction(async tx=>{const b=await tx.booking.create({data:{bookingNo,customerId:account.id,ownerId:analyst.id,branchId:branch.id,status,sellingPrice,supplierCost,currency}});await journalEntity(tx,"Booking",b.id,analyst.id);return b;});
+ const confirmed=await createBooking("BK-CONFIRMED","PNR_CREATED",200,120);
+ const quote=await createBooking("BK-QUOTE","QUOTE_SENT",100,50);
+ const fx=await createBooking("BK-USD","PNR_CREATED",900,500,"USD");
+ await prisma.$transaction(async tx=>{
+  for(const [receiptNo,bookingId,amount] of [["RCP-INR",confirmed.id,40],["RCP-USD",fx.id,400],["RCP-ADV",null,15]] as const){const p=await tx.payment.create({data:{receiptNo,customerId:account.id,bookingId,amount}});await journalEntity(tx,"Payment",p.id,analyst.id);}
+  const r=await tx.refund.create({data:{refundNo:"RF-USD",customerId:account.id,bookingId:fx.id,amount:100,status:"PAID",paidOn:new Date()}});await journalEntity(tx,"Refund",r.id,analyst.id);
+  const i=await tx.invoice.create({data:{invoiceNo:"INV-CREDITED",customerId:account.id,amount:70,status:"CREDITED"}});await journalEntity(tx,"Invoice",i.id,analyst.id);
+  const cn=await tx.invoiceCreditNote.create({data:{creditNoteNo:"CN-REPORT",invoiceId:i.id,amount:70,reason:"Fixture full credit"}});await journalEntity(tx,"InvoiceCreditNote",cn.id,analyst.id);
+ });
+ const {buildReport,reportPeriod}=await import("../src/lib/reports");
+ const overview=await buildReport(scoped,new URLSearchParams({from:today,to:today}));
+ check("Overview excludes foreign currency cash but includes INR advances",()=>{assert.equal(overview.collected,55);assert.equal(overview.returned,0);assert.equal(overview.netCollections,55);});
+ check("Overview excludes credited invoices and quote margin",()=>{assert.equal(overview.sales,300);assert.equal(overview.margin,80);assert.equal(overview.receivables.total,260);});
+ check("Overview trend reconciles to headline totals",()=>{assert.equal(overview.trend.reduce((n,r)=>n+r.sales,0),overview.sales);assert.equal(overview.trend.reduce((n,r)=>n+r.collections,0),overview.collected);});
+ const scopedReport=(report:string,extra:Record<string,string>={})=>buildAccountReport(scoped,new URLSearchParams({report,from:today,to:today,...extra}));
+ const scopedSales=await scopedReport("sales");
+ check("Quote rows never display earned margin",()=>{assert.equal(scopedSales.rows.find(r=>r.reference===quote.bookingNo)?.margin,null);assert.equal(value(scopedSales,"Costed confirmed booking margin"),80);});
+ const filtered=await scopedReport("sales",{ownerId:analyst.id,status:"PNR_CREATED"});
+ check("Staff and status filters apply before totals and pagination",()=>{assert.equal(filtered.totalRows,1);assert.equal(value(filtered,"Confirmed booking value"),200);assert.equal(value(filtered,"Quoted / enquiry value"),0);assert.equal(filtered.rows[0]._href,`/ticketing/${confirmed.id}`);});
+ const noAccess=await scopedReport("operations",{ownerId:owner.id});check("Staff filter cannot expand record scope",()=>assert.equal(noAccess.totalRows,0));
+ const receiptRegister=await scopedReport("receipts");check("Receipt register reconciles overview and provides source links",()=>{assert.equal(value(receiptRegister,"Receipts"),overview.collected);assert(receiptRegister.rows.every(r=>r._href));});
+ const scopedAgeing=await scopedReport("ageing");check("Ageing shows advance credit separately without netting other obligations",()=>{assert.equal(value(scopedAgeing,"Total open obligations"),260);assert.equal(value(scopedAgeing,"Credits / unapplied receipts"),15);});
+ const scopedStatement=await scopedReport("statement",{customerId:account.id});check("Statement closing equals open obligations less disclosed credits",()=>assert.equal(value(scopedStatement,"Closing balance"),245));
+ check("India report days include full end day",()=>{const p=reportPeriod(new URLSearchParams({from:"2026-10-01",to:"2026-10-01"}));assert.equal(p.start.toISOString(),"2026-09-30T18:30:00.000Z");assert.equal(p.end.toISOString(),"2026-10-01T18:30:00.000Z");});
+ check("Impossible report dates are rejected",()=>assert.throws(()=>reportPeriod(new URLSearchParams({from:"2026-02-30",to:"2026-03-01"})),/valid report dates/));
+ const visaStage=await prisma.visaStage.create({data:{key:"REPORT_TEST_REVIEW",name:"Report review"}});
+ const visa=await prisma.$transaction(async tx=>{const c=await tx.visaCase.create({data:{caseNo:"VC-REPORT",customerId:account.id,ownerId:analyst.id,branchId:branch.id,stageId:visaStage.id,visaType:"Tourist",destination:"France",sellingPrice:60,amountReceived:10}});await journalEntity(tx,"VisaCase",c.id,analyst.id);const p=await tx.payment.create({data:{receiptNo:"RCP-VISA",customerId:account.id,visaCaseId:c.id,amount:10}});await journalEntity(tx,"Payment",p.id,analyst.id);return c;});
+ const visaOnly=await scopedReport("sales",{status:visaStage.name,ownerId:analyst.id});check("Visa stage filter retains source value without invented cost or profit",()=>{assert.equal(visaOnly.totalRows,1);assert.equal(value(visaOnly,"Visa work value"),60);assert.equal(value(visaOnly,"Costed confirmed booking margin"),0);assert.equal(visaOnly.rows[0].margin,null);assert.equal(visaOnly.rows[0]._href,`/visa/${visa.id}`);});
+ const withVisa=await buildReport(scoped,new URLSearchParams({from:today,to:today}));check("Visa receipts and source charges reconcile overview to journal ageing",()=>{assert.equal(withVisa.sales,360);assert.equal(withVisa.collected,65);assert.equal(withVisa.receivables.total,310);});
+ const visaAgeing=await scopedReport("ageing");const visaStatement=await scopedReport("statement",{customerId:account.id});check("Visa account closing reconciles with unapplied advances",()=>{assert.equal(value(visaAgeing,"Total open obligations"),310);assert.equal(value(visaStatement,"Closing balance"),295);});
+ const cancellation=await createBooking("BK-CANCEL-OLD","PNR_CREATED",1000,800);
+ await prisma.$transaction(async tx=>{await tx.booking.update({where:{id:cancellation.id},data:{bookingDate:new Date(`${yesterday}T00:00:00+05:30`),status:"CANCELLED",cancellationSupplierCharge:100,cancellationAgencyFee:50,cancellationReason:"Customer cancellation",cancelledAt:new Date()}});await journalEntity(tx,"Booking",cancellation.id,analyst.id);const p=await tx.payment.create({data:{receiptNo:"RCP-CANCEL",customerId:account.id,bookingId:cancellation.id,amount:1000}});await journalEntity(tx,"Payment",p.id,analyst.id);});
+ const beforeRefund=await scopedReport("cancellations");check("Cancellation-date register discovers older bookings cancelled today",()=>{assert.equal(beforeRefund.totalRows,1);assert.equal(beforeRefund.rows[0].booked,yesterday);assert.equal(beforeRefund.rows[0].gross,150);assert.equal(beforeRefund.rows[0].cost,100);assert.equal(beforeRefund.rows[0].fee,50);assert.equal(beforeRefund.rows[0].balance,-850);});
+ const pendingCancellationRefund=await prisma.$transaction(async tx=>{const r=await tx.refund.create({data:{refundNo:"RF-CANCEL",customerId:account.id,bookingId:cancellation.id,amount:850,status:"APPROVED"}});await journalEntity(tx,"Refund",r.id,analyst.id);return r;});
+ const pendingRegister=await scopedReport("cancellations");check("Pending cancellation refund never counts as returned cash",()=>{assert.equal(pendingRegister.rows[0].returned,0);assert.equal(pendingRegister.rows[0].netCash,1000);});
+ await prisma.$transaction(async tx=>{await tx.refund.update({where:{id:pendingCancellationRefund.id},data:{status:"PAID",paidOn:new Date()}});await journalEntity(tx,"Refund",pendingCancellationRefund.id,analyst.id);});
+ const paidRegister=await scopedReport("cancellations");check("Cancellation split separates supplier penalty, agency margin and cash",()=>{assert.equal(paidRegister.rows[0].returned,850);assert.equal(paidRegister.rows[0].netCash,150);assert.equal(paidRegister.rows[0].balance,0);assert.equal(value(paidRegister,"Recorded agency fee margin"),50);});
+ const datedSales=await scopedReport("sales");check("Booking-date sales and cancellation-event reports keep distinct bases",()=>assert(!datedSales.rows.some(r=>r.reference===cancellation.bookingNo)));
+ const allSales=await scopedReport("sales",{from:yesterday});check("Sales cohort uses cancellation charge not original fare or inflated margin",()=>{const row=allSales.rows.find(r=>r.reference===cancellation.bookingNo)!;assert.equal(row.sales,150);assert.equal(row.cost,100);assert.equal(row.margin,50);});
+ const cancelledOverview=await buildReport(scoped,new URLSearchParams({from:yesterday,to:today}));check("Overview cancellation sales and fee margin reconcile to work register",()=>{assert.equal(cancelledOverview.sales,510);assert.equal(cancelledOverview.margin,130);assert.equal(cancelledOverview.receivables.total,310);});
+ const cancellationStatement=await scopedReport("statement",{customerId:account.id});check("Cancellation journal balance reconciles after paid refund",()=>assert.equal(value(cancellationStatement,"Closing balance"),295));
+ const unpaidCancellation=await createBooking("BK-CANCEL-UNPAID","PNR_CREATED",300,250);
+ await prisma.$transaction(async tx=>{await tx.booking.update({where:{id:unpaidCancellation.id},data:{status:"CANCELLED",cancellationSupplierCharge:20,cancellationAgencyFee:5,cancelledAt:new Date()}});await journalEntity(tx,"Booking",unpaidCancellation.id,analyst.id);});
+ const unpaidOverview=await buildReport(scoped,new URLSearchParams({from:today,to:today}));check("Unpaid cancellation charges remain collectible instead of disappearing",()=>{assert.equal(unpaidOverview.outstanding.find(r=>r.reference===unpaidCancellation.bookingNo)?.amount,25);assert.equal(unpaidOverview.receivables.total,335);});
+ await prisma.$transaction(async tx=>{const b=await tx.booking.create({data:{bookingNo:"BK-SHARED",customerId:account.id,ownerId:owner.id,branchId:branch.id,status:"PNR_CREATED",sellingPrice:500}});await journalEntity(tx,"Booking",b.id,owner.id);});
+ const sharedOverview=await buildReport(scoped,new URLSearchParams({from:today,to:today}));check("Shared customer cannot expose another owner's work or cash",()=>{assert.equal(sharedOverview.collected,0);assert.equal(sharedOverview.sales,0);assert.equal(sharedOverview.receivables.total,0);});
  execFileSync(process.execPath,["scripts/reconcile-reporting.mjs"],{env:process.env,stdio:"pipe"});passed++;console.log("✓ All journal sources reconcile after mutations");
  console.log(`${passed} reporting checks passed. Artifacts: ${runtime}`);await prisma.$disconnect();
 }
