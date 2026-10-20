@@ -1,6 +1,6 @@
 {
-  "verifiedAt": "2026-10-18T08:14:12.223Z",
-  "passed": 199,
+  "verifiedAt": "2026-10-20T19:44:43.917Z",
+  "passed": 200,
   "checks": [
     "Fresh root routes to one-time setup",
     "Setup has no prefilled accounts or demo credentials",
@@ -119,7 +119,8 @@
     "A part-paid standalone invoice counts only its remaining balance",
     "A work-linked invoice is not counted twice",
     "Money page shows the same receivables total as the dashboard",
-    "A refund covering every receipt withdraws the sale",
+    "Returning every receipt does not implicitly cancel the sale",
+    "Cash refund alone preserves the agreed customer demand",
     "A withdrawn booking drops out of receivables",
     "Receipts cannot be allocated to a withdrawn booking",
     "A sale cannot be marked refunded by hand",

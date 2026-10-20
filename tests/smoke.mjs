@@ -365,6 +365,8 @@ async function run() {
   const execSession = await login("visaexec@example.test");
   const approvedStage = await prisma.visaStage.findUniqueOrThrow({ where: { key: "APPROVED" } });
   const earlyStage = await prisma.visaStage.findFirstOrThrow({ where: { key: "ASSESSMENT" } });
+  const exemptChecklist = await prisma.checklist.create({ data: { country: "Regression destination", visaType: "Visitor", applicantType: "EXEMPT" } });
+  await ok("/api/visa/requirements", { caseId: case2.caseId, travellerId: aliceTraveller.id, checklistId: exemptChecklist.id }, owner.cookie);
   await ok(`/api/visa/cases/${case2.caseId}/stage`, { stageId: approvedStage.id }, owner.cookie);
   const outcomeBefore = await caseOutcome(case2.caseId);
   check("A recorded decision is written to the case", () => assert.equal(outcomeBefore, "APPROVED"));
