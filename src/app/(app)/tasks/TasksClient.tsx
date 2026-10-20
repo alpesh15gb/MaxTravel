@@ -49,7 +49,9 @@ export default function TasksClient({ tasks, focus, canEdit, canExport, canCreat
   const router = useRouter();
   const [tab, setTab] = useState<Tab>(() => {
     const focused = tasks.find(t => t.id === focus);
-    return focused ? isOpen(focused) ? "OPEN" : "DONE" : "TODAY";
+    if (focused) return isOpen(focused) ? "OPEN" : "DONE";
+    const endToday = endOfAgencyDay();
+    return tasks.some(t => isOpen(t) && t.dueAt && new Date(t.dueAt) <= endToday) ? "TODAY" : "OPEN";
   });
   const [query, setQuery] = useState("");
   const [show, setShow] = useState(false);

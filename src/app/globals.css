@@ -410,3 +410,8 @@ main>div { animation:page-in .22s ease-out; }
 .customer-directory-table th,.customer-directory-table td { overflow-wrap:anywhere; }
 .customer-directory-table th:first-child { width:24%; }
 .customer-directory-table th:nth-child(2) { width:22%; }
+
+/* Make the card's separate record and contact actions reliable touch targets. */
+.customer-mobile-cards .board-card-title { display:flex; align-items:center; min-height:44px; }
+.customer-mobile-cards a[href^="tel:"] { display:inline-flex; align-items:center; min-height:44px; }
+.attention-row > div:first-child > a { display:flex; align-items:center; min-height:32px; }

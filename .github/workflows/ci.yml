@@ -129,6 +129,9 @@ jobs:
         run: npm run build
       - name: Run the test chain
         run: npm test
+      - name: Collect UI diagnostics after a failed test chain
+        if: failure()
+        run: node tests/ui-metrics.mjs
       - name: Upload the test evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -113,7 +113,7 @@ export default function CustomersClient({ customers, canCreate, canExport }: { c
     </div>}
 
     {view === "list" && visible.length > 0 && <div className="panel overflow-hidden">
-      <div className="grid gap-3 bg-slate-50 p-3 sm:grid-cols-2 xl:hidden">{visible.slice(0, listShown).map(renderCard)}</div>
+      <div className="customer-mobile-cards grid gap-3 bg-slate-50 p-3 sm:grid-cols-2 xl:hidden">{visible.slice(0, listShown).map(renderCard)}</div>
       <div className="hidden xl:block">
       <table className="customer-directory-table text-sm">
         <thead><tr>{["Customer", "Contact", "City", "Type", "Relationship manager", "Status"].map(t => <th key={t} className="px-5">{t}</th>)}</tr></thead>
