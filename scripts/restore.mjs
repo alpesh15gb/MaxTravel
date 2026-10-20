@@ -257,6 +257,23 @@ async function run() {
   const backupUploads = path.join(backupDir, "uploads");
   const hasUploads = manifest?.uploads?.present === true && (await pathExists(backupUploads));
 
+  // Validate the full source before --force can replace any existing destination data.
+  // Post-copy verification remains necessary to catch copy failures or concurrent changes.
+  if (manifest?.uploads?.present === true && !hasUploads) {
+    throw fail("Manifest records uploaded documents but the backup has no uploads directory; target was not modified.");
+  }
+  if (hasUploads) {
+    const tree = await hashTree(backupUploads);
+    const expected = manifest.uploads;
+    if (tree.symlinks ||
+        (typeof expected.fileCount === "number" && tree.fileCount !== expected.fileCount) ||
+        (typeof expected.totalBytes === "number" && tree.totalBytes !== expected.totalBytes) ||
+        (expected.digest && tree.digest !== expected.digest) ||
+        (Array.isArray(expected.files) && diffFiles(expected.files, tree.files).length)) {
+      throw fail("Backed-up uploaded document tree does not match the manifest (or contains symbolic links); target was not modified.");
+    }
+  }
+
   await fs.mkdir(targetDir, { recursive: true });
   const conflicts = await existingDatabaseNames(targetDir);
   if (conflicts.length && !flags.force) {

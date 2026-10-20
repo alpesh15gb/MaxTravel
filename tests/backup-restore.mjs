@@ -29,7 +29,27 @@ try {
   await assert.rejects(fs.lstat(path.join(backup,'uploads/external-link')));
   const target = path.join(temp,'restore');
   assert.match(run(['scripts/restore.mjs','--in',backup,'--out',target]),/Restore verified/);
+  // Make destination distinct so a premature replacement cannot pass preservation checks.
+  await fs.appendFile(path.join(target,'fixture.db'),'destination sentinel');
+  await fs.writeFile(path.join(target,'uploads/target-only.txt'),'preserve this file');
   const before = await fs.readFile(path.join(target,'fixture.db'));
+  const originalUpload = await fs.readFile(path.join(backup,'uploads/document.txt'));
+  for (const damage of ['changed','missing','extra','symlink','missing-directory']) {
+    const sourceUploads=path.join(backup,'uploads');
+    if(damage==='changed')await fs.writeFile(path.join(sourceUploads,'document.txt'),Buffer.alloc(originalUpload.length,65));
+    if(damage==='missing')await fs.rm(path.join(sourceUploads,'document.txt'));
+    if(damage==='extra')await fs.writeFile(path.join(sourceUploads,'unexpected.txt'),'extra');
+    if(damage==='symlink')await fs.symlink(database,path.join(sourceUploads,'unsafe-link'));
+    if(damage==='missing-directory')await fs.rename(sourceUploads,sourceUploads+'-hidden');
+    assert.throws(()=>run(['scripts/restore.mjs','--in',backup,'--out',target,'--force']),e=>String(e.stderr).includes('target was not modified'));
+    assert.deepEqual(await fs.readFile(path.join(target,'fixture.db')),before,'Damaged uploads must preserve destination database');
+    assert.deepEqual(await fs.readFile(path.join(target,'uploads/document.txt')),originalUpload);
+    assert.equal(await fs.readFile(path.join(target,'uploads/target-only.txt'),'utf8'),'preserve this file');
+    if(damage==='missing-directory')await fs.rename(sourceUploads+'-hidden',sourceUploads);
+    await fs.writeFile(path.join(sourceUploads,'document.txt'),originalUpload);
+    await fs.rm(path.join(sourceUploads,'unexpected.txt'),{force:true});
+    await fs.rm(path.join(sourceUploads,'unsafe-link'),{force:true});
+  }
   for(const suffix of ['-wal','-shm','-journal']) {
     await fs.writeFile(path.join(target,'fixture.db'+suffix),'fixture recovery file');
     assert.throws(()=>run(['scripts/restore.mjs','--in',backup,'--out',target,'--force']),e=>String(e.stderr).includes('SQLite recovery files'));
@@ -40,5 +60,5 @@ try {
   const corrupt=await fs.readFile(source); corrupt[100]^=1; await fs.writeFile(source,corrupt);
   assert.throws(()=>run(['scripts/restore.mjs','--in',backup,'--out',target,'--force']),e=>String(e.stderr).includes('checksum'));
   assert.deepEqual(await fs.readFile(path.join(target,'fixture.db')),before,'Damaged backup must not overwrite target');
-  console.log('PASS backup snapshot counts, copied upload hashes, symlink exclusion, verified restore, sidecar rejection, corrupt-source preservation.');
+  console.log('PASS backup snapshot counts, copied upload hashes, symlink exclusion, verified restore, sidecar rejection, corrupt database/upload-source preservation.');
 } finally { await db?.$disconnect(); await fs.rm(temp,{recursive:true,force:true}); }

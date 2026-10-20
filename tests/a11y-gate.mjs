@@ -97,6 +97,7 @@ function stopTree(child) {
 }
 
 async function startWorkspace() {
+  fs.mkdirSync(path.dirname(path.resolve(logPath)), { recursive: true });
   const port = await freePort(Number(process.env.REVIEW_PORT ?? 3325));
   // Both the log and the fixture metadata outlive a run, so clear them first. Polling a stale
   // "VISUAL REVIEW READY" line once made the gate audit a server that had not started listening

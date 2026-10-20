@@ -96,6 +96,7 @@ function stopTree(child) {
 }
 
 async function startWorkspace() {
+  fs.mkdirSync(path.dirname(path.resolve(logPath)), { recursive: true });
   const port = await freePort(Number(process.env.METRICS_PORT ?? 3345));
   // Both the log and the fixture outlive a run, so clear them first: a stale "ready" line once made a
   // gate audit a server that had not started listening yet.
