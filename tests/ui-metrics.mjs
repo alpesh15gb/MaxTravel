@@ -333,7 +333,6 @@ try {
   await phone.close();
 
   const density = await measureDensity(page, base);
-  await context.close();
 
   // ---- thresholds
   const agg = rows.filter(r => !r.error);
@@ -384,6 +383,7 @@ try {
   if (density.restored !== density.comfortable) fail(`switching back to comfortable did not restore ${density.comfortable}px rows (got ${density.restored}px)`);
 
   await checkStaffHandoffs(page, base, fixture);
+  await context.close();
 
   // ---- report
   const pad = (s, n) => String(s ?? "").padEnd(n);

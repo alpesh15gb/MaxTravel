@@ -70,7 +70,7 @@ export async function checkStaffHandoffs(page, base, fixture) {
     assert.equal((await db.refund.findUniqueOrThrow({ where: { id: refund.id } })).status, "PAID");
     console.log("Staff handoffs passed: customer task/document links, reason-preserving document rejection, receipt result context.");
   } finally {
-    await page.unroute("**/api/documents/verify");
+    await page.unroute("**/api/documents/verify").catch(() => {});
     if (refund) await db.refund.delete({ where: { id: refund.id } });
     if (original) await db.document.update({ where: { id: original.id }, data: { status: original.status, storagePath: original.storagePath, rejectionReason: original.rejectionReason, verificationStatus: original.verificationStatus, verifiedById: original.verifiedById, verifiedAt: original.verifiedAt } });
     await db.$disconnect();

@@ -126,10 +126,12 @@ jobs:
       - name: Install the Chromium the audit drives
         run: npx playwright install --with-deps chromium
       - name: Build for the audit
+        id: audit_build
         run: npm run build
       - name: Run the test chain
         run: npm test
       - name: Verify complete agency journeys
+        if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         run: npm run test:journeys
       - name: Collect UI diagnostics after a failed test chain
         if: failure()
