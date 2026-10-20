@@ -1,3 +1,4 @@
+import { isReservedBookingSource } from "@/lib/booking-policy";
 import { requireSession, jsonError, ApiError, canTouchRecord } from "@/lib/guard";
 import { prisma } from "@/lib/db";
 import { optionalId, money, date, transactionAudit } from "@/lib/transactions";
@@ -5,6 +6,7 @@ import { isWithdrawnBooking } from "@/lib/receivables";
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireSession("ticketing:edit"); const { id } = await ctx.params; const b = await req.json();
+    if (isReservedBookingSource(b.gdsSource)) throw new ApiError(400, "Online booking sources can only be set by the booking integration.");
     await prisma.$transaction(async tx => {
       const current = await tx.booking.findUnique({ where: { id }, include: { tickets: true, payments: true, Invoice: true } });
       if (!current) throw new ApiError(404, "Booking not found.");

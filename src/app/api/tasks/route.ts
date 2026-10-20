@@ -1,4 +1,4 @@
-import { requireSession, jsonError, ApiError } from "@/lib/guard";
+import { requireSession, jsonError, ApiError, scopeWhere } from "@/lib/guard";
 import { prisma } from "@/lib/db";
 import { customerFor, relatedFor, optionalId, date, transactionAudit } from "@/lib/transactions";
 
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const task = await prisma.$transaction(async tx => {
       const ownerId = optionalId(b.ownerId) ?? user.id;
       const owner = await tx.user.findUnique({ where: { id: ownerId } });
-      if (!owner?.active || (user.accessMode === "ASSIGNED" && ownerId !== user.id) || (user.accessMode === "BRANCH" && owner.branchId !== user.branchId)) throw new ApiError(403, "Select an active task owner within your access.");
+      if (!owner?.active || (user.accessMode === "ASSIGNED" && ownerId !== user.id) || (user.accessMode === "BRANCH" && (!user.branchId || owner.branchId !== user.branchId))) throw new ApiError(403, "Select an active task owner within your access.");
       let customerId = optionalId(b.customerId);
       const bookingId = optionalId(b.bookingId), visaCaseId = optionalId(b.visaCaseId);
       if (!customerId && bookingId) customerId = (await tx.booking.findUnique({ where: { id: bookingId } }))?.customerId ?? null;
@@ -36,9 +36,7 @@ export async function GET(req: Request) {
   try {
     const user = await requireSession("task:view");
     const sp = new URL(req.url).searchParams;
-    const where: Record<string, unknown> = {};
-    if (user.accessMode === "BRANCH") where.branchId = user.branchId;
-    if (user.accessMode === "ASSIGNED") where.OR = [{ ownerId: user.id }, { creatorId: user.id }];
+    const where: Record<string, unknown> = scopeWhere(user, null, "ownerId", "creatorId");
     if (sp.get("status")) where.status = sp.get("status");
     const tasks = await prisma.task.findMany({
       where, orderBy: [{ dueAt: "asc" }, { createdAt: "desc" }],

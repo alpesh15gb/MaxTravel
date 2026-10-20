@@ -19,7 +19,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       const ownerId = optionalId(b.ownerId) ?? current.ownerId;
       if (ownerId !== current.ownerId) {
         const owner = await tx.user.findUnique({ where: { id: ownerId } });
-        if (!owner?.active || (user.accessMode === "ASSIGNED" && ownerId !== user.id) || (user.accessMode === "BRANCH" && owner.branchId !== user.branchId)) throw new ApiError(403, "Choose an active task owner within your access.");
+        if (!owner?.active || (user.accessMode === "ASSIGNED" && ownerId !== user.id) || (user.accessMode === "BRANCH" && (!user.branchId || owner.branchId !== user.branchId))) throw new ApiError(403, "Choose an active task owner within your access.");
       }
       await tx.task.update({ where: { id }, data: { title, priority, ownerId, details: b.details === undefined ? current.details : optionalId(b.details), dueAt: b.dueAt === undefined ? current.dueAt : date(b.dueAt, "Due date") } });
       await transactionAudit(tx, user, "EDIT", "Task", id, title);

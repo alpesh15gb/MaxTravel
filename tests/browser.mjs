@@ -43,3 +43,12 @@ async function load() {
 const playwright = await load();
 export const chromium = playwright.chromium ?? playwright.default?.chromium;
 if (!chromium) throw new Error("Playwright loaded but exported no chromium browser.");
+// Offline review hosts may supply a managed Chromium installation. CI keeps using
+// Playwright's pinned browser unless this explicit override is provided.
+if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
+  const launch = chromium.launch.bind(chromium);
+  chromium.launch = options => launch({
+    ...options,
+    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+  });
+}

@@ -27,7 +27,7 @@ export default function RecordEditor({ title, endpoint, values, fields, buttonLa
     setBusy(true);
     setError("");
     try {
-      const r = await fetch(endpoint, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const r = await fetch(endpoint, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(Object.entries(form).map(([key, value]) => [key, fields.some(f => f.key === key && f.type === "datetime-local") && value ? new Date(String(value)).toISOString() : value]))) });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { setError(body.error ?? "Could not save."); return; }
       setOpen(false);
@@ -42,12 +42,12 @@ export default function RecordEditor({ title, endpoint, values, fields, buttonLa
       <form onSubmit={save} className="space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-xl font-semibold">{title}</h2>
-          <button type="button" className="icon-button" aria-label="Close" onClick={() => setOpen(false)}>×</button>
+          <button type="button" className="icon-button" aria-label="Close" disabled={busy} onClick={() => setOpen(false)}>×</button>
         </div>
-        {fields.map(f => <Field key={f.key} label={f.label}>{f.type === "select" ? <select required={f.required} value={String(form[f.key] ?? "")} onChange={e => setForm({ ...form, [f.key]: e.target.value })}>{f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select> : f.type === "textarea" ? <textarea rows={3} maxLength={f.maxLength ?? 5000} value={String(form[f.key] ?? "")} onChange={e => setForm({ ...form, [f.key]: e.target.value })} /> : f.type === "checkbox" ? <input type="checkbox" checked={Boolean(form[f.key])} onChange={e => setForm({ ...form, [f.key]: e.target.checked })} /> : <input type={f.type ?? "text"} required={f.required} maxLength={f.maxLength ?? 150} min={f.type === "number" ? 0 : undefined} step={f.type === "number" ? "0.01" : undefined} value={String(form[f.key] ?? "")} onChange={e => setForm({ ...form, [f.key]: e.target.value })} />}</Field>)}
+        {fields.map(f => <Field key={f.key} label={f.label} hint={f.type === "datetime-local" ? "Enter your local time. Workspace dates display Indian Standard Time (IST)." : undefined}>{f.type === "select" ? <select required={f.required} value={String(form[f.key] ?? "")} onChange={e => setForm({ ...form, [f.key]: e.target.value })}>{f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select> : f.type === "textarea" ? <textarea rows={3} maxLength={f.maxLength ?? 5000} value={String(form[f.key] ?? "")} onChange={e => setForm({ ...form, [f.key]: e.target.value })} /> : f.type === "checkbox" ? <input type="checkbox" checked={Boolean(form[f.key])} onChange={e => setForm({ ...form, [f.key]: e.target.checked })} /> : <input type={f.type ?? "text"} required={f.required} maxLength={f.maxLength ?? 150} min={f.type === "number" ? 0 : undefined} step={f.type === "number" ? "0.01" : undefined} value={String(form[f.key] ?? "")} onChange={e => setForm({ ...form, [f.key]: e.target.value })} />}</Field>)}
         {error && <p role="alert" className="form-error">{error}</p>}
         <div className="flex justify-end gap-2">
-          <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
+          <button type="button" className="btn-secondary" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
           <button className="btn-primary" disabled={busy}>{busy ? "Saving…" : "Save changes"}</button>
         </div>
       </form>

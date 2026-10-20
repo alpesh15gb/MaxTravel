@@ -3,6 +3,7 @@
 services:
   app:
     environment:
+      WA_PROVIDER: evolution
       EVOLUTION_BASE_URL: http://evolution-crm-gateway:8080
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:?Set the max travel instance API key}
       EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-max travel}

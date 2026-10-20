@@ -266,6 +266,20 @@ async function run() {
     );
   }
 
+  // --force cannot make an existing SQLite recovery journal safe to reuse. Even a stopped
+  // database can have a hot journal; opening the replacement could replay unrelated pages.
+  const sidecars = [];
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    if (await pathExists(path.join(targetDir, database.fileName + suffix))) sidecars.push(database.fileName + suffix);
+  }
+  if (sidecars.length) throw fail(
+    `Target contains SQLite recovery files (${sidecars.join(", ")}). Stop the service and restore into a fresh empty directory; --force cannot safely replace this target.`,
+  );
+  // Reject a damaged source before overwriting any existing target files.
+  if (manifest?.database?.sha256 && await sha256File(database.file) !== manifest.database.sha256) {
+    throw fail("Backed-up database checksum does not match the manifest; target was not modified.");
+  }
+
   const restoredDatabase = path.join(targetDir, database.fileName);
   await fs.copyFile(database.file, restoredDatabase);
   if (hasUploads) {

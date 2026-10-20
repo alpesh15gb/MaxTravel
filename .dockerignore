@@ -11,9 +11,10 @@ node_modules
 next-env.d.ts
 
 # Local secrets — the real ones arrive as environment variables at runtime.
-.env
-.env*.local
+.env*
+!.env.example
 *.pem
+*.key
 
 # Local databases and customer data: never baked into an image layer.
 prisma/*.db

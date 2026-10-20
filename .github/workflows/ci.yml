@@ -135,6 +135,8 @@ jobs:
         with:
           name: test-evidence
           path: |
+            test-artifacts/ui/
+            test-artifacts/ui-gate-server.log
             test-artifacts/a11y/report.json
             test-artifacts/a11y/report.md
             test-artifacts/a11y/gate.json

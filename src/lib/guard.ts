@@ -58,18 +58,7 @@ export function scopeWhere(
   return { OR: or };
 }
 
-/** Can this user act on a specific record's owner/branch? */
-export function canTouchRecord(
-  user: SessionUser,
-  record: { branchId?: string | null; ownerId?: string | null; assignedToId?: string | null },
-): boolean {
-  const mode = user.accessMode ?? "ASSIGNED";
-  if (mode === "ALL") return true;
-  if (mode === "BRANCH") return !record.branchId || record.branchId === user.branchId;
-  if (record.ownerId) return record.ownerId === user.id;
-  if (record.assignedToId) return record.assignedToId === user.id;
-  return false;
-}
+export { canTouchRecord } from "./record-access";
 
 export function assertCan(user: SessionUser, p: Permission) {
   if (!can(user.permissions, p)) throw new ApiError(403, `Missing permission: ${p}`);

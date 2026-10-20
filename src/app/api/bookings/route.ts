@@ -1,3 +1,4 @@
+import { isReservedBookingSource } from "@/lib/booking-policy";
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { prisma } from "@/lib/db";
 import { queueBookingConfirmation } from "@/lib/whatsapp-queue";
@@ -5,6 +6,7 @@ import { customerFor, travellersFor, optionalId, nextReference, money, date, tra
 export async function POST(req: Request) {
   try {
     const user = await requireSession("ticketing:create"); const b = await req.json();
+    if (isReservedBookingSource(b.gdsSource)) throw new ApiError(400, "Online booking sources can only be set by the booking integration.");
     const customerId = optionalId(b.customerId); if (!customerId) throw new ApiError(400, "Select a customer.");
     const fare=money(b.fare,"Fare"),taxes=money(b.taxes,"Taxes"),markup=money(b.markup,"Markup"),serviceFee=money(b.serviceFee,"Service fee"),supplierCost=money(b.supplierCost,"Supplier cost");
     const hours=Number(b.deadlineHours??0);

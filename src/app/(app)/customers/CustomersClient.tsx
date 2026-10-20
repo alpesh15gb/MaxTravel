@@ -30,6 +30,7 @@ export default function CustomersClient({ customers, canCreate, canExport }: { c
   const [view, setView] = useState<"board" | "list">("list");
   const [query, setQuery] = useState("");
   const [type, setType] = useState("ALL");
+  const [relationship, setRelationship] = useState("ALL");
   const [show, setShow] = useState(canCreate && sp.get("action") === "new");
   const [shown, setShown] = useState<Record<string, number>>({});
   const [listShown, setListShown] = useState(PAGE);
@@ -37,9 +38,10 @@ export default function CustomersClient({ customers, canCreate, canExport }: { c
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return customers.filter(c =>
-      (type === "ALL" || c.type === type) &&
+      (type === "ALL" || (type === "PARTNERS" ? c.type !== "INDIVIDUAL" : c.type === type)) &&
+      (relationship === "ALL" || c.status === relationship) &&
       (!q || [c.name, c.phone, c.code, c.city, c.email ?? "", c.companyName ?? ""].some(v => v.toLowerCase().includes(q))));
-  }, [customers, query, type]);
+  }, [customers, query, type, relationship]);
 
   // A new search or filter starts every column and the list back at the first page.
   function resetPaging() { setShown({}); setListShown(PAGE); }
@@ -70,19 +72,21 @@ export default function CustomersClient({ customers, canCreate, canExport }: { c
     <PageHeader title="Customers" description="Each customer's travellers, bookings, visa cases and balances in one place."
       actions={<>{canExport && <a className="btn-secondary" href="/api/export?entity=customers"><Icon name="download" size={16} />Export</a>}{canCreate && <button className="btn-primary" onClick={() => setShow(true)}><Icon name="plus" size={17} />New customer</button>}</>} />
     <div className="summary-strip" aria-label="Customer directory summary">
-      <StatCard label="Customers" value={customers.length} icon="customers" note="Visible in your workspace" />
-      <StatCard label="Active relationships" value={customers.filter(c => c.status === "ACTIVE").length} icon="check" />
-      <StatCard label="Corporate & partner" value={customers.filter(c => c.type !== "INDIVIDUAL").length} icon="suppliers" />
+      <button type="button" className="text-left" aria-pressed={type === "ALL" && relationship === "ALL"} onClick={() => { setType("ALL"); setRelationship("ALL"); resetPaging(); }}><StatCard label="Customers" value={customers.length} icon="customers" note="View all customers" /></button>
+      <button type="button" className="text-left" aria-pressed={relationship === "ACTIVE"} onClick={() => { setRelationship("ACTIVE"); setType("ALL"); resetPaging(); }}><StatCard label="Active relationships" value={customers.filter(c => c.status === "ACTIVE").length} icon="check" note="View active customers" /></button>
+      <button type="button" className="text-left" aria-pressed={type === "PARTNERS"} onClick={() => { setType("PARTNERS"); setRelationship("ALL"); resetPaging(); }}><StatCard label="Corporate & partner" value={customers.filter(c => c.type !== "INDIVIDUAL").length} icon="suppliers" note="View business relationships" /></button>
     </div>
 
     <div className="workspace-toolbar">
       <ViewToggle label="Customer view" value={view} onChange={setView} options={[{ value: "board", label: "Board", icon: "board" }, { value: "list", label: "List", icon: "list" }]} />
       <select aria-label="Customer type" className="control max-w-[220px]" value={type} onChange={e => { setType(e.target.value); resetPaging(); }}>
         <option value="ALL">All customer types</option>
+        <option value="PARTNERS">Corporate & partner</option>
         <option value="INDIVIDUAL">Individual</option>
         <option value="CORPORATE">Corporate</option>
         <option value="SUB_AGENT">Sub-agent</option>
       </select>
+      <select aria-label="Relationship status" className="control" value={relationship} onChange={e => { setRelationship(e.target.value); resetPaging(); }}><option value="ALL">All relationships</option>{COLUMNS.map(c => <option key={c.status} value={c.status}>{c.title}</option>)}</select>
       <div className="relative min-w-[220px] flex-1 md:max-w-sm">
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"><Icon name="search" size={16} /></span>
         <input type="search" aria-label="Filter customers" className="control w-full pl-9" placeholder="Name, phone, email or city…" value={query} onChange={e => { setQuery(e.target.value); resetPaging(); }} />
@@ -108,8 +112,10 @@ export default function CustomersClient({ customers, canCreate, canExport }: { c
       })}
     </div>}
 
-    {view === "list" && visible.length > 0 && <div className="panel overflow-x-auto">
-      <table className="text-sm">
+    {view === "list" && visible.length > 0 && <div className="panel overflow-hidden">
+      <div className="grid gap-3 bg-slate-50 p-3 sm:grid-cols-2 xl:hidden">{visible.slice(0, listShown).map(renderCard)}</div>
+      <div className="hidden xl:block">
+      <table className="customer-directory-table text-sm">
         <thead><tr>{["Customer", "Contact", "City", "Type", "Relationship manager", "Status"].map(t => <th key={t} className="px-5">{t}</th>)}</tr></thead>
         <tbody>{visible.slice(0, listShown).map(c => <tr key={c.id} className="border-t">
           <td className="px-5"><Link href={`/customers/${c.id}`} className="flex items-center gap-3">
@@ -122,7 +128,7 @@ export default function CustomersClient({ customers, canCreate, canExport }: { c
           <td className="px-5 text-xs text-slate-500">{c.manager ?? "Unassigned"}</td>
           <td className="px-5"><Status tone={toneFor(c.status)}>{enumLabel(c.status)}</Status></td>
         </tr>)}</tbody>
-      </table>
+      </table></div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3 text-xs text-slate-500">
         <span>Showing {Math.min(listShown, visible.length)} of {visible.length} matching · {customers.length} total</span>
         {visible.length > listShown && <button type="button" className="btn-secondary min-h-8 px-3 py-1.5 text-xs" onClick={() => setListShown(listShown + PAGE)}>Show {Math.min(PAGE, visible.length - listShown)} more</button>}

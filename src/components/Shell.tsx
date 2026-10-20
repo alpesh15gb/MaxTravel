@@ -10,19 +10,19 @@ import DensityControl from "./DensityControl";
 import Brand from "./Brand";
 export interface ShellUser { name: string; roleName: string; branchName: string | null; employeeCode: string; permissions: string[]; }
 const NAV: { href: string; label: string; icon: IconName; perm: string; group: string }[] = [
-  { href:"/dashboard",label:"Agency pulse",icon:"dashboard",perm:"dashboard:view",group:"Workspace" },
-  { href:"/sales",label:"Enquiries & quotes",icon:"customers",perm:"customer:view",group:"Workspace" },
-  { href:"/customers",label:"Customers",icon:"customers",perm:"customer:view",group:"Workspace" },
-  { href:"/visa",label:"Visa cases",icon:"visa",perm:"visa:view",group:"Workspace" },
-  { href:"/ticketing",label:"Ticketing",icon:"plane",perm:"ticketing:view",group:"Workspace" },
-  { href:"/online-bookings",label:"Online bookings",icon:"plane",perm:"ticketing:view",group:"Workspace" },
-  { href:"/documents",label:"Documents",icon:"documents",perm:"document:view",group:"Workspace" },
+  { href:"/dashboard",label:"Agency pulse",icon:"dashboard",perm:"dashboard:view",group:"Daily work" },
+  { href:"/sales",label:"Enquiries & quotes",icon:"customers",perm:"customer:view",group:"Daily work" },
+  { href:"/customers",label:"Customers",icon:"customers",perm:"customer:view",group:"Daily work" },
+  { href:"/tasks",label:"Tasks & follow-ups",icon:"tasks",perm:"task:view",group:"Daily work" },
+  { href:"/visa",label:"Visa cases",icon:"visa",perm:"visa:view",group:"Travel operations" },
+  { href:"/ticketing",label:"Ticketing",icon:"plane",perm:"ticketing:view",group:"Travel operations" },
+  { href:"/online-bookings",label:"Online bookings",icon:"plane",perm:"ticketing:view",group:"Travel operations" },
+  { href:"/documents",label:"Documents",icon:"documents",perm:"document:view",group:"Travel operations" },
   { href:"/payments",label:"Money & invoices",icon:"wallet",perm:"payment:view",group:"Finance" },
   { href:"/advances",label:"Customer advances",icon:"wallet",perm:"payment:view",group:"Finance" },
   { href:"/reports",label:"Reports & insights",icon:"dashboard",perm:"payment:view",group:"Finance" },
   { href:"/refunds",label:"Refunds",icon:"refund",perm:"refund:view",group:"Finance" },
   { href:"/suppliers",label:"Suppliers",icon:"suppliers",perm:"supplier:view",group:"Finance" },
-  { href:"/tasks",label:"Tasks & follow-ups",icon:"tasks",perm:"task:view",group:"Operations" },
   { href:"/incoming-documents",label:"Incoming documents",icon:"documents",perm:"whatsapp:view",group:"Operations" },
   { href:"/whatsapp",label:"WhatsApp desk",icon:"message",perm:"whatsapp:view",group:"Operations" },
   { href:"/employees",label:"Team",icon:"customers",perm:"employee:view",group:"Operations" },
@@ -52,6 +52,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
   const [mobile, setMobile] = useState(false); const [pwOpen, setPwOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false); const [userOpen, setUserOpen] = useState(false);
   const [count, setCount] = useState(0); const [error, setError] = useState("");
+  const drawerRef = useRef<HTMLElement>(null); const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const quickRef = useRef<HTMLDivElement>(null); const userRef = useRef<HTMLDivElement>(null);
   const closeQuick = () => setQuickOpen(false); const closeUser = () => setUserOpen(false);
   useDismiss(quickRef, quickOpen, closeQuick); useDismiss(userRef, userOpen, closeUser);
@@ -61,6 +62,33 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { setMobile(false); setPwOpen(false); setQuickOpen(false); setUserOpen(false); } };
     document.addEventListener("keydown", esc); return () => document.removeEventListener("keydown", esc);
   }, [mobile, pwOpen, quickOpen, userOpen]);
+  useEffect(() => {
+    if (!mobile) return;
+    const drawer = drawerRef.current;
+    if (!drawer) return;
+    const menuTrigger = menuTriggerRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const background = [document.querySelector(".app-header"), document.getElementById("workspace-content")?.parentElement].filter((el): el is HTMLElement => el instanceof HTMLElement);
+    background.forEach(el => { el.inert = true; });
+    const stops = () => [...drawer.querySelectorAll<HTMLElement>('a[href], button:not([disabled])')].filter(el => el.getClientRects().length > 0);
+    stops()[0]?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const controls = stops(); const first = controls[0]; const last = controls[controls.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !drawer.contains(document.activeElement))) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !drawer.contains(document.activeElement))) { event.preventDefault(); first?.focus(); }
+    };
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const resize = () => { if (desktop.matches) setMobile(false); };
+    document.addEventListener("keydown", trap); desktop.addEventListener("change", resize);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      background.forEach(el => { el.inert = false; });
+      document.removeEventListener("keydown", trap); desktop.removeEventListener("change", resize);
+      menuTrigger?.focus();
+    };
+  }, [mobile]);
   async function logout() { try { const r = await fetch("/api/auth/logout", { method: "POST" }); if (!r.ok) throw new Error(); router.push("/login"); router.refresh(); } catch { setError("Could not sign out. Please try again."); } }
   const nav = NAV.filter(n => user.permissions.includes(n.perm));
   const quick = QUICK.filter(q => user.permissions.includes(q.perm));
@@ -68,7 +96,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
     <a href="#workspace-content" className="skip-link">Skip to workspace</a>
     {mobile && <button aria-label="Close navigation" className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm lg:hidden" onClick={() => setMobile(false)} />}
     <header className="app-header no-print gap-2 sm:gap-3">
-      <button className="icon-button lg:hidden" aria-label="Open navigation" aria-expanded={mobile} onClick={() => setMobile(true)}><Icon name="menu" /></button>
+      <button ref={menuTriggerRef} className="icon-button lg:hidden" aria-controls="workspace-navigation" aria-label="Open navigation" aria-expanded={mobile} onClick={() => setMobile(true)}><Icon name="menu" /></button>
       <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5 pr-2">
         <Brand compact />
       </Link>
@@ -98,8 +126,8 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
       </div>
     </header>
     <div className="flex min-h-0 flex-1">
-      <aside aria-label="Workspace navigation" data-drawer={mobile ? "open" : "closed"} className={`app-sidebar no-print ${mobile ? "translate-x-0 top-0" : "-translate-x-full"}`}>
-        <div className="flex items-center justify-between px-5 pb-1 pt-5 lg:hidden"><span className="text-sm font-semibold">Menu</span><button className="icon-button" aria-label="Close navigation" onClick={() => setMobile(false)}><Icon name="close" /></button></div>
+      <aside ref={drawerRef} id="workspace-navigation" role={mobile ? "dialog" : undefined} aria-modal={mobile ? true : undefined} aria-label="Workspace navigation" data-drawer={mobile ? "open" : "closed"} className={`app-sidebar no-print ${mobile ? "translate-x-0 top-0" : "-translate-x-full"}`}>
+        <div className="flex items-center justify-between px-5 pb-1 pt-5 lg:hidden"><span className="text-sm font-semibold">Your workspace</span><button className="icon-button" aria-label="Close navigation" onClick={() => setMobile(false)}><Icon name="close" /></button></div>
         <nav aria-label="Main navigation" className="tos-scroll flex-1 overflow-y-auto px-3 pb-5 pt-3">
           {nav.map((n, i) => {
             const active = path === n.href || path.startsWith(n.href + "/");
@@ -111,7 +139,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
         </nav>
         <div className="border-t border-slate-200/80 px-5 py-4">
           <div className="truncate text-xs font-semibold text-slate-700" title={agencyName}>{agencyName}</div>
-          <div className="mt-1 flex items-center gap-1.5 text-small text-slate-500"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{user.branchName ?? "All branches"}</div>
+          <div className="mt-1 flex items-center gap-1.5 text-small text-slate-500"><Icon name="customers" size={13}/>{user.branchName ?? "All branches"}</div>
           {error && <p role="alert" className="mt-2 text-xs text-rose-700">{error}</p>}
         </div>
       </aside>

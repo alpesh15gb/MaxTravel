@@ -300,11 +300,13 @@ async function run() {
     try {
       const uploadsStat = await fs.stat(uploadsDir);
       if (uploadsStat.isDirectory()) {
-        const tree = await hashTree(uploadsDir);
         await fs.cp(uploadsDir, path.join(backupDir, "uploads"), {
           recursive: true,
           preserveTimestamps: true,
+          // Never preserve links to files outside the private document tree.
+          filter: async (source) => !(await fs.lstat(source)).isSymbolicLink(),
         });
+        const tree = await hashTree(path.join(backupDir, "uploads"));
         uploads = { present: true, ...tree };
       }
     } catch (error) {
@@ -312,7 +314,15 @@ async function run() {
       // No uploads directory yet is a valid (empty) workspace, not a failure.
     }
 
-    const { counts, errors } = await rowCounts(prisma);
+    // Describe the immutable snapshot, not live rows that may have changed since VACUUM.
+    const snapshot = openDatabase(databaseCopy);
+    let counts, errors, schema;
+    try {
+      ({ counts, errors } = await rowCounts(snapshot));
+      schema = await migrationState(snapshot);
+    } finally {
+      await snapshot.$disconnect();
+    }
     const packageJson = JSON.parse(await fs.readFile(path.join(ROOT, "package.json"), "utf8"));
 
     manifest = {
@@ -329,7 +339,7 @@ async function run() {
       },
       database,
       uploads,
-      schema: await migrationState(prisma),
+      schema,
       rowCounts: counts,
     };
     if (Object.keys(errors).length) manifest.rowCountErrors = errors;

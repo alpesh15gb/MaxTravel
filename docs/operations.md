@@ -45,8 +45,10 @@ cp .env.example .env
 | `UPLOAD_ROOT` | recommended | Directory for private customer documents. Defaults to `./uploads` relative to the process working directory — **always set it explicitly in production** so it cannot move when the process is started from elsewhere. |
 | `APP_ORIGIN` | recommended | Your public origin, e.g. `https://os.youragency.com`. Cross-origin state-changing API calls are rejected; when this is unset the app falls back to comparing the `Origin` host against the request host, which is weaker behind a proxy or a CDN. Set it. |
 | `TRUST_PROXY` | optional | Set to `1` **only** when a proxy you control terminates the connection in front of the app. It makes the sign-in limiter read the client address from the forwarded header instead of the address this server accepted the connection from. Wrong when the app is exposed directly (the header is client-controlled), harmless behind a trusted proxy; the account half of the limiter works either way. |
-| `WA_VERIFY_TOKEN` | optional | Enables the inbound WhatsApp webhook's verification handshake. |
-| `WA_WEBHOOK_SECRET` | optional | Enables and authenticates inbound WhatsApp messages. Leave both empty to keep the inbound webhook **disabled** (it answers `503`). |
+| `WA_VERIFY_TOKEN` | optional | Verification token for the legacy normalized webhook, not the Meta Cloud token. |
+| `WA_WEBHOOK_SECRET` | optional | Authenticates the legacy/Evolution webhook. Meta uses separate `WA_CLOUD_*` values. |
+| `WA_PROVIDER`, `WA_CLOUD_*`, `WA_WORKER_SECRET` | integration-specific | Official Meta sending and signed callbacks require full provider configuration and the worker. Follow [Meta setup](../META-WHATSAPP-SETUP.md); do not infer Cloud readiness from legacy webhook variables. |
+| `CRM_DATA_ENCRYPTION_KEY` | required for encryption/MFA | Stable 64-character hexadecimal key; preserve separately for recovery (§8). |
 | `NEXT_DIST_DIR` | optional | Build output directory. Defaults to `.next`. Only set this if you deliberately build to another directory. |
 
 ### 2.1 Generate the session secret
@@ -58,20 +60,24 @@ openssl rand -hex 32
 ```
 
 Put the result in `JWT_SECRET` and store a copy in your password manager. Treat it like a
-password: it is the only thing standing between a stolen cookie and a staff account.
+password: disclosure compromises session signatures. A stolen valid session cookie must also be
+revoked; signing alone does not protect a cookie that an attacker already possesses.
 
 ### 2.2 What rotating `JWT_SECRET` does
 
-Signing out is immediate and global. Every outstanding session cookie fails verification on its
+After the changed secret is loaded by restarting the app, every outstanding session cookie fails verification on its
 next request, so **every signed-in user is returned to the login screen** and must sign in again.
-Nothing is lost or corrupted; sessions are stateless and the database is untouched.
+Business records are unchanged. Sessions also have database-backed `StaffSession` records;
+rotating the signing key invalidates cookies without deleting those records.
 
 Do it when a device is lost, when you suspect the secret leaked, or on a schedule. If you rotate
 while people are working, expect a burst of sign-ins and tell staff first.
 
 Individual sessions also end early on their own: deactivating an employee or changing their
 password invalidates that person's existing sessions immediately, because the session is
-re-validated against the stored password hash on every request.
+re-validated against the stored password hash on every request. Logout revokes the current
+database session; staff can revoke their own selected or other sessions from account security.
+Session validation also checks expiry, revocation and whether the employee remains active.
 
 ### 2.3 Validate the configuration before you start for real
 
@@ -103,7 +109,7 @@ npm install
 npx prisma generate
 npm run db:migrate        # applies the migration baseline (§7)
 npm run build
-npm start                 # foreground; see §4 for running it as a service
+npm start -- --hostname 127.0.0.1  # bootstrap on loopback; see §4 for service setup
 ```
 
 Then, **from the host itself** (not over the network, before it is exposed):
@@ -171,8 +177,8 @@ sudo systemctl restart travel-os      # after a rebuild or a configuration chang
 sudo systemctl stop travel-os         # before a restore (§8.3)
 ```
 
-Restarting the app is safe and expected: it clears the **in-memory login rate limiter**, which is
-exactly why §10 records the limiter's single-node limitation.
+Restarting preserves database-backed staff login failure records and sessions. The separate
+in-memory limiter used by setup and some other endpoints resets; this is not a multi-node deployment.
 
 ---
 
@@ -329,6 +335,15 @@ and `UPLOAD_ROOT` the app uses):
   node scripts/backup.mjs --out /var/backups/travel-os/$(date +\%Y\%m\%d-\%H\%M\%S) >> /var/log/travel-os-backup.log 2>&1
 ```
 
+### Encryption key recovery
+
+Database and document snapshots do **not** contain deployment secrets. Preserve the exact
+`CRM_DATA_ENCRYPTION_KEY` separately in the agency password manager and an encrypted off-site
+recovery copy. Losing or replacing it makes existing encrypted passport/bank fields and staff
+MFA secrets unreadable. Do not store the key in the backup manifest or source control. Restore
+drills must use the original key and verify an encrypted field and an enrolled authenticator,
+not only database row counts. Keep restored instances loopback-only until verified.
+
 ### 8.2 See what a backup holds
 
 ```bash
@@ -367,6 +382,9 @@ line.
 rm -rf /srv/travel-os-drill
 ```
 
+Restore refuses existing SQLite `-wal`, `-shm` or `-journal` recovery files, even with `--force`.
+Use a fresh empty target rather than deleting recovery files from the live installation.
+
 Restoring over live data (`--out` pointing at the running install) requires stopping the service
 first; `--force` overwrites an existing target and will not protect you from a typo.
 
@@ -387,7 +405,7 @@ configuration as environment:
 
 ```bash
 docker run -d --name travel-os \
-  -p 3000:3000 \
+  -p 127.0.0.1:3000:3000 \
   -v /srv/travel-os-data:/data \
   -e DATABASE_URL="file:/data/travelos.db" \
   -e UPLOAD_ROOT="/data/uploads" \
@@ -426,12 +444,12 @@ Read these before you promise anyone a service level.
 
 | Area | The honest position |
 |---|---|
-| **Login rate limiting** | In memory: a sliding window of failed attempts counted per account (5 in 10 minutes) and per client address (20 in 10 minutes), answered with `429` and a `Retry-After`. The account bucket is the authoritative one; the address bucket only engages when a forwarded header carries an address (§2, `TRUST_PROXY`), because a directly exposed app has no trustworthy client address to read. It **resets when the process restarts and does not coordinate across processes**, so it slows an attacker on one instance, not a distributed one. A shared store (Redis) is the fix; nothing here uses one. |
+| **Login rate limiting** | Staff login failures are stored as hashed keys in `StaffAuthFailure`: 5 per account and 20 per available client-address bucket in 10 minutes. Lockouts return `429` with `Retry-After` and survive process restarts. Address attribution depends on correct proxy configuration. Other endpoints retain an in-memory limiter. This does not establish support for multiple app replicas. |
 | **SQLite** | Single writer, no replication, no failover. Fine for one office. Backup cadence + the §8.3 drill are the durability story. Multi-instance or high-value accounting needs PostgreSQL with `Decimal` money columns. |
 | **Money storage** | All arithmetic is integer paise, but the money columns are SQLite `Float`. The PostgreSQL/`Decimal` migration is a prerequisite for high-value accounting. |
-| **Sessions** | 12 hours, stateless, signed. Ended early by a `JWT_SECRET` change or a password change. There is no per-session revocation list beyond that. |
-| **Inbound WhatsApp** | Disabled unless `WA_VERIFY_TOKEN` and `WA_WEBHOOK_SECRET` are set; unconfigured, the endpoint answers `503`. Even when enabled, the inbound route is a normalized adapter — configure your provider's signature verification before pointing a real provider at it. |
-| **Outbound WhatsApp, GDS, OCR, payments** | Deliberately absent. Outbound messages are manual handoffs from the staff UI and are logged as *logged*, never *delivered*. Tickets are typed in by staff; document fields are confirmed by a human; receipts record money actually received. No message, charge or payout leaves this app on its own. |
+| **Sessions** | Signed cookies expire after 12 hours and refer to database-backed sessions. Requests check expiry/revocation, active employee status and password version. Logout revokes the current session; account security supports revoking selected or other own sessions. Signing-key rotation invalidates all cookies after restart. |
+| **Inbound WhatsApp** | Provider-specific endpoints exist: signed Meta Cloud callbacks, Evolution callbacks and a legacy normalized webhook. Configuration and signature requirements differ. Follow [Meta setup](../META-WHATSAPP-SETUP.md) or the [Evolution pilot](evolution-pilot.md); validate real inbound and delivery callbacks before enabling agency use. |
+| **Outbound WhatsApp, GDS, OCR, payments** | Configured Meta Cloud or Evolution integrations can send queued messages through the worker; this is not a manual-only application. Meta uses consent, reply-window and approved-template checks. Delivery needs provider callbacks; uncertain sends require reconciliation rather than blind retries. See the provider runbooks. Receipts record money received, not card processing; do not assume GDS, OCR or payment-provider execution from CRM record creation. |
 | **`/setup`** | One-time, unauthenticated creation endpoint. Complete it before exposure (§3) or keep the app behind an authenticating proxy. |
 | **Audit trail** | Covers in-app actions and their actors. Changes made directly to the database file are not captured. |
 | **Timezone** | Dates and timestamps render in the viewer's timezone. If your staff work across timezones, a fixed agency timezone is a change worth making first. |

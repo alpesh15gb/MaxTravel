@@ -9,19 +9,20 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const user = await requirePage("task:view");
   const { focus } = await searchParams;
 
-  const where: Record<string, unknown> = {};
-  if (user.accessMode === "BRANCH") where.branchId = user.branchId;
-  if (user.accessMode === "ASSIGNED") where.OR = [{ ownerId: user.id }, { creatorId: user.id }];
+  const where = scopeWhere(user, null, "ownerId", "creatorId");
 
-  const tasks = await prisma.task.findMany({
-    where,
-    include: { owner: { select: { name: true } }, customer: { select: { name: true, id: true } }, visaCase: { select: { caseNo: true, id: true } }, booking: { select: { bookingNo: true, id: true } } },
-    orderBy: [{ status: "asc" }, { dueAt: "asc" }, { createdAt: "desc" }],
-    take: 200,
-  });
+  const include = { owner: { select: { name: true } }, customer: { select: { name: true, id: true } }, visaCase: { select: { caseNo: true, id: true } }, booking: { select: { bookingNo: true, id: true } } } as const;
+  // Closed history must never crowd actionable work out of the bounded queue.
+  const [openTasks, closedTasks, focusedTask] = await Promise.all([
+    prisma.task.findMany({ where: { ...where, status: { in: ["OPEN", "IN_PROGRESS"] } }, include, orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }], take: 200 }),
+    prisma.task.findMany({ where: { ...where, status: { in: ["DONE", "CANCELLED"] } }, include, orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }], take: 100 }),
+    focus ? prisma.task.findFirst({ where: { AND: [where, { id: focus }] }, include }) : Promise.resolve(null),
+  ]);
+  const tasks = [...openTasks, ...closedTasks];
+  if (focusedTask && !tasks.some(task => task.id === focusedTask.id)) tasks.push(focusedTask);
 
   const [owners, customers] = await Promise.all([
-    prisma.user.findMany({ where: { active: true, ...(user.accessMode === "ASSIGNED" ? { id: user.id } : user.accessMode === "BRANCH" ? { branchId: user.branchId } : {}) }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.user.findMany({ where: { active: true, ...(user.accessMode === "ASSIGNED" ? { id: user.id } : user.accessMode === "BRANCH" ? user.branchId ? { branchId: user.branchId } : { id: "__none__" } : {}) }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.customer.findMany({ where: scopeWhere(user, null, undefined, "assignedToId"), select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
   return (
@@ -30,7 +31,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       canExport={can(user.permissions, "export:data")}
       tasks={tasks.map((t) => ({
         id: t.id, title: t.title, status: t.status, priority: t.priority, details: t.details,
-        owner: t.owner.name, mine: t.ownerId === user.id,
+        owner: t.owner.name, ownerId: t.ownerId, mine: t.ownerId === user.id,
         dueAt: t.dueAt?.toISOString() ?? null,
         customer: t.customer ? { name: t.customer.name, id: t.customer.id } : null,
         visaCase: t.visaCase ? { caseNo: t.visaCase.caseNo, id: t.visaCase.id } : null,

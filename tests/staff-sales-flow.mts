@@ -35,6 +35,24 @@ try{
  const converted=await post("/api/sales",{action:"convert",leadId:lead.data.id,quoteId:quote.data.quoteId},cookie);assert.equal(converted.response.status,200,JSON.stringify(converted.data));assert(converted.data.bookingId);
  const duplicate=await post("/api/sales",{action:"convert",leadId:lead.data.id,quoteId:quote.data.quoteId},cookie);assert.equal(duplicate.data.bookingId,converted.data.bookingId);
  const booking=await prisma.booking.findUniqueOrThrow({where:{id:converted.data.bookingId}});assert.equal(booking.sellingPrice,200);assert.equal(booking.supplierCost,140);assert.equal(booking.status,"ENQUIRY");
+ // Regression: a manual edit must not claim integration ownership and lock staff out.
+ assert.equal((await post(`/api/bookings/${booking.id}`,{gdsSource:"TRIPJACK_API"},cookie)).response.status,400);
+ assert.equal((await post("/api/bookings",{customerId:customer.id,gdsSource:"TRIPJACK_API"},cookie)).response.status,400);
+ assert.notEqual((await prisma.booking.findUniqueOrThrow({where:{id:booking.id}})).gdsSource,"TRIPJACK_API");
+ const task=await post("/api/tasks",{title:"Regression follow-up",customerId:customer.id},cookie);assert.equal(task.response.status,200,JSON.stringify(task.data));
+ const completed=await post("/api/tasks/status",{taskId:task.data.task.id,status:"DONE"},cookie);assert.equal(completed.response.status,200);
+ const repeated=await post("/api/tasks/status",{taskId:task.data.task.id,status:"DONE"},cookie);assert.equal(repeated.data.task.completedAt,completed.data.task.completedAt,"Repeated completion preserves original timestamp");
+ assert.equal(await prisma.auditLog.count({where:{entity:"Task",entityId:task.data.task.id,action:"STATUS"}}),1,"Each actual task transition is audited exactly once");
+ const reopened=await post("/api/tasks/status",{taskId:task.data.task.id,status:"OPEN"},cookie);assert.equal(reopened.data.task.completedAt,null);
+ const lostLead=await post("/api/sales",{action:"create",data:{customerId:customer.id,title:"Closed enquiry regression",source:"Fixture",product:"HOTEL",budgetMinor:10000}},cookie);
+ const lostQuote=await post("/api/sales",{action:"quote",leadId:lostLead.data.id,items:[{description:"Fixture stay",quantity:1,priceMinor:10000,costMinor:7000}],terms:"No real reservation.",expiresAt:new Date(Date.now()+3600000).toISOString()},cookie);
+ assert.equal((await post("/api/sales",{action:"stage",leadId:lostLead.data.id,stage:"LOST",lostReason:"Customer cancelled"},cookie)).response.status,200);
+ assert.equal((await post("/api/sales",{action:"publish",leadId:lostLead.data.id,quoteId:lostQuote.data.quoteId},cookie)).response.status,409,"Publishing must not silently reopen lost work");
+ assert.equal((await post("/api/sales",{action:"stage",leadId:lostLead.data.id,stage:"QUALIFIED"},cookie)).response.status,200);
+ const reopenedQuote=await post("/api/sales",{action:"publish",leadId:lostLead.data.id,quoteId:lostQuote.data.quoteId},cookie);assert.equal(reopenedQuote.response.status,200);
+ assert.equal((await post("/api/proposals",{action:"accept",token:reopenedQuote.data.sharePath.split("#")[1],name:"Synthetic customer",consent:true})).response.status,200);
+ assert.equal((await post("/api/sales",{action:"stage",leadId:lostLead.data.id,stage:"LOST",lostReason:"Customer withdrew accepted quote"},cookie)).response.status,200);
+ assert.equal((await post("/api/sales",{action:"convert",leadId:lostLead.data.id,quoteId:lostQuote.data.quoteId},cookie)).response.status,409,"Lost accepted quotes need explicit reopening before creating a booking");
  const supplierResult=await post("/api/suppliers",{name:`Ledger supplier ${suffix}`,type:"HOTEL",paymentDueDays:10},cookie);assert.equal(supplierResult.response.status,200,JSON.stringify(supplierResult.data));const supplier=supplierResult.data.supplier;
  await prisma.booking.update({where:{id:booking.id},data:{supplierId:supplier.id}});
  const payableResult=await post("/api/suppliers/dues",{supplierId:supplier.id,bookingId:booking.id,supplierInvoiceNo:"HOT-778",description:"Two-night hotel supplier bill",amount:100,dueDate:"2026-11-01"},cookie);assert.equal(payableResult.response.status,200,JSON.stringify(payableResult.data));const payable=payableResult.data.due;assert.equal(payable.bookingId,booking.id);assert.equal(payable.supplierInvoiceNo,"HOT-778");
@@ -71,6 +89,14 @@ try{
  assert.equal((await post("/api/sales",{action:"stage",leadId:lead.data.id,stage:"LOST",lostReason:"Out of scope"},outsideCookie)).response.status,403);
  assert.equal((await post("/api/customers/import",{action:"preview",csv,branchId:branch.id},outsideCookie)).response.status,403);
  const outsideSales=await fetch(origin+"/api/sales",{headers:{Cookie:outsideCookie}}).then(r=>r.json());assert.equal(outsideSales.leads.length,0);
+ // Regression: branch-scoped mutation must not access a record with no branch.
+ const unscopedTask=await prisma.task.create({data:{title:"Unscoped fixture",ownerId:user.id,creatorId:user.id}});
+ assert.equal((await post("/api/tasks/status",{taskId:unscopedTask.id,status:"DONE"},outsideCookie)).response.status,403);
+ // A picker's 500-customer display limit must never hide existing scoped enquiries.
+ await prisma.customer.createMany({data:Array.from({length:501},(_,i)=>({code:`PAGE-${suffix}-${i}`,name:`AAA picker fixture ${i}`,phone:"",city:"Test",branchId:branch.id,assignedToId:user.id}))});
+ const pagedSales=await fetch(origin+"/api/sales",{headers:{Cookie:cookie}}).then(r=>r.json());
+ assert(!pagedSales.customers.some((c:{id:string})=>c.id===customer.id),"Fixture customer must be beyond the picker limit");
+ assert(pagedSales.leads.some((l:{id:string})=>l.id===lead.data.id),"Existing enquiries remain visible beyond customer picker limit");
  const forcedOrigin="http://127.0.0.1:3218";const forced=spawn(process.execPath,["node_modules/next/dist/bin/next","start","-p","3218","-H","127.0.0.1"],{env:{...process.env,APP_ORIGIN:forcedOrigin,JWT_SECRET:randomBytes(48).toString("hex"),CRM_REQUIRE_MFA:"true"},stdio:"ignore"});
  try{let ready=false;for(let i=0;i<60;i++){try{if((await fetch(forcedOrigin+"/api/health")).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}assert(ready,"MFA-enforced fixture server must become ready");const r=await fetch(forcedOrigin+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json",Origin:forcedOrigin},body:JSON.stringify({email:outsider.email,password})});assert.equal(r.status,200);const c=r.headers.get("set-cookie")!.split(";")[0];assert.equal((await fetch(forcedOrigin+"/api/sales",{headers:{Cookie:c}})).status,403,"Unenrolled staff cannot access business APIs when MFA is required");const dashboard=await fetch(forcedOrigin+"/dashboard",{headers:{Cookie:c},redirect:"manual"});assert(dashboard.headers.get("location")?.includes("/account-security"),"Unenrolled staff must be routed to enrolment");assert.equal((await fetch(forcedOrigin+"/api/auth/security",{headers:{Cookie:c}})).status,200,"Enrolment must remain available");}finally{forced.kill();}
  const recoveryToken=randomBytes(32).toString("hex");await prisma.staffRecovery.create({data:{id:randomUUID(),userId:user.id,tokenHash:hashToken(recoveryToken),expiresAt:new Date(Date.now()+600000)}});

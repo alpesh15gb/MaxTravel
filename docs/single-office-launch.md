@@ -11,6 +11,11 @@ messages through a separate instance; see [evolution-pilot.md](evolution-pilot.m
 Use a supported Docker Engine with Compose on the host. Allow at least 2 CPU cores,
 4 GB RAM and storage sized for uploaded documents plus backups as an initial allocation.
 Copy `.env.example` to `.env`, generate a random JWT_SECRET and keep it private.
+Also generate a separate `CRM_DATA_ENCRYPTION_KEY` (32 random bytes encoded as 64 hexadecimal
+characters) before storing passports, bank details or enrolling staff authenticators. Keep this
+key stable; replacing or losing it makes existing encrypted fields and MFA secrets unreadable.
+Store it in the agency’s password manager and a separate encrypted recovery copy alongside
+the deployment configuration. Database/upload backups intentionally do not contain this key.
 Do not copy the development database into a new installation unintentionally.
 
 `compose.yaml` keeps the database and private documents together in the `agency-data`
@@ -84,7 +89,8 @@ Never use `docker compose down -v` on the production installation: it removes da
 - Check desktop and staff phones, document upload/download, expired upload links and logout.
 - Reconcile Reports with the money desk and dashboard. Report dates use India time and INR.
 - Restart the app and host; verify records and uploaded files persist.
-- Restore a backup to an isolated installation and check documents open.
+- Restore a backup to an isolated installation with the original encryption key; check documents,
+  encrypted passport/bank fields and an enrolled authenticator work. Keep this drill private.
 - Configure an external `/api/health` monitor and alerts for failed backups, low disk and downtime.
 
 Do not run multiple app replicas or store SQLite on an SMB/NFS share. The rate limiter is
