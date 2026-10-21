@@ -302,8 +302,11 @@ async function run() {
     for (const mark of ["A FRESH START", "Your agency. Your workspace.", "Private workspace · Role-based access"])
       assert(!setupPage.includes(mark), `setup copy ${mark}`);
   });
-  const cssHref = dashHtml.match(/href="([^"]*\/_next\/static\/css\/[^"]+)"/)?.[1]?.replace(/^https?:\/\/[^/]+/, "");
-  const appCss = cssHref ? await (await get(cssHref)).text() : "";
+  // Next may emit the local-font sheet before the application sheet. Check the full linked
+  // stylesheet set instead of assuming a particular chunk ordering.
+  const cssHrefs = [...new Set([...dashHtml.matchAll(/href="([^"]*\/_next\/static\/css\/[^"]+)"/g)].map(match => match[1].replace(/^https?:\/\/[^/]+/, "")))];
+  const cssHref = cssHrefs[0];
+  const appCss = (await Promise.all(cssHrefs.map(async href => (await get(href)).text()))).join("\n");
   check("Desktop sidebar reset ships in the built CSS", () => {
     // The shell adds -translate-x-full to the rail for the mobile drawer; without this later, more
     // specific reset the desktop sidebar is parked 244px off-screen and the app looks empty on the left.

@@ -82,7 +82,7 @@ export default function PackagesClient() {
   const filtered = items.filter(i => `${i.title} ${i.destination} ${i.status}`.toLowerCase().includes(search.toLowerCase()));
   const field = (key: keyof PackageDraft, label: string, opts: { area?: boolean; type?: string; hint?: string; max?: number } = {}) => <Field label={label} hint={opts.hint}>{opts.area ? <textarea className="control min-h-28" maxLength={opts.max ?? 8000} value={String(draft[key])} onChange={e => update(key, e.target.value as never)} /> : <input className="control" type={opts.type ?? "text"} maxLength={opts.max ?? 1500} value={String(draft[key])} onChange={e => update(key, e.target.value as never)} />}</Field>;
   const publicationErrors = validatePackage({ ...draft, inclusions: draft.inclusions.filter(s => s.trim()), exclusions: draft.exclusions.filter(s => s.trim()) }, true).errors;
-  return <>
+  return <div className="workspace-page package-studio">
     <PageHeader eyebrow="Customer experiences" title="Travel packages" description="Shape a trip, review every detail, then publish it to your customer website." actions={<button ref={createButton} className="btn-primary" disabled={busy || uncertain || loading || loadFailed} onClick={() => open(null)}>+ Create package</button>} />
     <div className="mb-6 grid gap-3 sm:grid-cols-3">{[["Published", items.filter(i => i.status === "PUBLISHED").length], ["Private drafts", items.filter(i => i.status === "DRAFT").length], ["Archived", items.filter(i => i.status === "ARCHIVED").length]].map(([label, count]) => <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-sm text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold">{loading || loadFailed ? "—" : count}</p></div>)}</div>
     {error && <div ref={errorSummary} tabIndex={-1} role="alert" className="mb-4 whitespace-pre-line rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">{error}</div>}
@@ -146,5 +146,5 @@ export default function PackagesClient() {
         </div>
       </section>}
     </div>
-  </>;
+  </div>;
 }

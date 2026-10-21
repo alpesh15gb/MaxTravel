@@ -49,27 +49,28 @@ function Dashboard({todayLabel}:{todayLabel:string}){
         .filter(([,n])=>n>0)
         .map(([value,n])=>({value,label:`${value[0]}${value.slice(1).toLowerCase()} (${n})`}))]
     :[{value:"ALL",label:"All (–)"}];
-  return <div className="workspace-page">
-    <PageHeader eyebrow="Daily workspace" title="Agency pulse" description="Start with urgent deadlines. Keep customer work moving, one next step at a time." actions={<><span className="workspace-date"><Icon name="calendar" size={16}/>{todayLabel}</span>{data?.quickActions[0]&&<Link href={data.quickActions[0].href} className="btn-primary"><Icon name="plus" size={16}/>{data.quickActions[0].label}</Link>}{data&&data.quickActions.length>1&&<details className="workspace-create-menu"><summary className="btn-secondary">More actions<Icon name="chevronDown" size={14}/></summary><div className="menu-panel">{data.quickActions.slice(1).map(a=><Link key={a.href} href={a.href} className="menu-item"><Icon name={a.icon} size={16}/>{a.label}</Link>)}</div></details>}</>}/>
+  return <div className="workspace-page studio-dashboard">
+    <div className="studio-dashboard-heading"><div><p className="studio-welcome">{data ? `Welcome back, ${data.name.split(" ")[0]}.` : "Your agency workspace"}</p>
+    <PageHeader title="Agency pulse" description="A clear view of your team’s priorities, customers and journeys." actions={<>{data?.quickActions[0]&&<Link href={data.quickActions[0].href} className="btn-primary"><Icon name="plus" size={16}/>{data.quickActions[0].label}</Link>}{data&&data.quickActions.length>1&&<details className="workspace-create-menu"><summary className="btn-secondary">More actions<Icon name="chevronDown" size={14}/></summary><div className="menu-panel">{data.quickActions.slice(1).map(a=><Link key={a.href} href={a.href} className="menu-item"><Icon name={a.icon} size={16}/>{a.label}</Link>)}</div></details>}</>}/></div><div className="studio-today"><span className="workspace-date"><Icon name="calendar" size={16}/>{todayLabel}</span><span className="studio-scope-note"><Icon name="shield" size={13}/>Your accessible workspace</span></div></div>
 
     {sp.get("denied")&&<div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Your role does not allow this action. Ask your agency owner if you need access.</div>}
     {error&&<div className="form-error mb-5 flex items-center justify-between gap-3" role="alert">{error}<button className="btn-secondary" onClick={load}>Retry</button></div>}
 
     {/* A role with no module permissions has no KPIs at all, and an empty bordered band is worse
         than nothing — so the strip is only rendered when it has something to say. */}
-    {(!data||data.kpis.length>0)&&<div className="summary-strip" aria-label="Agency summary">{data?data.kpis.map((k)=><Link key={k.label} href={k.href}><StatCard label={k.label} value={k.value} note={k.note} icon={k.icon} tone={k.tone==="danger"?"rose":k.tone==="warn"?"amber":"neutral"}/></Link>):[0,1,2].map(i=><div key={i} className="h-24 animate-pulse bg-slate-100"/>)}</div>}
+    {(!data||data.kpis.length>0)&&<div className="summary-strip dashboard-kpi-strip" aria-label="Agency summary">{data?data.kpis.map((k)=><Link key={k.label} href={k.href}><StatCard label={k.label} value={k.value} note={k.note} icon={k.icon} tone={k.tone==="danger"?"rose":k.tone==="warn"?"amber":"neutral"}/></Link>):[0,1,2].map(i=><div key={i} className="h-24 animate-pulse bg-slate-100"/>)}</div>}
 
     <div className="daily-workspace">
       <aside className="daily-workspace-tools" aria-label="Organize your work">
-        <section className="panel p-4">
-          <h2 className="mb-3 text-sm font-semibold">Work queues</h2>
-          <div className="work-queue-links">{WORKSTREAMS.map(w=><button key={w.value} type="button" aria-pressed={stream===w.value} onClick={()=>{setStream(w.value);setFilter("ALL");}} className="work-queue-link"><Icon name={w.icon} size={17}/><span>{w.label}</span><span className="queue-count">{data?data.items.filter(i=>w.value==="all"||workstream(i)===w.value).length:"–"}</span></button>)}</div>
+        <section className="panel studio-queues-panel">
+          <div className="studio-section-heading"><span className="studio-section-icon"><Icon name="dashboard" size={18}/></span><div><h2>Work overview</h2><p>Your active queues</p></div></div>
+          <div className="work-queue-links">{WORKSTREAMS.map(w=><button key={w.value} type="button" aria-pressed={stream===w.value} onClick={()=>{setStream(w.value);setFilter("ALL");}} className="work-queue-link"><span className="queue-symbol"><Icon name={w.icon} size={17}/></span><span>{w.label}</span><span className="queue-count">{data?data.items.filter(i=>w.value==="all"||workstream(i)===w.value).length:"–"}</span></button>)}</div>
         </section>
-        {data&&data.quickActions.length>1&&<section className="panel p-4"><h2 className="text-sm font-semibold">Start new work</h2><p className="mb-3 mt-1 text-xs text-slate-600">Create a record, then track it here.</p><div className="grid gap-2">{data.quickActions.slice(1).map(a=><Link key={a.href} href={a.href} className="workspace-shortcut"><Icon name={a.icon} size={18}/><span><strong>{a.label}</strong><span>{a.description}</span></span><Icon name="arrow" size={15}/></Link>)}</div></section>}
+        {data&&data.quickActions.length>1&&<section className="panel studio-shortcuts-panel"><div className="studio-section-heading"><span className="studio-section-icon"><Icon name="plus" size={18}/></span><div><h2>Start new work</h2><p>Make the next move</p></div></div><div className="grid gap-2">{data.quickActions.slice(1).map(a=><Link key={a.href} href={a.href} className="workspace-shortcut"><Icon name={a.icon} size={18}/><span><strong>{a.label}</strong><span>{a.description}</span></span><Icon name="arrow" size={15}/></Link>)}</div></section>}
       </aside>
       <section id="attention" className="panel min-w-0 overflow-hidden" aria-label="Attention queue" aria-busy={refreshing}>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-          <div><h2 className="text-sm font-semibold">{stream==="all"?"Needs your attention":WORKSTREAMS.find(w=>w.value===stream)?.label} <span className="ml-1 text-xs font-normal text-slate-500">{data?items.length:"–"}</span></h2><p className="mt-0.5 text-small text-slate-500">Urgent first. Open a record or take the next action.</p></div>
+        <div className="attention-heading">
+          <div><h2>{stream==="all"?"Needs your attention":WORKSTREAMS.find(w=>w.value===stream)?.label} <span className="attention-total">{data?items.length:"–"}</span></h2><p>Prioritized for today. Every item has a next step.</p></div>
           <button className="btn-secondary" aria-label="Refresh" disabled={refreshing} onClick={load}><Icon name="refresh" size={14}/>{refreshing?"Refreshing…":"Refresh"}</button>
         </div>
         <div className="queue-filter-bar"><ViewToggle label="Priority filter" value={filter} onChange={setFilter} options={filterOptions}/></div>
@@ -77,15 +78,15 @@ function Dashboard({todayLabel}:{todayLabel:string}){
         {notice&&(noticeFailed?<div role="alert" className="form-error mb-4 break-words">{notice}</div>:<div role="status" className="form-success mb-4 break-words">{notice}</div>)}
         {!data&&!error&&<div role="status" className="p-6 text-sm text-slate-600">Loading deadlines and follow-ups…</div>}
         {data&&items.length===0&&<EmptyState icon="check" title={data.firstRun?"No follow-ups yet":"No items in this view"} description={data.firstRun?"There are no transactions yet. Add real customers and work records; deadlines and follow-ups will appear here automatically.":"No matching exceptions were found in your accessible records. Refresh as your operations change."}/>}
-        {items.length>0&&<div className="divide-y divide-slate-100">{items.map(i=><article key={i.id} className="attention-row">
-          <div className="min-w-0 flex-1">
+        {items.length>0&&<div className="divide-y divide-slate-100">{items.map(i=><article key={i.id} className={`attention-row attention-${i.severity.toLowerCase()}`}><div className="attention-record-icon" aria-hidden="true"><Icon name={WORKSTREAMS.find(w => w.value === workstream(i))?.icon ?? "tasks"} size={20}/></div>
+          <div className="attention-record-content min-w-0 flex-1">
             <div className="mb-1 flex flex-wrap items-center gap-2"><Status tone={i.severity==="URGENT"?"danger":i.severity==="HIGH"?"warning":"info"}>{enumLabel(i.severity)}</Status><span className="text-small text-slate-500">{enumLabel(i.kind)}</span></div>
             <Link href={i.href} className="block text-sm font-semibold text-slate-900 hover:text-teal-700">{i.title}</Link>
             <p className="mt-1 text-xs leading-5 text-slate-500">{i.detail}</p>
           </div>
-          {i.actions.length>0&&<div className="flex flex-col items-start gap-1.5 md:items-end"><button onClick={()=>act(i,i.actions[0])} disabled={!!busy} className="btn-secondary">{busy===i.id+i.actions[0].label?"Working…":i.actions[0].label}<Icon name="arrow" size={14}/></button>{i.actions.length>1&&<details className="max-w-full text-xs text-slate-500"><summary className="cursor-pointer py-1">More actions</summary><div className="mt-1 flex flex-wrap gap-2">{i.actions.slice(1).map(a=><button key={a.label} onClick={()=>act(i,a)} disabled={!!busy} className="btn-secondary">{busy===i.id+a.label?"Working…":a.label}</button>)}</div></details>}</div>}
+          {i.actions.length>0&&<div className="attention-actions flex flex-col items-start gap-1.5 md:items-end"><button onClick={()=>act(i,i.actions[0])} disabled={!!busy} className="btn-secondary">{busy===i.id+i.actions[0].label?"Working…":i.actions[0].label}<Icon name="arrow" size={14}/></button>{i.actions.length>1&&<details className="max-w-full text-xs text-slate-500"><summary className="cursor-pointer py-1">More actions</summary><div className="mt-1 flex flex-wrap gap-2">{i.actions.slice(1).map(a=><button key={a.label} onClick={()=>act(i,a)} disabled={!!busy} className="btn-secondary">{busy===i.id+a.label?"Working…":a.label}</button>)}</div></details>}</div>}
         </article>)}</div>}
-        {data&&<p className="border-t border-slate-100 px-4 py-2 text-small text-slate-500">Updated {clockLabel(new Date(data.generatedAt))} · Visibility follows your role and record access.</p>}
+        {data&&<p className="attention-updated">Updated {clockLabel(new Date(data.generatedAt))} · Visibility follows your role and record access.</p>}
       </section>
 
     </div>

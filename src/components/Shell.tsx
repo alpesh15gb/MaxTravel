@@ -14,18 +14,18 @@ const NAV: { href: string; label: string; icon: IconName; perm: string; group: s
   { href:"/sales",label:"Enquiries & quotes",icon:"customers",perm:"customer:view",group:"Daily work" },
   { href:"/customers",label:"Customers",icon:"customers",perm:"customer:view",group:"Daily work" },
   { href:"/tasks",label:"Tasks & follow-ups",icon:"tasks",perm:"task:view",group:"Daily work" },
-  { href:"/visa",label:"Visa cases",icon:"visa",perm:"visa:view",group:"Travel operations" },
-  { href:"/ticketing",label:"Ticketing",icon:"plane",perm:"ticketing:view",group:"Travel operations" },
-  { href:"/online-bookings",label:"Online bookings",icon:"plane",perm:"ticketing:view",group:"Travel operations" },
-  { href:"/documents",label:"Documents",icon:"documents",perm:"document:view",group:"Travel operations" },
+  { href:"/visa",label:"Visa cases",icon:"visa",perm:"visa:view",group:"Travel desk" },
+  { href:"/ticketing",label:"Ticketing",icon:"plane",perm:"ticketing:view",group:"Travel desk" },
+  { href:"/online-bookings",label:"Online bookings",icon:"plane",perm:"ticketing:view",group:"Travel desk" },
+  { href:"/documents",label:"Documents",icon:"documents",perm:"document:view",group:"Travel desk" },
   { href:"/payments",label:"Money & invoices",icon:"wallet",perm:"payment:view",group:"Finance" },
   { href:"/advances",label:"Customer advances",icon:"wallet",perm:"payment:view",group:"Finance" },
   { href:"/reports",label:"Reports & insights",icon:"dashboard",perm:"payment:view",group:"Finance" },
   { href:"/refunds",label:"Refunds",icon:"refund",perm:"refund:view",group:"Finance" },
   { href:"/suppliers",label:"Suppliers",icon:"suppliers",perm:"supplier:view",group:"Finance" },
-  { href:"/incoming-documents",label:"Incoming documents",icon:"documents",perm:"whatsapp:view",group:"Operations" },
-  { href:"/whatsapp",label:"WhatsApp desk",icon:"message",perm:"whatsapp:view",group:"Operations" },
-  { href:"/employees",label:"Team",icon:"customers",perm:"employee:view",group:"Operations" },
+  { href:"/incoming-documents",label:"Incoming documents",icon:"documents",perm:"whatsapp:view",group:"Manage" },
+  { href:"/whatsapp",label:"WhatsApp desk",icon:"message",perm:"whatsapp:view",group:"Manage" },
+  { href:"/employees",label:"Team",icon:"customers",perm:"employee:view",group:"Manage" },
   { href:"/customer-tools",label:"Customer import",icon:"customers",perm:"customer:create",group:"Manage" },
   { href:"/checklists",label:"Visa checklists",icon:"check",perm:"checklist:view",group:"Manage" },
   { href:"/audit",label:"Audit trail",icon:"audit",perm:"audit:view",group:"Manage" },
@@ -52,6 +52,14 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
   const path = usePathname(); const router = useRouter();
   const [mobile, setMobile] = useState(false); const [pwOpen, setPwOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false); const [userOpen, setUserOpen] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<string[]>(() => {
+    const active = NAV.find(n => path === n.href || path.startsWith(n.href + "/"))?.group;
+    return [...new Set(NAV.map(n => n.group))].filter(group => group !== "Daily work" && group !== active);
+  });
+  useEffect(() => {
+    const currentGroup = NAV.find(n => path === n.href || path.startsWith(n.href + "/"))?.group;
+    if (currentGroup) setCollapsedGroups(previous => previous.filter(group => group !== currentGroup));
+  }, [path]);
   const [count, setCount] = useState(0); const [error, setError] = useState("");
   const drawerRef = useRef<HTMLElement>(null); const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const quickRef = useRef<HTMLDivElement>(null); const userRef = useRef<HTMLDivElement>(null);
@@ -93,14 +101,17 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
   async function logout() { try { const r = await fetch("/api/auth/logout", { method: "POST" }); if (!r.ok) throw new Error(); router.push("/login"); router.refresh(); } catch { setError("Could not sign out. Please try again."); } }
   const nav = NAV.filter(n => user.permissions.includes(n.perm));
   const quick = QUICK.filter(q => user.permissions.includes(q.perm));
-  return <div className="flex min-h-screen flex-col">
+  const activeModule = nav.find(n => path === n.href || path.startsWith(n.href + "/"));
+  const groups = [...new Set(nav.map(n => n.group))];
+  return <div className="operations-studio flex min-h-screen flex-col">
     <a href="#workspace-content" className="skip-link">Skip to workspace</a>
     {mobile && <button aria-label="Close navigation" className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm lg:hidden" onClick={() => setMobile(false)} />}
     <header className="app-header no-print gap-2 sm:gap-3">
       <button ref={menuTriggerRef} className="icon-button lg:hidden" aria-controls="workspace-navigation" aria-label="Open navigation" aria-expanded={mobile} onClick={() => setMobile(true)}><Icon name="menu" /></button>
-      <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5 pr-2">
+      <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5 pr-2 lg:hidden">
         <Brand compact />
       </Link>
+      <div className="workspace-context hidden xl:flex"><span>{activeModule?.group ?? "Workspace"}</span><Icon name="arrow" size={13}/><strong>{activeModule?.label ?? "Your workspace"}</strong></div>
       <div className="min-w-0 flex-1 justify-center sm:px-2 flex">{user.permissions.includes("search:use") && <UniversalSearch />}</div>
       <div className="ml-auto flex items-center gap-2">
         {quick.length > 0 && <div ref={quickRef} className="relative hidden sm:block">
@@ -126,25 +137,29 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
         </div>
       </div>
     </header>
-    <div className="flex min-h-0 flex-1">
+    <div className="workspace-shell-body flex min-h-0 flex-1">
       <aside ref={drawerRef} id="workspace-navigation" role={mobile ? "dialog" : undefined} aria-modal={mobile ? true : undefined} aria-label="Workspace navigation" data-drawer={mobile ? "open" : "closed"} className={`app-sidebar no-print ${mobile ? "translate-x-0 top-0" : "-translate-x-full"}`}>
-        <div className="flex items-center justify-between px-5 pb-1 pt-5 lg:hidden"><span className="text-sm font-semibold">Your workspace</span><button className="icon-button" aria-label="Close navigation" onClick={() => setMobile(false)}><Icon name="close" /></button></div>
-        <nav aria-label="Main navigation" className="tos-scroll flex-1 overflow-y-auto px-3 pb-5 pt-3">
-          {nav.map((n, i) => {
-            const active = path === n.href || path.startsWith(n.href + "/");
-            return <div key={n.href}>
-              {(i === 0 || nav[i - 1].group !== n.group) && <div className="nav-section">{n.group}</div>}
-              <Link onClick={() => setMobile(false)} href={n.href} aria-current={active ? "page" : undefined} className={`nav-link ${active ? "active" : ""}`}><Icon name={n.icon} size={18} />{n.label}</Link>
-            </div>;
+        <div className="studio-brand-row"><Link href="/dashboard" aria-label="Max Travel agency pulse" onClick={() => setMobile(false)}><Brand compact /></Link><button className="icon-button lg:hidden" aria-label="Close navigation" onClick={() => setMobile(false)}><Icon name="close" /></button></div>
+        <div className="studio-workspace-label"><span className="studio-agency-monogram" aria-hidden="true">{initials(agencyName)}</span><span><strong title={agencyName}>{agencyName}</strong><small>Operations studio</small></span></div>
+        <nav aria-label="Main navigation" className="tos-scroll flex-1 overflow-y-auto px-3 pb-5 pt-1">
+          {groups.map(group => {
+            const expanded = !collapsedGroups.includes(group);
+            const id = `navigation-${group.replaceAll(" ", "-").toLowerCase()}`;
+            return <section key={group} className="studio-nav-group"><button className="nav-section" aria-expanded={expanded} aria-controls={id} onClick={() => setCollapsedGroups(previous => expanded ? [...previous, group] : previous.filter(value => value !== group))}>{group}<Icon name={expanded ? "chevronDown" : "arrow"} size={13}/></button>
+              <div id={id} hidden={!expanded}>{nav.filter(n => n.group === group).map(n => {
+                const active = path === n.href || path.startsWith(n.href + "/");
+                return <Link key={n.href} onClick={() => setMobile(false)} href={n.href} aria-current={active ? "page" : undefined} className={`nav-link ${active ? "active" : ""}`}><Icon name={n.icon} size={18}/><span>{n.label}</span>{active && <span className="studio-active-dot" aria-hidden="true"/>}</Link>;
+              })}</div>
+            </section>;
           })}
         </nav>
-        <div className="border-t border-slate-200/80 px-5 py-4">
-          <div className="truncate text-xs font-semibold text-slate-700" title={agencyName}>{agencyName}</div>
-          <div className="mt-1 flex items-center gap-1.5 text-small text-slate-500"><Icon name="customers" size={13}/>{user.branchName ?? "All branches"}</div>
+        <div className="studio-rail-footer">
+          <div className="truncate text-xs font-semibold" title={agencyName}>{agencyName}</div>
+          <div className="mt-1 flex items-center gap-1.5 text-small"><Icon name="customers" size={13}/>{user.branchName ?? "All branches"}</div>
           {error && <p role="alert" className="mt-2 text-xs text-rose-700">{error}</p>}
         </div>
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="workspace-main-shell flex min-w-0 flex-1 flex-col">
         <main id="workspace-content" tabIndex={-1} className="min-w-0 flex-1">{children}</main>
         <footer className="no-print flex justify-between gap-3 border-t border-slate-200 px-6 py-3 text-small text-slate-600"><span>{agencyName} · Private agency workspace</span><span>Max Travel CRM</span></footer>
       </div>

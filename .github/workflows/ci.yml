@@ -203,3 +203,52 @@ jobs:
       - run: npm run test:crm-core
       - run: npm run build
       - run: npm run test:staff-sales
+
+  studio-visual-comparison:
+    name: Studio visual evidence (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: app
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: before
+            ref: ea2850256584c1cde9d10d27ae7d0e219655f6db
+          - label: after
+            ref: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
+          path: app
+      - name: Get the exact same comparison harness for both revisions
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: comparison-harness
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Capture isolated fixture screenshots at 1440, 1024 and 390 pixels
+        env:
+          STUDIO_LABEL: ${{ matrix.label }}
+          WA_PROVIDER: manual
+        run: |
+          cmp tests/visual-review-server.mjs ../comparison-harness/tests/visual-review-server.mjs
+          cp ../comparison-harness/tests/studio-visual-comparison.mjs tests/studio-visual-comparison.mjs
+          node tests/studio-visual-comparison.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: studio-${{ matrix.label }}
+          path: app/test-artifacts/studio/
+          if-no-files-found: warn
