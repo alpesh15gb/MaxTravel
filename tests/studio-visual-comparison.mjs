@@ -19,7 +19,7 @@ try {
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
   const page = await context.newPage(); page.on("pageerror", e => browserErrors.push(e.message));
-  await page.goto(base + "/login"); await page.getByLabel("Email", { exact: true }).fill("review@visual.test"); await page.getByLabel("Password", { exact: true }).fill("Review-Visual-2026!"); await page.getByRole("button", { name: "Sign in to workspace", exact: true }).click(); await page.waitForURL("**/dashboard");
+  await page.goto(base + "/login"); await page.getByLabel("Work email", { exact: true }).fill("review@visual.test"); await page.getByLabel("Password", { exact: true }).fill("Review-Visual-2026!"); await page.getByRole("button", { name: "Sign in to workspace", exact: true }).click(); await page.waitForURL("**/dashboard");
   const routes = [["dashboard", "/dashboard"], ["customers", "/customers"], ["customer-detail", `/customers/${fixture.customerId}`], ["ticketing", "/ticketing"], ["booking-detail", `/ticketing/${fixture.bookingId}`], ["visa", "/visa"], ["visa-detail", `/visa/${fixture.visaCaseId}`], ["documents", "/documents"], ["payments", "/payments"], ["reports", "/reports"], ["sales", "/sales"], ["packages", "/travel-packages"]];
   for (const [viewport, width, height] of [["desktop", 1440, 1000], ["tablet", 1024, 900], ["mobile", 390, 844]]) {
     await page.setViewportSize({ width, height });
