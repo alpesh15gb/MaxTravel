@@ -90,8 +90,10 @@ try {
   await page.getByRole("heading", { name: "Your package image library", exact: true }).scrollIntoViewIfNeeded();
   await page.locator("#workspace-navigation").waitFor({ state:"hidden" });
   assert.equal(await page.locator("#workspace-navigation").isVisible(), false, "Image library is not obscured by closed mobile navigation");
-  assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "Image library fits mobile viewport");
+  const mediaGeometry = await page.evaluate(() => ({ viewport: innerWidth, scrollWidth: document.documentElement.scrollWidth, overflow: [...document.querySelectorAll<HTMLElement>("body *")].filter(el => { const r = el.getBoundingClientRect(); return getComputedStyle(el).visibility !== "hidden" && r.width > 0 && (r.right > innerWidth + 1 || r.left < -1); }).slice(0, 30).map(el => { const r = el.getBoundingClientRect(); return { tag: el.tagName, className: el.className, label: el.getAttribute("aria-label"), x: r.x, width: r.width, right: r.right, minWidth: getComputedStyle(el).minWidth }; }) }));
+  writeFileSync(path.join(output, "media-library-mobile-geometry.json"), JSON.stringify(mediaGeometry, null, 2));
   await page.screenshot({ path: path.join(output, "media-library-mobile.png") });
+  assert(mediaGeometry.scrollWidth <= mediaGeometry.viewport, "Image library fits mobile viewport");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole("button", { name: "Preview", exact: true }).click();
   await page.getByText("Required content is complete.", { exact: false }).waitFor();

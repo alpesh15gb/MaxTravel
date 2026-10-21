@@ -337,8 +337,18 @@ try {
   await phonePage.getByRole("button", { name: /Receipts/ }).click();
   if (!await phonePage.getByRole("list", { name: "Payment receipts" }).isVisible()) fail("mobile receipt cards are not visible");
   await phonePage.goto(`${base}/online-bookings`, { waitUntil: "networkidle" });
-  if (!await phonePage.getByRole("list", { name: "Online bookings at mobile width" }).isVisible()) fail("online booking mobile cards are not visible");
-  if (await phonePage.locator("main table").isVisible()) fail("online booking desktop table should be hidden on mobile");
+  // One responsive table owns each action instance; it becomes labelled cards, not a second hidden copy.
+  const onlineTable = phonePage.locator('table[aria-label="Online bookings"]');
+  if (!await onlineTable.isVisible()) fail("online booking responsive records are not visible");
+  if (await onlineTable.locator("thead").isVisible()) fail("online booking column header should be hidden in card layout");
+  const cards = await onlineTable.locator("tbody tr").evaluateAll(rows => rows.map(row => {
+    const box = row.getBoundingClientRect();
+    const labels = [...row.querySelectorAll("td > span.md\\:hidden")].filter(label => getComputedStyle(label).display !== "none");
+    return { layout:getComputedStyle(row).display, left:box.left, right:box.right, width:innerWidth, labels:labels.map(label => label.textContent), containsFields:labels.every(label => { const field=label.getBoundingClientRect(); return field.top>=box.top && field.bottom<=box.bottom; }), actions:row.querySelectorAll("td > details").length };
+  }));
+  if (!cards.length || cards.some(card => card.layout !== "grid" || !card.containsFields || card.left < 0 || card.right > card.width)) fail("online booking cards must fit the phone viewport");
+  if (cards.some(card => !["Reference","Customer","Product","Synced platform status","Supplier reference","Customer total","Received","Refunded"].every(label => card.labels.includes(label)))) fail("online booking mobile fields need visible labels");
+  if (cards.some(card => card.actions !== 1)) fail("online booking records must retain exactly one action instance across layouts");
   await phonePage.goto(base + resolve("/customers/{customerId}"), { waitUntil: "networkidle" });
   if (!await phonePage.getByLabel("Customer section", { exact: true }).isVisible()) fail("customer record sections need a mobile selector");
   await phone.close();

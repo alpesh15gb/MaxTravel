@@ -1,3 +1,4 @@
+import "./online-bookings.css";
 import { ONLINE_BOOKING_STATUSES, onlineBookingQuery, onlineBookingPage, onlineBookingsHref, parseOnlineBookingFilters, type SearchParams } from "@/lib/online-bookings-query";
 import PlatformActions from "./PlatformActions";
 import Link from "next/link";
@@ -48,7 +49,7 @@ export default async function OnlineBookingsPage({ searchParams }: { searchParam
     {filters.invalid && <p role="alert" className="panel p-4 text-sm text-amber-800">These filters or page link are invalid. No records were loaded. Apply valid filters or clear them to restart.</p>}
     {!rows.length && !filters.invalid && <section className="panel p-6"><h2 className="font-semibold">{filters.cursor ? "No bookings on this page" : filters.q || filters.status || filters.product ? "No matching online bookings" : "No online bookings available"}</h2><p className="mt-2 text-sm text-slate-600">{filters.cursor ? "Records may have changed. Return to the first page with these filters." : "Only bookings within your access are shown. Try different filters, or check that the platform integration has synced your bookings."}</p><Link className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-teal-700 underline" href={onlineBookingsHref(filters)}>Return to first page</Link></section>}
     {!!rows.length && <div className="min-w-0 md:overflow-x-auto md:rounded-xl md:border md:border-slate-200 md:bg-white">
-      <table aria-label="Online bookings" className="block w-full text-left text-sm md:table">
+      <table aria-label="Online bookings" className="online-bookings-records block w-full text-left text-sm md:table">
         <thead className="hidden bg-slate-50 md:table-header-group"><tr>{["Reference", "Customer", "Product", "Synced platform status", "Supplier reference", "Customer total", "Received", "Refunded"].map(label => <th scope="col" key={label} className="whitespace-nowrap p-4">{label}</th>)}</tr></thead>
         <tbody className="grid gap-3 md:table-row-group">{rows.map(row => {
           const link = platformLink(row.id), document = documentFor(row.id), amounts = financials(row);

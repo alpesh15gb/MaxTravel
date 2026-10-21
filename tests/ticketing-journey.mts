@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { randomBytes, randomUUID, randomInt } from "node:crypto";
+import { randomBytes, randomUUID, randomInt, createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import bcrypt from "bcryptjs";
 import { prisma } from "../src/lib/db";
@@ -97,15 +97,42 @@ try {
       const page = await context.newPage();
       const clientErrors:string[]=[]; const networkErrors:unknown[]=[];
       const events: unknown[] = [];
+      let refreshRequest: { url: string; headers: Record<string, string> } | null = null;
       const at = () => Date.now() - startedAt;
       await page.addInitScript(() => {
         const target = window as typeof window & { __journeyLifecycle?: unknown[] };
         target.__journeyLifecycle = [{ event: "init", at: Date.now() }];
+        const report = (detail: Record<string, unknown>) => console.debug("JOURNEY_TRANSPORT", JSON.stringify({ at: Date.now(), ...detail }));
+        const abort = AbortController.prototype.abort;
+        AbortController.prototype.abort = function(reason?: unknown) { report({ event: "abort-controller", stack: new Error().stack?.slice(0, 1600) }); return abort.call(this, reason); };
+        const cancel = ReadableStreamDefaultReader.prototype.cancel;
+        ReadableStreamDefaultReader.prototype.cancel = function(reason?: unknown) { report({ event: "reader-cancel", stack: new Error().stack?.slice(0, 1600) }); return cancel.call(this, reason); };
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = function(input: RequestInfo | URL, init?: RequestInit) {
+          const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+          if (headers.get("rsc") !== "1") return originalFetch(input, init);
+          const url = input instanceof Request ? input.url : String(input);
+          const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+          signal?.addEventListener("abort", () => report({ event: "fetch-signal-abort", url }), { once: true });
+          report({ event: "fetch-start", url, signalAborted: signal?.aborted });
+          const pending = originalFetch(input, init);
+          void pending.then(response => {
+            report({ event: "fetch-headers", url, status: response.status, headers: Object.fromEntries(["content-type", "content-length", "content-encoding", "transfer-encoding", "vary", "x-nextjs-postponed", "x-nextjs-cache"].map(name => [name, response.headers.get(name)])) });
+          }, error => { report({ event: "fetch-rejection", url, error: String(error), signalAborted: signal?.aborted }); });
+          return pending; // Preserve the original fetch promise and response stream without teeing.
+        };
+
         for (const event of ["pagehide", "pageshow", "beforeunload", "visibilitychange"]) window.addEventListener(event, e => { const detail = { event, at: Date.now(), persisted: "persisted" in e ? e.persisted : undefined, visibility: document.visibilityState }; target.__journeyLifecycle?.push(detail); console.debug("JOURNEY_LIFECYCLE", JSON.stringify(detail)); });
       });
       page.on("console", message => events.push({ elapsedMs: at(), event: "console", type: message.type(), text: message.text().slice(0, 2000) }));
       page.on("framenavigated", frame => { if (frame === page.mainFrame()) events.push({ elapsedMs: at(), event: "navigation", url: frame.url() }); });
-      page.on("request", request => { if (request.headers().rsc === "1") events.push({ elapsedMs: at(), event: "rsc-request", url: request.url(), prefetch: request.headers()["next-router-prefetch"] ?? null }); });
+      page.on("request", request => {
+        const headers = request.headers();
+        if (headers.rsc !== "1") return;
+        const allowed = Object.fromEntries(["rsc", "next-router-state-tree", "next-router-prefetch", "next-router-segment-prefetch", "next-url", "accept"].filter(name => headers[name] !== undefined).map(name => [name, headers[name]]));
+        events.push({ elapsedMs: at(), event: "rsc-request", url: request.url(), headers: allowed });
+        if (!headers["next-router-prefetch"] && new URL(request.url()).pathname === `/ticketing/${replacementId}`) refreshRequest = { url: request.url(), headers: allowed };
+      });
       page.on("response", async response => {
         if (response.request().headers().rsc !== "1") return;
         const event: Record<string, unknown> = { elapsedMs: at(), event: "rsc-response", url: response.url(), status: response.status(), type: response.headers()["content-type"] };
@@ -145,7 +172,15 @@ try {
         await page.screenshot({path:"test-artifacts/journeys/ticketing-cancellation-failure.png",fullPage:true});
         const stored=await prisma.booking.findUniqueOrThrow({where:{id:replacementId},select:{status:true,cancellationSupplierCharge:true,cancellationAgencyFee:true}});
         const serverView = await fetch(`${origin}/ticketing/${replacementId}`, { headers:{Cookie:cookie}, signal:AbortSignal.timeout(5000) }).then(async fresh => { const html=await fresh.text(); return {status:fresh.status,hasSettlement:html.includes("Cancellation settlement"),hasCancelled:html.includes('"status":"CANCELLED"'),hasReissueRequested:html.includes('"status":"REISSUE_REQUESTED"')}; }).catch(error=>({error:String(error)}));
-        writeFileSync("test-artifacts/journeys/ticketing-cancellation-failure.json",JSON.stringify({postStatus:response.status(),stored,serverView,renderedStatus:await page.getByLabel("Booking status",{exact:true}).inputValue().catch(()=>"unavailable"),headingCount:await page.getByRole("heading",{name:"Cancellation settlement",exact:true}).count(),clientErrors,networkErrors,events,lifecycle:await page.evaluate(() => (window as typeof window & { __journeyLifecycle?: unknown[] }).__journeyLifecycle),server:{port,pid:server.pid,childExit,childError,logs}},null,2));
+        // Failure-only independent read; never reloads the browser or changes an assertion.
+        // Only allowlisted RSC headers are copied, and the fixture cookie is never recorded.
+        const replay = refreshRequest as { url: string; headers: Record<string, string> } | null;
+        const serverRsc = replay ? await fetch(replay.url, { headers: { ...replay.headers, Cookie: cookie }, signal: AbortSignal.timeout(5000) }).then(async fresh => {
+          const body = await fresh.text();
+          return { status: fresh.status, bytes: Buffer.byteLength(body), sha256: createHash("sha256").update(body).digest("hex"), hasSettlement: body.includes("Cancellation settlement"), hasCancelled: body.includes('"status":"CANCELLED"'), hasReissueRequested: body.includes('"status":"REISSUE_REQUESTED"'), hasRedirect: body.includes("NEXT_REDIRECT"), hasNotFound: body.includes("NEXT_HTTP_ERROR_FALLBACK"), headers: Object.fromEntries(["content-type", "content-length", "content-encoding", "transfer-encoding", "vary", "x-nextjs-postponed", "x-nextjs-cache"].map(name => [name, fresh.headers.get(name)])) };
+        }).catch(error => ({ error: String(error) })) : { error: "No current-route refresh request observed" };
+        const resourceTiming = await page.evaluate(() => performance.getEntriesByType("resource").filter(entry => entry.name.includes("_rsc=")).map(entry => { const r = entry as PerformanceResourceTiming; return { url: r.name, startTime: r.startTime, duration: r.duration, transferSize: r.transferSize, encodedBodySize: r.encodedBodySize, decodedBodySize: r.decodedBodySize }; }));
+        writeFileSync("test-artifacts/journeys/ticketing-cancellation-failure.json",JSON.stringify({postStatus:response.status(),stored,serverView,serverRsc,resourceTiming,renderedStatus:await page.getByLabel("Booking status",{exact:true}).inputValue().catch(()=>"unavailable"),headingCount:await page.getByRole("heading",{name:"Cancellation settlement",exact:true}).count(),clientErrors,networkErrors,events,lifecycle:await page.evaluate(() => (window as typeof window & { __journeyLifecycle?: unknown[] }).__journeyLifecycle),server:{port,pid:server.pid,childExit,childError,logs}},null,2));
         throw error;
       }
       console.log("Ticketing browser: cancellation preview, dismiss/no mutation, reopen and explicit zero-charge save passed.");

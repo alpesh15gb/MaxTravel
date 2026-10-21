@@ -51,6 +51,12 @@ export default function UniversalSearch({ dark = false }: { dark?: boolean }) {
   }, []);
   const shortcut = isMac ? "⌘K" : "Ctrl K";
 
+  // Focus after React has committed the mobile panel's visible state. A rAF scheduled
+  // from the keyboard event can run before that commit and focus a still-hidden input.
+  useEffect(() => {
+    if (mobileExpanded) inputRef.current?.focus();
+  }, [mobileExpanded]);
+
   useEffect(() => {
     const controller = new AbortController();
     setResp(null); setError(""); setLoading(false);
@@ -79,7 +85,7 @@ export default function UniversalSearch({ dark = false }: { dark?: boolean }) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setMobileExpanded(true); setOpen(true);
-        requestAnimationFrame(() => inputRef.current?.focus());
+        inputRef.current?.focus(); // Also supports the shortcut when the panel is already open.
       }
     }
     document.addEventListener("mousedown", onDocClick);
@@ -114,7 +120,7 @@ export default function UniversalSearch({ dark = false }: { dark?: boolean }) {
 
   return (
     <div ref={boxRef} className="workspace-search relative w-full max-w-2xl">
-      <button ref={triggerRef} type="button" className="workspace-search-trigger icon-button" aria-label="Search your workspace" aria-expanded={mobileExpanded} aria-controls="workspace-search-input-panel" onClick={() => { setMobileExpanded(true); setOpen(true); requestAnimationFrame(() => inputRef.current?.focus()); }}><Icon name="search" size={20} /></button>
+      <button ref={triggerRef} type="button" className="workspace-search-trigger icon-button" aria-label="Search your workspace" aria-expanded={mobileExpanded} aria-controls="workspace-search-input-panel" onClick={() => { setMobileExpanded(true); setOpen(true); }}><Icon name="search" size={20} /></button>
       <div id="workspace-search-input-panel" data-expanded={mobileExpanded} className="workspace-search-input-panel relative">          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"><Icon name="search" size={18} /></span>
         <input
           ref={inputRef}

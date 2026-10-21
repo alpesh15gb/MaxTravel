@@ -30,11 +30,17 @@ try {
   }
   await page.setViewportSize({ width: 390, height: 844 }); await page.goto(fixture.base + "/dashboard");
   const breakdown = page.locator(".kpi-mobile-breakdown"); await breakdown.locator("summary").click(); assert(await breakdown.locator("p").isVisible()); await capture("dashboard-breakdown-open"); await breakdown.locator("summary").click();
+  async function assertFocused(locator) {
+    const handle = await locator.elementHandle(); assert(handle, "Expected focus target to exist");
+    try { await page.waitForFunction(el => document.activeElement === el, handle, { timeout: 3000 }); }
+    finally { await handle.dispose(); }
+    assert(await locator.evaluate(el => document.activeElement === el), "Focus must reach the intended control");
+  }
   const trigger = page.getByRole("button", { name: "Search your workspace", exact: true }); const search = page.getByRole("combobox", { name: "Search your workspace", exact: true });
   assert.equal(await search.isVisible(), false); const triggerBox = await trigger.boundingBox(); assert(triggerBox.width >= 44 && triggerBox.height >= 44);
-  await trigger.click(); await search.waitFor(); assert(await search.evaluate(el => document.activeElement === el)); await search.fill("Meera"); await page.locator("#workspace-search-results").getByRole("button", { name: /Meera/ }).first().waitFor(); await capture("search-mobile");
-  await search.press("Escape"); assert.equal(await search.isVisible(), false); assert(await trigger.evaluate(el => document.activeElement === el));
-  await page.keyboard.press("Control+k"); await search.waitFor(); assert(await search.evaluate(el => document.activeElement === el)); await page.getByRole("button", { name: "Close workspace search", exact: true }).click(); assert(await trigger.evaluate(el => document.activeElement === el));
+  await trigger.click(); await search.waitFor(); await assertFocused(search); await search.fill("Meera"); await page.locator("#workspace-search-results").getByRole("button", { name: /Meera/ }).first().waitFor(); await capture("search-mobile");
+  await search.press("Escape"); await search.waitFor({ state: "hidden" }); assert.equal(await search.isVisible(), false); await assertFocused(trigger);
+  await page.keyboard.press("Control+k"); await search.waitFor(); await assertFocused(search); await page.getByRole("button", { name: "Close workspace search", exact: true }).click(); await assertFocused(trigger);
   await trigger.click(); await search.fill("Meera"); const result = page.locator("#workspace-search-results").getByRole("button", { name: /Meera/ }).first(); await result.waitFor();
   await Promise.all([page.waitForURL(url => url.pathname !== "/dashboard"), result.click()]); assert.equal(await page.getByRole("combobox", { name: "Search your workspace", exact: true }).isVisible(), false, "Choosing a result closes the mobile panel");
   await page.goto(fixture.base + "/customers");

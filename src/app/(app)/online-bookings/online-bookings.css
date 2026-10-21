@@ -1,0 +1,6 @@
+/* This table is also the mobile card list: keep one stateful action instance per record. */
+@media (max-width:767px) {
+  main table.online-bookings-records { min-width:0; }
+  main table.online-bookings-records tbody tr { height:auto; }
+  main table.online-bookings-records td { overflow-wrap:anywhere; }
+}
