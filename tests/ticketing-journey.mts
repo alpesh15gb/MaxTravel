@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { randomBytes, randomUUID, randomInt } from "node:crypto";
 import { spawn } from "node:child_process";
 import bcrypt from "bcryptjs";
@@ -72,6 +73,10 @@ try {
       const separator = cookie.indexOf("=");
       await context.addCookies([{ name: cookie.slice(0, separator), value: cookie.slice(separator + 1), url: origin }]);
       const page = await context.newPage();
+      const clientErrors:string[]=[]; const networkErrors:unknown[]=[];
+      page.on("pageerror",error=>clientErrors.push(error.message));
+      page.on("requestfailed",request=>networkErrors.push({method:request.method(),path:new URL(request.url()).pathname,error:request.failure()?.errorText}));
+      page.on("response",response=>{if(response.status()>=400)networkErrors.push({status:response.status(),path:new URL(response.url()).pathname});});
       await page.goto(`${origin}/ticketing/${replacementId}`);
       await page.getByLabel("Booking status", { exact: true }).selectOption("CANCELLED");
       const dialog = page.getByRole("dialog");
@@ -86,10 +91,20 @@ try {
       await dialog.getByLabel("Supplier cancellation charge (INR) *", { exact: true }).fill("0");
       await dialog.getByLabel("Agency cancellation fee (INR) *", { exact: true }).fill("0");
       await dialog.getByLabel("Cancellation reason / agreed terms *", { exact: true }).fill("Full waiver agreed; synthetic browser test only");
+      const cancellationResponse=page.waitForResponse(response=>new URL(response.url()).pathname==="/api/bookings/status"&&response.request().method()==="POST");
       await dialog.getByRole("button", { name: "Save cancellation terms", exact: true }).click();
-      await page.waitForFunction(() => !document.querySelector('[role="dialog"]'));
-      await page.getByRole("heading", { name: "Cancellation settlement", exact: true }).waitFor();
-      assert.equal((await prisma.booking.findUniqueOrThrow({ where: { id: replacementId } })).status, "CANCELLED");
+      const response=await cancellationResponse; assert.equal(response.status(),200,"Cancellation save must explicitly succeed");
+      try {
+        await page.waitForFunction(() => !document.querySelector('[role="dialog"]'));
+        await page.getByRole("heading", { name: "Cancellation settlement", exact: true }).waitFor();
+        assert.equal((await prisma.booking.findUniqueOrThrow({ where: { id: replacementId } })).status, "CANCELLED");
+      } catch(error) {
+        mkdirSync("test-artifacts/journeys",{recursive:true});
+        await page.screenshot({path:"test-artifacts/journeys/ticketing-cancellation-failure.png",fullPage:true});
+        const stored=await prisma.booking.findUniqueOrThrow({where:{id:replacementId},select:{status:true,cancellationSupplierCharge:true,cancellationAgencyFee:true}});
+        writeFileSync("test-artifacts/journeys/ticketing-cancellation-failure.json",JSON.stringify({postStatus:response.status(),stored,renderedStatus:await page.getByLabel("Booking status",{exact:true}).inputValue().catch(()=>"unavailable"),headingCount:await page.getByRole("heading",{name:"Cancellation settlement",exact:true}).count(),clientErrors,networkErrors},null,2));
+        throw error;
+      }
       console.log("Ticketing browser: cancellation preview, dismiss/no mutation, reopen and explicit zero-charge save passed.");
     } finally { await browser.close(); }
   }
