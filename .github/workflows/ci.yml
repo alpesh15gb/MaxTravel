@@ -137,6 +137,9 @@ jobs:
         id: agency_journeys
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         run: npm run test:journeys
+      - name: Verify task-first mobile workspace journeys
+        if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
+        run: node tests/mobile-workspace-browser.mjs
       - name: Verify three consecutive cancellation UI settlements
         if: ${{ !cancelled() && steps.agency_journeys.outcome == 'success' }}
         env:
@@ -161,6 +164,7 @@ jobs:
             test-artifacts/ui-gate-server.log
             test-artifacts/reporting/
             test-artifacts/journeys/
+            test-artifacts/mobile-workspace/
             test-artifacts/travel-packages/
             test-artifacts/a11y/report.json
             test-artifacts/a11y/report.md

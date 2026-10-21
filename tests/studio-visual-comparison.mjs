@@ -39,8 +39,18 @@ try {
     assert(fieldGeometry.focused && fieldGeometry.top >= 0 && fieldGeometry.top < height, "Last draft field remains visibly focusable");
     page.once("dialog", dialog => dialog.accept()); await page.getByRole("button", { name: "Close editor", exact: true }).click();
     if (width === 390) {
-      await page.getByRole("button", { name: "Open navigation", exact: true }).click(); await page.screenshot({ path: path.join(out, "mobile-navigation.png"), fullPage: false });
+      await page.getByRole("button", { name: "Open navigation", exact: true }).click();
       const drawer = page.getByRole("dialog", { name: "Workspace navigation" }); assert(await drawer.isVisible());
+      await page.waitForFunction(() => { const node = document.querySelector('#workspace-navigation[data-drawer="open"]'); if (!node) return false; const box = node.getBoundingClientRect(); const transform = getComputedStyle(node).transform; return box.width > 200 && box.left >= -0.5 && box.right <= innerWidth + 0.5 && (transform === "none" || Math.abs(new DOMMatrixReadOnly(transform).m41) < 0.5); });
+      const customerLink = drawer.getByRole("link", { name: "Customers", exact: true });
+      assert(await customerLink.isVisible());
+      const navGeometry = await customerLink.evaluate(node => { const r = node.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { left:r.left, right:r.right, top:r.top, bottom:r.bottom, width:innerWidth, height:innerHeight, pointerReachable:node === hit || node.contains(hit) }; });
+      assert(navGeometry.pointerReachable && navGeometry.top >= 0 && navGeometry.bottom <= height, "Visible menu link must be inside viewport and unobscured");
+      fs.writeFileSync(path.join(out, "mobile-navigation-geometry.json"), JSON.stringify(navGeometry, null, 2));
+      await page.screenshot({ path: path.join(out, "mobile-navigation.png"), fullPage: false });
+      await customerLink.click(); await page.waitForURL("**/customers");
+      assert.equal(await page.locator("#workspace-navigation").isVisible(), false, "Real navigation closes the mobile drawer");
+      await page.getByRole("button", { name: "Open navigation", exact: true }).click();
       const groupToggle = drawer.getByRole("button", { name: "Daily work", exact: true });
       if (await groupToggle.count()) {
         await groupToggle.click(); assert.equal(await groupToggle.getAttribute("aria-expanded"), "false");

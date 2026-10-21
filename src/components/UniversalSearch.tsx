@@ -31,6 +31,8 @@ const GROUP_COLORS: Record<string, string> = {
 
 export default function UniversalSearch({ dark = false }: { dark?: boolean }) {
   const router = useRouter();
+  const [mobileExpanded, setMobileExpanded] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [q, setQ] = useState("");
   const [resp, setResp] = useState<Resp | null>(null);
   const [open, setOpen] = useState(false);
@@ -71,13 +73,13 @@ export default function UniversalSearch({ dark = false }: { dark?: boolean }) {
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) { setOpen(false); setMobileExpanded(false); }
     }
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        inputRef.current?.focus();
-        setOpen(true);
+        setMobileExpanded(true); setOpen(true);
+        requestAnimationFrame(() => inputRef.current?.focus());
       }
     }
     document.addEventListener("mousedown", onDocClick);
@@ -89,14 +91,14 @@ export default function UniversalSearch({ dark = false }: { dark?: boolean }) {
   }, []);
 
   function go(hit: Hit) {
-    setOpen(false);
+    setOpen(false); setMobileExpanded(false);
     setQ("");
     setResp(null);
     router.push(hit.href);
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") { setOpen(false); return; }
+    if (e.key === "Escape") { setOpen(false); setMobileExpanded(false); if (mobileExpanded && window.innerWidth < 640) triggerRef.current?.focus(); return; }
     if (!flat.length) {
       if (e.key === "Enter" && resp?.exact) go(resp.exact);
       return;
@@ -111,8 +113,9 @@ export default function UniversalSearch({ dark = false }: { dark?: boolean }) {
   }
 
   return (
-    <div ref={boxRef} className="relative w-full max-w-2xl">
-      <div className="relative">          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"><Icon name="search" size={18} /></span>
+    <div ref={boxRef} className="workspace-search relative w-full max-w-2xl">
+      <button ref={triggerRef} type="button" className="workspace-search-trigger icon-button" aria-label="Search your workspace" aria-expanded={mobileExpanded} aria-controls="workspace-search-input-panel" onClick={() => { setMobileExpanded(true); setOpen(true); requestAnimationFrame(() => inputRef.current?.focus()); }}><Icon name="search" size={20} /></button>
+      <div id="workspace-search-input-panel" data-expanded={mobileExpanded} className="workspace-search-input-panel relative">          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"><Icon name="search" size={18} /></span>
         <input
           ref={inputRef}
           value={q}
@@ -126,11 +129,12 @@ export default function UniversalSearch({ dark = false }: { dark?: boolean }) {
             ? "w-full bg-white/10 border border-white/15 rounded-lg pl-9 pr-16 py-2 text-sm text-white placeholder-slate-400 focus:ring-2 focus:ring-teal-400/50 focus:bg-white/15"
             : "w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 sm:pr-16 py-2 text-sm placeholder-slate-500 focus:ring-2 focus:ring-teal-500/30 focus:border-teal-200"}
         />
+        <button type="button" className="workspace-search-close icon-button" aria-label="Close workspace search" onClick={() => { setMobileExpanded(false); setOpen(false); triggerRef.current?.focus(); }}><Icon name="close" size={18}/></button>
         <span className={`hidden sm:block absolute right-3 top-1/2 -translate-y-1/2 text-small rounded px-1.5 py-0.5 border ${dark ? "text-slate-300 border-white/20" : "text-slate-500 border-slate-200"}`}>{shortcut}</span>
       </div>
 
       {open && q.trim().length >= 2 && (
-        <div id="workspace-search-results" className="fixed left-3 right-3 sm:absolute sm:left-auto sm:right-auto z-50 mt-2 sm:w-full max-h-[70vh] overflow-y-auto tos-scroll bg-white border border-slate-200 rounded-xl shadow-2xl">
+        <div id="workspace-search-results" className="workspace-search-results fixed left-3 right-3 sm:absolute sm:left-auto sm:right-auto z-50 mt-2 sm:w-full max-h-[70vh] overflow-y-auto tos-scroll bg-white border border-slate-200 rounded-xl shadow-2xl">
           {loading && <div className="px-4 py-3 text-sm text-slate-500">Searching…</div>}
           {error && <div role="alert" className="p-4 text-sm text-rose-700">{error}</div>}
           {!loading && resp && resp.groups.length === 0 && !resp.exact && (

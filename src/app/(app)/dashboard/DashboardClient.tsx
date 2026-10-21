@@ -58,7 +58,7 @@ function Dashboard({todayLabel}:{todayLabel:string}){
 
     {/* A role with no module permissions has no KPIs at all, and an empty bordered band is worse
         than nothing — so the strip is only rendered when it has something to say. */}
-    {(!data||data.kpis.length>0)&&<div className="summary-strip dashboard-kpi-strip" aria-label="Agency summary">{data?data.kpis.map((k)=><Link key={k.label} href={k.href}><StatCard label={k.label} value={k.value} note={k.note} icon={k.icon} tone={k.tone==="danger"?"rose":k.tone==="warn"?"amber":"neutral"}/></Link>):[0,1,2].map(i=><div key={i} className="h-24 animate-pulse bg-slate-100"/>)}</div>}
+    {(!data||data.kpis.length>0)&&<div className="summary-strip dashboard-kpi-strip" aria-label="Agency summary">{data?data.kpis.map((k)=><div key={k.label} className={`dashboard-kpi ${k.href === "/payments" ? "dashboard-kpi-financial" : ""}`}><Link href={k.href}><StatCard label={k.label} value={k.value} note={k.href === "/payments" ? undefined : k.note} icon={k.icon} tone={k.tone==="danger"?"rose":k.tone==="warn"?"amber":"neutral"}/></Link>{k.href === "/payments" && k.note && <><p className="stat-note kpi-desktop-breakdown">{k.note}</p><details className="kpi-mobile-breakdown"><summary>Receivables breakdown</summary><p>{k.note}</p></details></>}</div>):[0,1,2].map(i=><div key={i} className="h-24 animate-pulse bg-slate-100"/>)}</div>}
 
     <div className="daily-workspace">
       <aside className="daily-workspace-tools" aria-label="Organize your work">
@@ -71,7 +71,7 @@ function Dashboard({todayLabel}:{todayLabel:string}){
       <section id="attention" className="panel min-w-0 overflow-hidden" aria-label="Attention queue" aria-busy={refreshing}>
         <div className="attention-heading">
           <div><h2>{stream==="all"?"Needs your attention":WORKSTREAMS.find(w=>w.value===stream)?.label} <span className="attention-total">{data?items.length:"–"}</span></h2><p>Prioritized for today. Every item has a next step.</p></div>
-          <button className="btn-secondary" aria-label="Refresh" disabled={refreshing} onClick={load}><Icon name="refresh" size={14}/>{refreshing?"Refreshing…":"Refresh"}</button>
+          <button className="btn-secondary" aria-label="Refresh" disabled={refreshing} onClick={load}><Icon name="refresh" size={14}/><span className="attention-refresh-label">{refreshing?"Refreshing…":"Refresh"}</span></button>
         </div>
         <div className="queue-filter-bar"><ViewToggle label="Priority filter" value={filter} onChange={setFilter} options={filterOptions}/></div>
         {/* A failed action must not wear the green success banner: it read as confirmation. */}

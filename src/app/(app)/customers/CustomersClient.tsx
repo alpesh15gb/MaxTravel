@@ -1,7 +1,7 @@
 "use client";
 import { enumLabel } from "@/lib/labels";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Icon from "@/components/Icon";
 import { PageHeader, EmptyState, Field, StatCard, Status, ViewToggle, avatarClass, initialsOf } from "@/components/ui";
@@ -27,10 +27,12 @@ const PAGE = 40;
 
 export default function CustomersClient({ customers, canCreate, canExport }: { customers: C[]; canCreate: boolean; canExport: boolean }) {
   const sp = useSearchParams();
+  const directorySearch = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<"board" | "list">("list");
   const [query, setQuery] = useState("");
   const [type, setType] = useState("ALL");
   const [relationship, setRelationship] = useState("ALL");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [show, setShow] = useState(canCreate && sp.get("action") === "new");
   const [shown, setShown] = useState<Record<string, number>>({});
   const [listShown, setListShown] = useState(PAGE);
@@ -45,6 +47,19 @@ export default function CustomersClient({ customers, canCreate, canExport }: { c
 
   // A new search or filter starts every column and the list back at the first page.
   function resetPaging() { setShown({}); setListShown(PAGE); }
+
+  const typeLabel = type === "PARTNERS" ? "Corporate & partner" : enumLabel(type);
+  const activeFilters = [type !== "ALL" ? typeLabel : "", relationship !== "ALL" ? enumLabel(relationship) : ""].filter(Boolean);
+  const summaryButton = (selected: boolean) => `min-h-11 rounded-xl border px-2 py-3 text-left ${selected ? "border-teal-600 bg-teal-50" : "border-slate-200 bg-white"}`;
+  function renderFilters() {
+    return <>
+      <div className="[&_button]:min-h-11"><ViewToggle label="Customer view" value={view} onChange={setView} options={[{ value: "board", label: "Board", icon: "board" }, { value: "list", label: "List", icon: "list" }]} /></div>
+      <select aria-label="Customer type" className="control min-h-11 w-full md:max-w-[220px]" value={type} onChange={e => { setType(e.target.value); resetPaging(); }}>
+        <option value="ALL">All customer types</option><option value="PARTNERS">Corporate & partner</option><option value="INDIVIDUAL">Individual</option><option value="CORPORATE">Corporate</option><option value="SUB_AGENT">Sub-agent</option>
+      </select>
+      <select aria-label="Relationship status" className="control min-h-11 w-full md:max-w-[220px]" value={relationship} onChange={e => { setRelationship(e.target.value); resetPaging(); }}><option value="ALL">All relationships</option>{COLUMNS.map(c => <option key={c.status} value={c.status}>{c.title}</option>)}</select>
+    </>;
+  }
 
   function renderCard(c: C) {
     return <BoardCard key={c.id}>
@@ -71,28 +86,28 @@ export default function CustomersClient({ customers, canCreate, canExport }: { c
   return <div className="workspace-page">
     <PageHeader title="Customers" description="Each customer's travellers, bookings, visa cases and balances in one place."
       actions={<>{canExport && <a className="btn-secondary" href="/api/export?entity=customers"><Icon name="download" size={16} />Export</a>}{canCreate && <button className="btn-primary" onClick={() => setShow(true)}><Icon name="plus" size={17} />New customer</button>}</>} />
-    <div className="summary-strip" aria-label="Customer directory summary">
+    <div className="hidden md:block"><div className="summary-strip" aria-label="Customer directory summary">
       <button type="button" className="text-left" aria-pressed={type === "ALL" && relationship === "ALL"} onClick={() => { setType("ALL"); setRelationship("ALL"); resetPaging(); }}><StatCard label="Customers" value={customers.length} icon="customers" note="View all customers" /></button>
       <button type="button" className="text-left" aria-pressed={relationship === "ACTIVE"} onClick={() => { setRelationship("ACTIVE"); setType("ALL"); resetPaging(); }}><StatCard label="Active relationships" value={customers.filter(c => c.status === "ACTIVE").length} icon="check" note="View active customers" /></button>
       <button type="button" className="text-left" aria-pressed={type === "PARTNERS"} onClick={() => { setType("PARTNERS"); setRelationship("ALL"); resetPaging(); }}><StatCard label="Corporate & partner" value={customers.filter(c => c.type !== "INDIVIDUAL").length} icon="suppliers" note="View business relationships" /></button>
     </div>
 
-    <div className="workspace-toolbar">
-      <ViewToggle label="Customer view" value={view} onChange={setView} options={[{ value: "board", label: "Board", icon: "board" }, { value: "list", label: "List", icon: "list" }]} />
-      <select aria-label="Customer type" className="control max-w-[220px]" value={type} onChange={e => { setType(e.target.value); resetPaging(); }}>
-        <option value="ALL">All customer types</option>
-        <option value="PARTNERS">Corporate & partner</option>
-        <option value="INDIVIDUAL">Individual</option>
-        <option value="CORPORATE">Corporate</option>
-        <option value="SUB_AGENT">Sub-agent</option>
-      </select>
-      <select aria-label="Relationship status" className="control" value={relationship} onChange={e => { setRelationship(e.target.value); resetPaging(); }}><option value="ALL">All relationships</option>{COLUMNS.map(c => <option key={c.status} value={c.status}>{c.title}</option>)}</select>
-      <div className="relative min-w-[220px] flex-1 md:max-w-sm">
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"><Icon name="search" size={16} /></span>
-        <input type="search" aria-label="Filter customers" className="control w-full pl-9" placeholder="Name, phone, email or city…" value={query} onChange={e => { setQuery(e.target.value); resetPaging(); }} />
-      </div>
     </div>
-    <p className="mb-3 text-xs text-slate-600">Showing {visible.length} of {customers.length} customers · {view === "board" ? "grouped by relationship status" : "sorted by name"}</p>
+    <div className="mb-4 grid grid-cols-3 gap-2 md:hidden" role="group" aria-label="Customer directory summary">
+      <button type="button" className={summaryButton(type === "ALL" && relationship === "ALL")} aria-label={`All customers: ${customers.length}`} aria-pressed={type === "ALL" && relationship === "ALL"} onClick={() => { setType("ALL"); setRelationship("ALL"); resetPaging(); }}><strong className="block text-xl tabular-nums">{customers.length}</strong><span className="block text-sm text-slate-600">Customers</span></button>
+      <button type="button" className={summaryButton(relationship === "ACTIVE")} aria-label={`Active relationships: ${customers.filter(c => c.status === "ACTIVE").length}`} aria-pressed={relationship === "ACTIVE"} onClick={() => { setRelationship("ACTIVE"); setType("ALL"); resetPaging(); }}><strong className="block text-xl tabular-nums">{customers.filter(c => c.status === "ACTIVE").length}</strong><span className="block text-sm text-slate-600">Active</span></button>
+      <button type="button" className={summaryButton(type === "PARTNERS")} aria-label={`Corporate and partner customers: ${customers.filter(c => c.type !== "INDIVIDUAL").length}`} aria-pressed={type === "PARTNERS"} onClick={() => { setType("PARTNERS"); setRelationship("ALL"); resetPaging(); }}><strong className="block text-xl tabular-nums">{customers.filter(c => c.type !== "INDIVIDUAL").length}</strong><span className="block text-sm text-slate-600">Business</span></button>
+    </div>
+    <div className="mb-4 space-y-3">
+      <div className="relative min-w-0 md:max-w-md">
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"><Icon name="search" size={16} /></span>
+        <input ref={directorySearch} type="search" aria-label="Filter customers" className="control min-h-11 w-full pl-9" placeholder="Name, phone, email or city…" value={query} onChange={e => { setQuery(e.target.value); resetPaging(); }} />
+      </div>
+      <button type="button" className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-left text-sm font-medium md:hidden" aria-expanded={filtersOpen} aria-controls="customer-directory-filters" onClick={() => setFiltersOpen(open => !open)}><span>Filters & view · {activeFilters.length ? activeFilters.join(" · ") : "All customers"} · {view === "board" ? "Board" : "List"}</span><Icon name="chevronDown" size={16} /></button>
+      <div id="customer-directory-filters" className={`${filtersOpen ? "grid" : "hidden"} gap-3 md:flex md:flex-wrap md:items-center`}>{renderFilters()}</div>
+      {activeFilters.length > 0 && <div className="flex flex-wrap items-center gap-2 text-sm" aria-label="Applied customer filters"><span className="text-slate-600">{activeFilters.join(" · ")}</span><button type="button" className="btn-secondary min-h-11" onClick={() => { setType("ALL"); setRelationship("ALL"); resetPaging(); directorySearch.current?.focus(); }}>Clear filters</button></div>}
+    </div>
+    <p className="mb-3 text-sm text-slate-600">Showing {visible.length} of {customers.length} customers · {view === "board" ? "grouped by relationship status" : "sorted by name"}</p>
 
     {!visible.length && <EmptyState icon="customers" title={customers.length ? "No matching customers" : "No customers yet"}
       description={customers.length ? "Try another name, phone number or customer type." : "Add your first real customer. We’ll create their primary traveller and keep cases, bookings, documents and money together."}
