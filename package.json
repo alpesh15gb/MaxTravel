@@ -31,7 +31,10 @@
     "test:evolution": "node tests/evolution.mjs",
     "test:a11y": "node tests/a11y-gate.mjs",
     "test:ui": "node tests/ui-metrics.mjs",
-    "a11y:budget": "node tests/a11y-gate.mjs --update-budget"
+    "a11y:budget": "node tests/a11y-gate.mjs --update-budget",
+    "test:travel-packages": "node --import ./scripts/standalone-server.mjs --import tsx tests/travel-packages.mts",
+    "test:travel-packages-browser": "node --import tsx tests/travel-packages-browser.mts",
+    "test:travel-packages-http": "node --import tsx tests/travel-packages-browser.mts --http-only"
   },
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",

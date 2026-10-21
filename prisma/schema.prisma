@@ -896,3 +896,18 @@ model FinancialMutation {
   createdAt DateTime @default(now())
   @@unique([actorId, operation, requestKey])
 }
+
+// Agency-wide marketing catalogue. Drafts never implicitly replace public content.
+model TravelPackage {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  title         String
+  status        String   @default("DRAFT")
+  draftJson     String
+  publishedJson String?
+  revision      Int      @default(1)
+  publishedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([status, publishedAt])
+}

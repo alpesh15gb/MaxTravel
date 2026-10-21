@@ -29,6 +29,7 @@ const NAV: { href: string; label: string; icon: IconName; perm: string; group: s
   { href:"/customer-tools",label:"Customer import",icon:"customers",perm:"customer:create",group:"Manage" },
   { href:"/checklists",label:"Visa checklists",icon:"check",perm:"checklist:view",group:"Manage" },
   { href:"/audit",label:"Audit trail",icon:"audit",perm:"audit:view",group:"Manage" },
+  { href:"/travel-packages",label:"Travel packages",icon:"compass",perm:"settings:manage",group:"Manage" },
   { href:"/settings",label:"Agency settings",icon:"settings",perm:"settings:manage",group:"Manage" },
 ];
 const QUICK: { href: string; label: string; icon: IconName; perm: string }[] = [

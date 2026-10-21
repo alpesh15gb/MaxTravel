@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, randomInt } from "node:crypto";
 import { spawn } from "node:child_process";
 import bcrypt from "bcryptjs";
 import { prisma } from "../src/lib/db";
 
 if (process.env.DATABASE_URL !== "file:./ticketing-journey-verification.db") throw Error("Use only isolated ticketing-journey-verification.db.");
 const origin = "http://127.0.0.1:3229", suffix = randomUUID(), password = randomBytes(30).toString("hex");
+const ticketPrefix = `123${randomInt(100000000, 1000000000)}`; // Unique per isolated run; repeated runs retain prior fixture tickets.
 const role = await prisma.role.upsert({ where: { key: "OWNER" }, create: { key: "OWNER", name: "Fixture owner", desc: "Isolated ticketing verification" }, update: {} });
 const branch = await prisma.branch.create({ data: { code: suffix, name: "Synthetic ticketing branch", city: "Test" } });
 const user = await prisma.user.create({ data: { employeeCode: suffix, email: `${suffix}@example.test`, name: "Synthetic operator", phone: "", passwordHash: await bcrypt.hash(password, 12), roleId: role.id, branchId: branch.id } });
@@ -46,9 +47,9 @@ try {
   assert.equal(await prisma.bookingTraveller.count({ where: { bookingId } }), 2);
   for (const status of ["REISSUED", "REISSUE_REQUESTED"]) await post("/api/bookings/status", { bookingId, status }, 400);
   // One actual airline document cannot be assigned to two same-name passengers.
-  await post("/api/bookings/status", { bookingId, status: "TICKETED", tickets: customer.travellers.map(t => ({ travellerId: t.id, ticketNo: "1231234567890" })) }, 400);
+  await post("/api/bookings/status", { bookingId, status: "TICKETED", tickets: customer.travellers.map(t => ({ travellerId: t.id, ticketNo: `${ticketPrefix}0` })) }, 400);
   assert.equal(await prisma.ticket.count({ where: { bookingId } }), 0, "Failed issuance rolls back all tickets");
-  await post("/api/bookings/status", { bookingId, status: "TICKETED", tickets: customer.travellers.map((t, i) => ({ travellerId: t.id, ticketNo: `123123456789${i}` })) });
+  await post("/api/bookings/status", { bookingId, status: "TICKETED", tickets: customer.travellers.map((t, i) => ({ travellerId: t.id, ticketNo: `${ticketPrefix}${i}` })) });
   await post("/api/bookings/status", { bookingId, status: "TICKETED" });
   assert.equal(await prisma.ticket.count({ where: { bookingId } }), 2);
   assert.equal(await prisma.auditLog.count({ where: { entity: "Booking", entityId: bookingId, action: "STATUS" } }), 1, "Ticketing replay is a no-op");
@@ -108,7 +109,7 @@ try {
   assert.equal((await prisma.booking.findUniqueOrThrow({ where: { id: bookingId } })).status, "TICKETED");
   const successful = await post("/api/reissues", { originalTicketId: ticket.id, reason: "Synthetic replacement", fareDifference: 100 });
   const successRequest = await prisma.reissue.findFirstOrThrow({ where: { reissuedBookingId: successful.reissueBookingId } });
-  await post("/api/bookings/status", { bookingId: successful.reissueBookingId, status: "TICKETED", tickets: [{ travellerId: ticket.travellerId, ticketNo: "1239999999999" }] });
+  await post("/api/bookings/status", { bookingId: successful.reissueBookingId, status: "TICKETED", tickets: [{ travellerId: ticket.travellerId, ticketNo: `${ticketPrefix}9` }] });
   await post("/api/reissues/status", { reissueId: successRequest.id, status: "IN_PROGRESS" });
   await post("/api/reissues/status", { reissueId: successRequest.id, status: "DONE" });
   await post("/api/reissues/status", { reissueId: successRequest.id, status: "DONE" });

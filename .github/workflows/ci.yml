@@ -130,6 +130,9 @@ jobs:
         run: npm run build
       - name: Run the test chain
         run: npm test
+      - name: Verify package editor and publication journeys
+        if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
+        run: npm run test:travel-packages-browser
       - name: Verify complete agency journeys
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         run: npm run test:journeys
@@ -146,6 +149,7 @@ jobs:
             test-artifacts/ui-gate-server.log
             test-artifacts/reporting/
             test-artifacts/journeys/
+            test-artifacts/travel-packages/
             test-artifacts/a11y/report.json
             test-artifacts/a11y/report.md
             test-artifacts/a11y/gate.json
@@ -195,6 +199,7 @@ jobs:
       - name: Create an isolated database file
         run: node -e "require('node:fs').writeFileSync('prisma/security-verification.db','',{flag:'wx'})"
       - run: npm run db:migrate
+      - run: npm run test:travel-packages
       - run: npm run test:crm-core
       - run: npm run build
       - run: npm run test:staff-sales
