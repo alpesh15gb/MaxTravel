@@ -16,7 +16,7 @@ function migrate(schema: string) {
 }
 const base = path.join(dir, "baseline"); mkdirSync(path.join(base, "migrations"), { recursive: true });
 cpSync("prisma/schema.prisma", path.join(base, "schema.prisma"));
-for (const entry of readdirSync("prisma/migrations")) if (entry !== "20261021220000_travel_packages") cpSync(path.join("prisma/migrations", entry), path.join(base, "migrations", entry), { recursive: true });
+for (const entry of readdirSync("prisma/migrations")) if (entry < "20261021220000_travel_packages" || entry === "migration_lock.toml") cpSync(path.join("prisma/migrations", entry), path.join(base, "migrations", entry), { recursive: true });
 migrate(path.join(base, "schema.prisma"));
 const db = new PrismaClient({ datasources: { db: { url } } });
 const { savePackage, publishedPackage, assertPackageManager } = await import("../src/lib/travel-package-service");

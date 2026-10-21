@@ -16,6 +16,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 
@@ -35,6 +36,7 @@ const COUNTED_MODELS = [
   ["Invoice", "invoice"],
   ["Refund", "refund"],
   ["Document", "document"],
+  ["TravelPackage", "travelPackage"],
   ["Task", "task"],
   ["Supplier", "supplier"],
   ["WhatsAppThread", "whatsAppThread"],
@@ -241,6 +243,14 @@ async function run() {
     throw fail("--out must not be the backup directory or a directory inside it.");
   }
 
+  // Refuse symlinks in the complete source/destination paths before even creating
+  // the destination. A leaf-only check misses links in parent directories.
+  await rejectSymlinkPath(backupDir);
+  await rejectSymlinkPath(targetDir);
+  await rejectSymlinkPath(path.join(backupDir, "database"));
+  await rejectSymlinkPath(path.join(backupDir, "uploads"));
+  await rejectSymlinkPath(path.join(backupDir, "package-media"));
+
   let backupStat;
   try {
     backupStat = await fs.stat(backupDir);
@@ -250,10 +260,19 @@ async function run() {
   if (!backupStat.isDirectory()) throw fail(`Not a directory: ${backupDir}`);
 
   const manifest = await readManifest(backupDir);
-  if (typeof manifest.formatVersion === "number" && manifest.formatVersion > 1) {
+  if (typeof manifest.formatVersion === "number" && manifest.formatVersion > 2) {
     console.log(`Note: this backup was written by a newer format (v${manifest.formatVersion}); verifying what is known.`);
   }
   const database = await findBackedUpDatabase(backupDir, manifest);
+  await rejectSymlinkPath(database.file);
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    try { await fs.lstat(database.file + suffix); }
+    catch (error) { if (error?.code === "ENOENT") continue; throw error; }
+    throw fail("Source backup contains SQLite recovery files; target was not modified.");
+  }
+  await rejectSymlinkPath(path.join(targetDir, database.fileName));
+  await rejectSymlinkPath(path.join(targetDir, "uploads"));
+  await rejectSymlinkPath(path.join(targetDir, "package-media"));
   const backupUploads = path.join(backupDir, "uploads");
   const hasUploads = manifest?.uploads?.present === true && (await pathExists(backupUploads));
 
@@ -274,7 +293,13 @@ async function run() {
     }
   }
 
-  await fs.mkdir(targetDir, { recursive: true });
+  const backupMedia = path.join(backupDir, "package-media");
+  const hasMedia = manifest?.packageMedia?.present === true;
+  if (hasMedia) await verifyMediaTree(backupMedia, manifest.packageMedia);
+  if (Number(manifest?.rowCounts?.PackageMedia) > 0 && !hasMedia) {
+    throw fail("Manifest records package media assets but no media tree; target was not modified.");
+  }
+
   const conflicts = await existingDatabaseNames(targetDir);
   if (conflicts.length && !flags.force) {
     throw fail(
@@ -297,12 +322,33 @@ async function run() {
     throw fail("Backed-up database checksum does not match the manifest; target was not modified.");
   }
 
+  // Manifest flags alone cannot establish recoverability: validate the actual immutable
+  // database and its referenced assets before --force can replace any target bytes.
+  await verifySourceDatabase(database.file, manifest, backupMedia, hasMedia);
+
+  // Never follow a pre-existing media symlink while copying (even without --force).
+  if (hasMedia) {
+    let mediaTargetStat;
+    try { mediaTargetStat = await fs.lstat(path.join(targetDir, "package-media")); }
+    catch (error) { if (error?.code !== "ENOENT") throw error; }
+    if (mediaTargetStat && (mediaTargetStat.isSymbolicLink() || !mediaTargetStat.isDirectory() || !flags.force)) {
+      throw fail("Target package-media already exists; use a fresh directory (or --force for a real directory); target was not modified.");
+    }
+  }
+  await fs.mkdir(targetDir, { recursive: true });
   const restoredDatabase = path.join(targetDir, database.fileName);
   await fs.copyFile(database.file, restoredDatabase);
   if (hasUploads) {
     const restoredUploads = path.join(targetDir, "uploads");
     if (flags.force) await fs.rm(restoredUploads, { recursive: true, force: true });
     await fs.cp(backupUploads, restoredUploads, { recursive: true, preserveTimestamps: true });
+  }
+
+  if (hasMedia) {
+    const restoredMedia = path.join(targetDir, "package-media");
+    if (flags.force) await fs.rm(restoredMedia, { recursive: true, force: true });
+    await fs.cp(backupMedia, restoredMedia, { recursive: true, preserveTimestamps: true });
+    await verifyMediaTree(restoredMedia, manifest.packageMedia, false);
   }
 
   // ── Verification: checksum, then row counts, then the document tree ────────
@@ -326,6 +372,14 @@ async function run() {
   try {
     for (const [label, expected] of Object.entries(expectedCounts)) {
       if (typeof expected !== "number") continue;
+      if (label === "PackageMedia") {
+        try {
+          const rows = await prisma.$queryRawUnsafe('SELECT COUNT(*) AS total FROM "PackageMedia"');
+          checkedModels.push(label);
+          if (Number(rows[0].total) !== expected) problems.push("PackageMedia row count does not match manifest");
+        } catch { problems.push("PackageMedia could not be counted"); }
+        continue;
+      }
       const delegate = DELEGATES.get(label);
       if (!delegate) {
         notes.push(`manifest counts "${label}", which this tool does not know how to count`);
@@ -387,6 +441,7 @@ async function run() {
         `, tree ${problems.some((p) => p.startsWith("uploaded ")) ? "MISMATCH" : "verified"}`,
     );
   }
+  if (hasMedia) console.log(`  package media: ${manifest.packageMedia.fileCount} file(s), tree verified`);
   for (const note of notes) console.log(`  note:     ${note}`);
 
   if (problems.length) {
@@ -397,12 +452,93 @@ async function run() {
   }
 
   console.log("");
-  console.log("Restore verified: the restored database and documents match the backup.");
+  console.log("Restore verified: the restored database, documents and declared package media match the backup.");
   console.log("");
   console.log("To use it, point the app at the restored files and start it:");
   console.log(`  DATABASE_URL="file:${path.join(targetDir, database.fileName).split(path.sep).join("/")}" \\`);
   console.log(`  UPLOAD_ROOT="${path.join(targetDir, "uploads")}" \\`);
+  console.log(`  PACKAGE_MEDIA_ROOT="${path.join(targetDir, "package-media")}" \\`);
   console.log("  npm run start");
+}
+
+async function verifyMediaTree(directory, expected, source = true) {
+  const suffix = source ? "; target was not modified." : "; do not use this restore.";
+  try {
+    const stat = await fs.lstat(directory);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("not a real directory");
+    const tree = await hashTree(directory);
+    if (tree.symlinks || tree.fileCount !== expected.fileCount || tree.totalBytes !== expected.totalBytes ||
+        tree.digest !== expected.digest || !Array.isArray(expected.files) || diffFiles(expected.files, tree.files).length) {
+      throw new Error("tree mismatch");
+    }
+  } catch {
+    throw fail("Package media tree is missing, corrupt or contains symbolic links" + suffix);
+  }
+}
+
+async function verifySourceDatabase(file, manifest, mediaDirectory, hasMedia) {
+  // Opening SQLite can recover journals or create sidecars before PRAGMA query_only runs.
+  // Validate a private disposable copy, never connect SQLite to the source backup itself.
+  const temporary = await fs.mkdtemp(path.join(tmpdir(), "crm-restore-preflight-"));
+  let prisma;
+  try {
+    const copy = path.join(temporary, "snapshot.db");
+    await fs.copyFile(file, copy);
+    if (await sha256File(copy) !== await sha256File(file)) throw new Error("source changed during verification");
+    prisma = openDatabase(copy);
+    await prisma.$executeRawUnsafe("PRAGMA query_only = ON");
+    const integrity = await prisma.$queryRawUnsafe("PRAGMA integrity_check");
+    if (integrity.length !== 1 || Object.values(integrity[0])[0] !== "ok") throw new Error("database integrity check failed");
+    const foreignKeys = await prisma.$queryRawUnsafe("PRAGMA foreign_key_check");
+    if (foreignKeys.length) throw new Error("database foreign-key check failed");
+    const mediaTable = await prisma.$queryRawUnsafe("SELECT name FROM sqlite_master WHERE type='table' AND name='PackageMedia'");
+    const assets = mediaTable.length
+      ? await prisma.$queryRawUnsafe('SELECT storageName, byteSize, sha256 FROM "PackageMedia"') : [];
+    for (const [label, expected] of Object.entries(manifest?.rowCounts ?? {})) {
+      // Historical backups explicitly record null for unavailable model counts. This is
+      // not a count assertion; database integrity and actual media references still apply.
+      if (expected === null) { console.log(`Warning: ${label} row count was unavailable in this backup and is not verified; database integrity and media-reference checks still apply.`); continue; }
+      if (typeof expected !== "number") throw new Error("invalid row count");
+      if (!Number.isSafeInteger(expected) || expected < 0) throw new Error("invalid row count");
+      let actual;
+      if (label === "PackageMedia") actual = assets.length;
+      else {
+        const delegate = DELEGATES.get(label);
+        if (!delegate) throw new Error(`unsupported row count: ${label}`);
+        actual = await prisma[delegate].count();
+      }
+      if (actual !== expected) throw new Error(`${label} row count does not match manifest`);
+    }
+    // A v1 label must not bypass media validation if its database actually has assets.
+    if (assets.length && !hasMedia) throw new Error("database references package media but backup declares no media tree");
+    if (assets.length) {
+      const files = new Map((await hashTree(mediaDirectory)).files.map((entry) => [entry.path, entry]));
+      for (const asset of assets) {
+        const entry = files.get(asset.storageName);
+        if (!entry || entry.bytes !== Number(asset.byteSize) || entry.sha256 !== asset.sha256) {
+          throw new Error("database references missing or corrupt package media");
+        }
+      }
+    }
+  } catch (error) {
+    throw fail(`Source database/media verification failed (${String(error?.message ?? error).split("\n")[0]}); target was not modified.`);
+  } finally {
+    await prisma?.$disconnect();
+    await fs.rm(temporary, { recursive: true, force: true });
+  }
+}
+
+async function rejectSymlinkPath(target) {
+  const absolute = path.resolve(target);
+  const root = path.parse(absolute).root;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    let stat;
+    try { stat = await fs.lstat(current); }
+    catch (error) { if (error?.code === "ENOENT") return; throw error; }
+    if (stat.isSymbolicLink()) throw fail("Restore paths must not contain symbolic links; target was not modified.");
+  }
 }
 
 async function pathExists(target) {
@@ -419,6 +555,7 @@ function diffFiles(expected, actual) {
   for (const file of expected) {
     const seen = actualByPath.get(file.path);
     if (!seen) return [`${file.path} is missing`];
+    if (typeof file.bytes === "number" && seen.bytes !== file.bytes) return [`${file.path} byte count changed`];
     if (seen.sha256 !== file.sha256) return [`${file.path} changed`];
     actualByPath.delete(file.path);
   }

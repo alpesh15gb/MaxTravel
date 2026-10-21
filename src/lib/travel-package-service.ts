@@ -1,3 +1,4 @@
+import { packageMediaId } from "./package-media-path";
 import type { PrismaClient, TravelPackage } from "@prisma/client";
 import { ApiError } from "./guard";
 import { accessModeFor } from "./rbac";
@@ -35,6 +36,8 @@ export async function savePackage(db: PrismaClient, user: SessionUser, body: Rec
         if (row?.publishedAt && row.slug !== slug.data) throw new ApiError(409, "The public URL is locked after first publication. Create a new package for a different URL.");
         const checked = validatePackage(body.draft, action === "PUBLISH");
         if (!checked.data) throw new ApiError(400, checked.errors.join("\n"));
+        const assetIds = [...new Set([checked.data.coverImageUrl, ...checked.data.gallery.map(image => image.url)].map(packageMediaId).filter((asset): asset is string => !!asset))];
+        if (assetIds.length && (!row || await tx.packageMedia.count({ where: { id: { in: assetIds }, packageId: row.id } }) !== assetIds.length)) throw new ApiError(400, "Use only images uploaded to this package.");
         data = { slug: slug.data, title: checked.data.title, draftJson: JSON.stringify(checked.data) };
         if (action === "PUBLISH") Object.assign(data, { status: "PUBLISHED", publishedJson: JSON.stringify(publicFields(checked.data)), publishedAt: new Date() });
       } else if (action === "UNPUBLISH" || action === "ARCHIVE") {

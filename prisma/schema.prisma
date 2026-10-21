@@ -909,5 +909,21 @@ model TravelPackage {
   publishedAt   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  media         PackageMedia[]
   @@index([status, publishedAt])
+}
+
+// Immutable marketing images, isolated from private customer documents.
+model PackageMedia {
+  id          String @id
+  packageId   String
+  package     TravelPackage @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  storageName String @unique
+  mimeType    String
+  byteSize    Int
+  width       Int
+  height      Int
+  sha256      String
+  createdAt   DateTime @default(now())
+  @@index([packageId, createdAt])
 }

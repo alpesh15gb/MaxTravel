@@ -95,3 +95,15 @@ no full archive pagination yet; larger catalogues need a follow-on paginated man
   HTTP boundaries and desktop/mobile package lifecycle. Requires production build and Chromium.
 - CI runs the domain/migration test in staff-sales-security and the browser journey in the test
   job. No deployed database, real customer, supplier booking, payment or outbound notification is used.
+
+## Operator-owned package images
+
+Save a draft, open **Images**, then upload JPEG, PNG or still WebP images you have permission to publish. A saved upload is private: choose **Use as cover** or **Add to gallery**, add a meaningful accessible description, and explicitly publish the package. Saving a draft alone never changes the published image set. Removing a reference and publishing again, unpublishing, or archiving revokes public image access. Stored assets remain recoverable; this increment does not permanently delete operator images.
+
+Inputs are capped at 5 MiB and 20 megapixels, checked by magic bytes and decoder, and scanned under the same existing `UPLOAD_SCAN_REQUIRED` / `CLAMAV_HOST` policy as uploads. Animated/multipage images and SVG are rejected. Images are rotated, metadata stripped, resized to at most 2400×2400 without enlargement, and stored as WebP (maximum 3 MiB). Each package has a transactional limit of 24 assets / 48 MiB. Upload responses lost in transit must be reconciled with **Reload image library**, not automatically retried.
+
+`PackageMedia` is a separate immutable table and filesystem tree, not private customer `Document` storage. `PACKAGE_MEDIA_ROOT` optionally overrides the default `package-media` sibling directory of the resolved SQLite database. For `DATABASE_URL=file:/data/app.db`, the default is `/data/package-media`, covered by the existing persistent `/data` volume. Do not place it under `public/`, point it at `UPLOAD_ROOT`, or use symlink paths. Run migrations before serving this version; use the updated backup/restore scripts to preserve both tables and image bytes. Existing databases and v1 backup manifests remain compatible.
+
+The exact public reference is `/api/public/package-media/{lowercase UUIDv4}`. Each request checks that the owning package's current explicitly published snapshot references the asset as cover or gallery. Missing, draft-only, removed, unpublished, archived, corrupt or invalid references return 404. Responses are `image/webp`, `no-store`, `nosniff` and same-origin; no private storage filename, original filename or EXIF is projected. The booking app uses its fixed-CRM-origin bounded bridge at `/api/package-media/{id}`; do not expose arbitrary URL proxying or broaden CSP.
+
+Verification: `npm run test:package-media` covers migration preservation, decoder/scanner failure, metadata removal, ownership, publication lifecycle, integrity and symlink resistance, concurrent quota enforcement and failed-upload cleanup. Existing package HTTP/browser suites now also exercise authenticated upload/private preview/public revocation and the operator image library.

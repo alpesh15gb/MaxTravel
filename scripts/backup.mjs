@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Backup tool for the Travel OS workspace.
 //
-// A backup here is two things that only make sense together: the SQLite database, and the
+// A backup includes the SQLite database, dedicated package media, and the
 // private documents under UPLOAD_ROOT (rows point at those files by name, so a database-only
 // copy restores into a workspace with missing attachments).
 //
@@ -24,7 +24,7 @@ import { PrismaClient } from "@prisma/client";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
 const PRISMA_DIR = path.join(ROOT, "prisma");
-const MANIFEST_FORMAT = 1;
+const MANIFEST_FORMAT = 2;
 
 // Business entities whose row counts make the backup self-describing and let restore.mjs prove
 // it put back what it took out. Label → Prisma client delegate.
@@ -39,6 +39,7 @@ const COUNTED_MODELS = [
   ["Invoice", "invoice"],
   ["Refund", "refund"],
   ["Document", "document"],
+  ["TravelPackage", "travelPackage"],
   ["Task", "task"],
   ["Supplier", "supplier"],
   ["WhatsAppThread", "whatsAppThread"],
@@ -47,7 +48,8 @@ const COUNTED_MODELS = [
   ["AuditLog", "auditLog"],
 ];
 
-const USAGE = `Back up the Travel OS database and its uploaded documents.
+const USAGE = `Back up the Travel OS database, uploaded documents and dedicated package media.
+Package media uses PACKAGE_MEDIA_ROOT, or package-media alongside the SQLite file.
 
 Usage:
   node scripts/backup.mjs --out <dir> [--uploads <dir>] [--help]
@@ -251,6 +253,7 @@ async function run() {
 
   const databaseFile = resolveDatabaseFile(process.env.DATABASE_URL);
   const uploadsDir = path.resolve(ROOT, flags.uploads ?? process.env.UPLOAD_ROOT ?? "./uploads");
+  const mediaDir = path.resolve(ROOT, process.env.PACKAGE_MEDIA_ROOT || path.join(path.dirname(databaseFile), "package-media"));
   const outRoot = path.resolve(process.cwd(), flags.out);
 
   try {
@@ -314,12 +317,38 @@ async function run() {
       // No uploads directory yet is a valid (empty) workspace, not a failure.
     }
 
+    let packageMedia = { present: false, fileCount: 0, totalBytes: 0, digest: null, files: [], symlinks: 0 };
+    let mediaStat;
+    try { mediaStat = await fs.lstat(mediaDir); } catch (error) { if (error?.code !== "ENOENT") throw error; }
+    if (mediaStat) {
+      if (!mediaStat.isDirectory() || mediaStat.isSymbolicLink()) throw fail("Package media root must be a real directory, not a symbolic link.");
+      await fs.cp(mediaDir, path.join(backupDir, "package-media"), {
+        recursive: true, preserveTimestamps: true,
+        filter: async (source) => !(await fs.lstat(source)).isSymbolicLink(),
+      });
+      packageMedia = { present: true, ...await hashTree(path.join(backupDir, "package-media")) };
+    }
+
     // Describe the immutable snapshot, not live rows that may have changed since VACUUM.
     const snapshot = openDatabase(databaseCopy);
     let counts, errors, schema;
     try {
       ({ counts, errors } = await rowCounts(snapshot));
       schema = await migrationState(snapshot);
+      // Older workspaces have no media model. If present, every immutable referenced asset
+      // must exist in the copied tree: a successful DB-only snapshot is not recoverable.
+      const mediaTable = await snapshot.$queryRawUnsafe("SELECT name FROM sqlite_master WHERE type='table' AND name='PackageMedia'");
+      if (mediaTable.length) {
+        const assets = await snapshot.$queryRawUnsafe('SELECT storageName, byteSize, sha256 FROM "PackageMedia"');
+        counts.PackageMedia = assets.length;
+        const copied = new Map(packageMedia.files.map((file) => [file.path, file]));
+        for (const asset of assets) {
+          const file = copied.get(asset.storageName);
+          if (!file || file.bytes !== Number(asset.byteSize) || file.sha256 !== asset.sha256) {
+            throw fail("Package media snapshot is incomplete or corrupt; backup was not completed. Check media storage before retrying.");
+          }
+        }
+      }
     } finally {
       await snapshot.$disconnect();
     }
@@ -335,10 +364,12 @@ async function run() {
         // directory or a username if it is ever copied off the machine.
         databaseFile: path.relative(ROOT, databaseFile) || path.basename(databaseFile),
         uploadsDir: uploads.present ? path.relative(ROOT, uploadsDir) || "." : null,
+        packageMediaDir: packageMedia.present ? path.relative(ROOT, mediaDir) || "." : null,
         databaseUrlKind: "sqlite",
       },
       database,
       uploads,
+      packageMedia,
       schema,
       rowCounts: counts,
     };
@@ -373,8 +404,9 @@ async function run() {
   } else {
     console.log("  uploads:  none (UPLOAD_ROOT has no files yet)");
   }
+  console.log(`  package media: ${manifest.packageMedia.fileCount} file(s), ${humanBytes(manifest.packageMedia.totalBytes)}`);
   console.log(
-    `  entities: ${counted.length}/${COUNTED_MODELS.length} models, ${totalRows} row(s)` +
+    `  entities: ${counted.length}/${COUNTED_MODELS.length + (typeof manifest.rowCounts.PackageMedia === "number" ? 1 : 0)} models, ${totalRows} row(s)` +
       (manifest.rowCountErrors ? ` — ${Object.keys(manifest.rowCountErrors).length} model(s) could not be counted` : ""),
   );
   console.log(`  manifest: ${path.join(backupDir, "manifest.json")}`);

@@ -48,3 +48,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Dedicated marketing images (never commit operator files).
+/prisma/package-media/
+/package-media/

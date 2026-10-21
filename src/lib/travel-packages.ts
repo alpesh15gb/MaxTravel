@@ -1,11 +1,12 @@
 import { z } from "zod";
+import { packageMediaId } from "./package-media-path";
 
 const text = (max: number) => z.string().trim().max(max);
 const date = text(10).refine(v => !v || (/^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v), "Use a valid date.");
 // Display-only URLs: never fetched by the CRM server, never private upload URLs.
-export const PACKAGE_IMAGE_HELP = "Use an approved images.unsplash.com/photo- URL, pix8.agoda.net/hotelImages/ URL or i.travelapi.com/lodging/ URL. Private documents and arbitrary image hosts are not supported.";
+export const PACKAGE_IMAGE_HELP = "Upload your own package image, or use an approved images.unsplash.com/photo- URL, pix8.agoda.net/hotelImages/ URL or i.travelapi.com/lodging/ URL. Private documents and arbitrary image hosts are not supported.";
 export function safePackageImage(value: string) {
-  if (!value) return true;
+  if (!value || packageMediaId(value)) return true;
   if (value.includes("#") || /[\\\x00-\x20\x7f]/.test(value) || /%(2e|2f|5c|25)/i.test(value)) return false;
   try {
     const u = new URL(value);

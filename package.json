@@ -34,7 +34,8 @@
     "a11y:budget": "node tests/a11y-gate.mjs --update-budget",
     "test:travel-packages": "node --import ./scripts/standalone-server.mjs --import tsx tests/travel-packages.mts",
     "test:travel-packages-browser": "node --import tsx tests/travel-packages-browser.mts",
-    "test:travel-packages-http": "node --import tsx tests/travel-packages-browser.mts --http-only"
+    "test:travel-packages-http": "node --import tsx tests/travel-packages-browser.mts --http-only",
+    "test:package-media": "node --import ./scripts/standalone-server.mjs --import tsx tests/package-media.mts"
   },
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",
@@ -51,7 +52,8 @@
     "react": "^18",
     "react-dom": "^18",
     "server-only": "^0.0.1",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

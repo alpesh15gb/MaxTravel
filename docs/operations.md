@@ -306,7 +306,15 @@ touches the schema.
 
 ## 8. Backup and restore
 
-The backup consists of the SQLite database **and** the uploads directory. Backing up only one of
+The backup consists of the SQLite database, private uploads **and** dedicated package media.
+Package media defaults to `package-media` alongside the resolved SQLite file (for example,
+`file:/data/app.db` uses `/data/package-media`); `PACKAGE_MEDIA_ROOT` overrides it. Persist this
+directory separately from private documents. Format v2 manifests record the copied media tree
+and its hashes; every media row in the database snapshot must have matching bytes or backup
+fails. Restore rejects symlinks in source and destination paths and verifies declared media before
+creating or overwriting any target. It restores media into
+`<target>/package-media`, and prints the matching environment setting. Legacy v1 backups
+without media remain supported but cannot recover assets they never contained. Backing up only one of
 them gives you a workspace whose records point at documents that no longer exist. There is no
 automated backup in this repository — the schedule is yours to create.
 
@@ -316,7 +324,7 @@ automated backup in this repository — the schedule is yours to create.
 node scripts/backup.mjs --out /var/backups/travel-os/$(date +%Y%m%d-%H%M%S)
 ```
 
-The script writes the database and the upload tree into the target directory plus a manifest
+The script writes the database, upload tree and package-media tree into the target directory plus a manifest
 describing what it captured (row counts and checksums). Read the manifest when it finishes; if it
 reports counts that look wrong for your agency, investigate before trusting the copy.
 
@@ -508,3 +516,9 @@ Work down the list. Do not skip to the fix.
 8. **Afterwards.** Write down what happened, what you changed and what you would check first next
    time, and note whether the backup cadence and the drill would have covered it. If they would
    not, that is the next change to make.
+
+### Restore source consistency preflight
+
+Before creating or replacing any destination, restore verifies the source database checksum, SQLite integrity and foreign keys, every declared numeric row count, and every actual `PackageMedia` row against the verified media tree (filename, byte size and SHA-256). A v1 label cannot bypass missing media when its database contains media rows. Genuine pre-media v1 backups remain supported; historical `null` row counts mean unavailable counts, not a verified zero, while integrity and actual media-reference checks still run. Numeric strings and invalid counts are rejected.
+
+SQLite verification opens a private disposable copy, never the source backup; source recovery sidecars and source/destination symlinks are rejected. The copy is removed after verification. Existing destination DB, uploads and media remain untouched on preflight failure. Operators must still keep the application stopped and use a fresh restore directory: post-copy checks detect I/O failures but cannot make arbitrary hardware failures transactional.
