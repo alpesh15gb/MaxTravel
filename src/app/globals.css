@@ -637,3 +637,6 @@ main table tbody tr:hover { background:var(--brand-50); }
 }
 
 .package-studio section[aria-label="Package editor"] { scroll-margin-top:calc(var(--header-height) + 16px); }
+
+/* Keep operational supporting text readable without changing compact metadata. */
+.studio-dashboard :is(.stat-top,.stat-note,.attention-heading p,.attention-record-content > p,.attention-actions > .btn-secondary,.attention-updated,.studio-section-heading p,.work-queue-link,.queue-count,.workspace-shortcut span span,.queue-filter-bar .segmented button) { font-size: .875rem; }

@@ -205,11 +205,22 @@ const probe = () => {
 };
 
 async function signIn(page, base) {
-  await page.goto(`${base}/login`, { waitUntil: "domcontentloaded" });
-  await page.getByLabel("Work email", { exact: true }).fill("review@visual.test");
-  await page.getByLabel("Password", { exact: true }).fill("Review-Visual-2026!");
-  await page.getByRole("button", { name: "Sign in to workspace", exact: true }).click();
-  await page.waitForURL("**/dashboard", { waitUntil: "domcontentloaded" });
+  const responses = [], clientErrors = [];
+  const record = response => { if (new URL(response.url()).pathname === "/api/auth/login") responses.push({ status: response.status(), method: response.request().method() }); };
+  const clientError = error => clientErrors.push(error.message);
+  page.on("response", record); page.on("pageerror", clientError);
+  try {
+    await page.goto(`${base}/login`, { waitUntil: "domcontentloaded" });
+    await page.getByLabel("Work email", { exact: true }).fill("review@visual.test");
+    await page.getByLabel("Password", { exact: true }).fill("Review-Visual-2026!");
+    await page.getByRole("button", { name: "Sign in to workspace", exact: true }).click();
+    await page.waitForURL("**/dashboard", { waitUntil: "domcontentloaded" });
+  } catch (error) {
+    fs.mkdirSync(shotDir, { recursive: true });
+    await page.screenshot({ path: path.join(shotDir, "login-failure.png"), fullPage: false });
+    fs.writeFileSync(path.join(shotDir, "login-failure.json"), JSON.stringify({ path: new URL(page.url()).pathname, responses, clientErrors, alerts: await page.getByRole("alert").allTextContents() }, null, 2));
+    throw error;
+  } finally { page.off("response", record); page.off("pageerror", clientError); }
 }
 
 // ---------------------------------------------------------------- density (AC3)
