@@ -134,9 +134,14 @@ jobs:
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         run: npm run test:travel-packages-browser
       - name: Verify complete agency journeys
+        id: agency_journeys
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         run: npm run test:journeys
+      - name: Verify scoped online booking queue and responsive action recovery
+        if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
+        run: node --import tsx tests/online-bookings-query.mts --browser
       - name: Verify three consecutive cancellation UI settlements
+        if: ${{ !cancelled() && steps.agency_journeys.outcome == 'success' }}
         env:
           DATABASE_URL: "file:./ticketing-journey-verification.db"
           TICKETING_BROWSER: "true"
@@ -159,6 +164,7 @@ jobs:
             test-artifacts/ui-gate-server.log
             test-artifacts/reporting/
             test-artifacts/journeys/
+            test-artifacts/online-bookings/
             test-artifacts/travel-packages/
             test-artifacts/a11y/report.json
             test-artifacts/a11y/report.md
