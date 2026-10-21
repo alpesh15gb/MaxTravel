@@ -136,6 +136,16 @@ jobs:
       - name: Verify complete agency journeys
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         run: npm run test:journeys
+      - name: Verify three consecutive cancellation UI settlements
+        env:
+          DATABASE_URL: "file:./ticketing-journey-verification.db"
+          TICKETING_BROWSER: "true"
+        run: |
+          set -e
+          for iteration in 1 2 3; do
+            echo "Cancellation UI stability observation ${iteration}/3"
+            node --import tsx tests/ticketing-journey.mts
+          done
       - name: Collect UI diagnostics after a failed test chain
         if: failure()
         run: node tests/ui-metrics.mjs
