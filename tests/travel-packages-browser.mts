@@ -77,8 +77,29 @@ try {
   page.once("dialog", dialog => dialog.dismiss()); await page.getByRole("link", { name: "Agency pulse", exact: true }).click(); assert(page.url().endsWith("/travel-packages"));
   await page.getByRole("button", { name: "Save draft", exact: true }).click(); await page.getByText("Draft saved. Any published version is unchanged.").waitFor();
   assert.equal((await (await fetch(origin + "/api/public/travel-packages/kerala-discovery")).json()).package.title, "Kerala discovery");
-  await page.screenshot({ path: path.join(output, "editor-desktop.png"), fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 }); await page.screenshot({ path: path.join(output, "editor-mobile.png"), fullPage: true });
+  const viewportEvidence: unknown[] = [];
+  for (const [device, width, height] of [["desktop",1440,1000],["mobile",390,844]] as const) {
+    await page.setViewportSize({width,height});
+    const menu = page.getByRole("button", {name:"Open navigation",exact:true});
+    if (await menu.isVisible() && await menu.getAttribute("aria-expanded") === "true") await page.getByRole("button",{name:"Close navigation",exact:true}).last().click();
+    if (device === "mobile") assert.equal(await menu.getAttribute("aria-expanded"),"false","Mobile navigation must be closed for editor evidence");
+    const editorHeading = page.locator('h2[tabindex="-1"]');
+    await editorHeading.focus();
+    await editorHeading.evaluate(node => node.scrollIntoView({block:"center",behavior:"instant"}));
+    await page.evaluate(async()=>{await document.fonts.ready;await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));});
+    await page.waitForTimeout(300);
+    const headingBox = await editorHeading.boundingBox();
+    assert(headingBox && headingBox.y >= 0 && headingBox.y + headingBox.height <= height,"Editor heading must be in actual viewport");
+    await page.screenshot({path:path.join(output,`editor-${device}.png`),fullPage:false,animations:"disabled"});
+    const saveButton = page.getByRole("button",{name:"Save draft",exact:true});
+    await saveButton.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    const actionBox = await saveButton.boundingBox();
+    assert(actionBox && actionBox.x >= 0 && actionBox.x + actionBox.width <= width && actionBox.y >= 0 && actionBox.y + actionBox.height <= height,"Save action must be inside the actual viewport");
+    await page.screenshot({path:path.join(output,`editor-actions-${device}.png`),fullPage:false,animations:"disabled"});
+    viewportEvidence.push({device,width,height,headingBox,actionBox,navigationClosed:device!=="mobile"||await menu.getAttribute("aria-expanded")==="false"});
+  }
+  writeFileSync(path.join(output,"editor-viewport-geometry.json"),JSON.stringify(viewportEvidence,null,2));
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "No horizontal mobile overflow");
   page.once("dialog", dialog => dialog.accept()); await page.getByRole("button", { name: "Unpublish", exact: true }).click(); await page.getByText("No longer publicly available from the catalogue. Your draft is retained.").waitFor();
   assert.equal((await fetch(origin + "/api/public/travel-packages/kerala-discovery")).status, 404);
