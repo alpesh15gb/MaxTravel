@@ -651,7 +651,7 @@ main table tbody tr:hover { background:var(--brand-50); }
   .studio-dashboard .studio-dashboard-heading { gap:10px; margin-bottom:18px; }
   .studio-dashboard .studio-dashboard-heading .page-header { gap:12px; }
   .studio-dashboard .studio-today .workspace-date { padding:0; border:0; background:transparent; }
-  .dashboard-kpi-strip { gap:14px 0; margin-bottom:18px; }
+  .dashboard-kpi-strip { gap:12px 0; margin-bottom:10px; }
   .dashboard-kpi-strip .stat-value { margin-top:4px; }
   .dashboard-kpi-strip .dashboard-kpi:not(.dashboard-kpi-financial) .stat-note { display:none; }
   .dashboard-kpi-strip > .dashboard-kpi-financial { grid-column:1 / -1; padding:12px 0 0; border:0; border-top:1px solid var(--studio-border); }

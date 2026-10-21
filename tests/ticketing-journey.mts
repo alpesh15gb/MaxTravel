@@ -6,14 +6,28 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../src/lib/db";
 
 if (process.env.DATABASE_URL !== "file:./ticketing-journey-verification.db") throw Error("Use only isolated ticketing-journey-verification.db.");
-const origin = "http://127.0.0.1:3229", suffix = randomUUID(), password = randomBytes(30).toString("hex");
+const port = randomInt(20000, 60000);
+const origin = `http://127.0.0.1:${port}`, suffix = randomUUID(), password = randomBytes(30).toString("hex");
 const ticketPrefix = `123${randomInt(100000000, 1000000000)}`; // Unique per isolated run; repeated runs retain prior fixture tickets.
 const role = await prisma.role.upsert({ where: { key: "OWNER" }, create: { key: "OWNER", name: "Fixture owner", desc: "Isolated ticketing verification" }, update: {} });
 const branch = await prisma.branch.create({ data: { code: suffix, name: "Synthetic ticketing branch", city: "Test" } });
 const user = await prisma.user.create({ data: { employeeCode: suffix, email: `${suffix}@example.test`, name: "Synthetic operator", phone: "", passwordHash: await bcrypt.hash(password, 12), roleId: role.id, branchId: branch.id } });
 const customer = await prisma.customer.create({ data: { code: suffix, name: "Synthetic ticket customer", phone: "", city: "Test", branchId: branch.id, assignedToId: user.id, travellers: { create: [{ fullName: "Same Name" }, { fullName: "Same Name" }] } }, include: { travellers: true } });
-const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", "3229", "-H", "127.0.0.1"], { env: { ...process.env, APP_ORIGIN: origin, JWT_SECRET: randomBytes(48).toString("hex"), WA_PROVIDER: "manual" }, stdio: ["ignore", "pipe", "pipe"] });
+const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", String(port), "-H", "127.0.0.1"], { env: { ...process.env, APP_ORIGIN: origin, JWT_SECRET: randomBytes(48).toString("hex"), WA_PROVIDER: "manual" }, stdio: ["ignore", "pipe", "pipe"] });
 let logs = "", cookie = "";
+const startedAt = Date.now();
+let childExit: { code: number | null; signal: string | null; elapsedMs: number } | null = null;
+let childError = "";
+server.on("error", error => { childError = String(error); });
+server.on("exit", (code, signal) => { childExit = { code, signal, elapsedMs: Date.now() - startedAt }; });
+async function stopServer() {
+  if (server.exitCode !== null || server.signalCode !== null || !server.pid) return;
+  await new Promise<void>(resolve => {
+    const timer = setTimeout(() => server.kill("SIGKILL"), 5000);
+    server.once("exit", () => { clearTimeout(timer); resolve(); });
+    server.kill("SIGTERM");
+  });
+}
 server.stdout.on("data", v => logs += v); server.stderr.on("data", v => logs += v);
 async function post(path: string, body: unknown, expected = 200) {
   const r = await fetch(origin + path, { method: "POST", headers: { "Content-Type": "application/json", Origin: origin, Cookie: cookie }, body: JSON.stringify(body) });
@@ -23,7 +37,15 @@ async function post(path: string, body: unknown, expected = 200) {
 }
 try {
   let ready = false;
-  for (let n = 0; n < 80; n++) { try { if ((await fetch(origin + "/api/health")).ok) { ready = true; break; } } catch {} await new Promise(r => setTimeout(r, 500)); }
+  for (let n = 0; n < 80; n++) {
+    assert(!childError && !childExit, `Fixture child exited before readiness: ${JSON.stringify(childExit)} ${childError}\n${logs}`);
+    // A health response from some other process must never satisfy fixture readiness.
+    // Next's Ready marker occurs only after this fresh child has bound its random port.
+    if (/Ready in/.test(logs) && server.pid && server.exitCode === null && server.signalCode === null) {
+      try { if ((await fetch(origin + "/api/health")).ok) { ready = true; break; } } catch {}
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
   assert(ready, logs);
   await post("/api/auth/login", { email: user.email, password });
   const managerRole = await prisma.role.upsert({ where: { key: "BRANCH_MANAGER" }, create: { key: "BRANCH_MANAGER", name: "Fixture branch manager", desc: "Isolated access test" }, update: {} });
@@ -74,8 +96,28 @@ try {
       await context.addCookies([{ name: cookie.slice(0, separator), value: cookie.slice(separator + 1), url: origin }]);
       const page = await context.newPage();
       const clientErrors:string[]=[]; const networkErrors:unknown[]=[];
+      const events: unknown[] = [];
+      const at = () => Date.now() - startedAt;
+      await page.addInitScript(() => {
+        const target = window as typeof window & { __journeyLifecycle?: unknown[] };
+        target.__journeyLifecycle = [{ event: "init", at: Date.now() }];
+        for (const event of ["pagehide", "pageshow", "beforeunload", "visibilitychange"]) window.addEventListener(event, e => { const detail = { event, at: Date.now(), persisted: "persisted" in e ? e.persisted : undefined, visibility: document.visibilityState }; target.__journeyLifecycle?.push(detail); console.debug("JOURNEY_LIFECYCLE", JSON.stringify(detail)); });
+      });
+      page.on("console", message => events.push({ elapsedMs: at(), event: "console", type: message.type(), text: message.text().slice(0, 2000) }));
+      page.on("framenavigated", frame => { if (frame === page.mainFrame()) events.push({ elapsedMs: at(), event: "navigation", url: frame.url() }); });
+      page.on("request", request => { if (request.headers().rsc === "1") events.push({ elapsedMs: at(), event: "rsc-request", url: request.url(), prefetch: request.headers()["next-router-prefetch"] ?? null }); });
+      page.on("response", async response => {
+        if (response.request().headers().rsc !== "1") return;
+        const event: Record<string, unknown> = { elapsedMs: at(), event: "rsc-response", url: response.url(), status: response.status(), type: response.headers()["content-type"] };
+        events.push(event);
+        try {
+          const body = await response.text();
+          event.bytes = body.length; event.hasCancellationSettlement = body.includes("Cancellation settlement");
+          event.hasCancelled = body.includes('"status":"CANCELLED"'); event.hasReissueRequested = body.includes('"status":"REISSUE_REQUESTED"');
+        } catch(error) { event.bodyError = String(error); }
+      });
       page.on("pageerror",error=>clientErrors.push(error.message));
-      page.on("requestfailed",request=>networkErrors.push({method:request.method(),path:new URL(request.url()).pathname,error:request.failure()?.errorText}));
+      page.on("requestfailed",request=>networkErrors.push({elapsedMs:at(),method:request.method(),url:request.url(),rsc:request.headers().rsc,prefetch:request.headers()["next-router-prefetch"],error:request.failure()?.errorText}));
       page.on("response",response=>{if(response.status()>=400)networkErrors.push({status:response.status(),path:new URL(response.url()).pathname});});
       await page.goto(`${origin}/ticketing/${replacementId}`);
       await page.getByLabel("Booking status", { exact: true }).selectOption("CANCELLED");
@@ -93,7 +135,7 @@ try {
       await dialog.getByLabel("Cancellation reason / agreed terms *", { exact: true }).fill("Full waiver agreed; synthetic browser test only");
       const cancellationResponse=page.waitForResponse(response=>new URL(response.url()).pathname==="/api/bookings/status"&&response.request().method()==="POST");
       await dialog.getByRole("button", { name: "Save cancellation terms", exact: true }).click();
-      const response=await cancellationResponse; assert.equal(response.status(),200,"Cancellation save must explicitly succeed");
+      const response=await cancellationResponse; events.push({ elapsedMs: at(), event: "cancellation-response", status: response.status() }); assert.equal(response.status(),200,"Cancellation save must explicitly succeed");
       try {
         await page.waitForFunction(() => !document.querySelector('[role="dialog"]'));
         await page.getByRole("heading", { name: "Cancellation settlement", exact: true }).waitFor();
@@ -102,7 +144,8 @@ try {
         mkdirSync("test-artifacts/journeys",{recursive:true});
         await page.screenshot({path:"test-artifacts/journeys/ticketing-cancellation-failure.png",fullPage:true});
         const stored=await prisma.booking.findUniqueOrThrow({where:{id:replacementId},select:{status:true,cancellationSupplierCharge:true,cancellationAgencyFee:true}});
-        writeFileSync("test-artifacts/journeys/ticketing-cancellation-failure.json",JSON.stringify({postStatus:response.status(),stored,renderedStatus:await page.getByLabel("Booking status",{exact:true}).inputValue().catch(()=>"unavailable"),headingCount:await page.getByRole("heading",{name:"Cancellation settlement",exact:true}).count(),clientErrors,networkErrors},null,2));
+        const serverView = await fetch(`${origin}/ticketing/${replacementId}`, { headers:{Cookie:cookie}, signal:AbortSignal.timeout(5000) }).then(async fresh => { const html=await fresh.text(); return {status:fresh.status,hasSettlement:html.includes("Cancellation settlement"),hasCancelled:html.includes('"status":"CANCELLED"'),hasReissueRequested:html.includes('"status":"REISSUE_REQUESTED"')}; }).catch(error=>({error:String(error)}));
+        writeFileSync("test-artifacts/journeys/ticketing-cancellation-failure.json",JSON.stringify({postStatus:response.status(),stored,serverView,renderedStatus:await page.getByLabel("Booking status",{exact:true}).inputValue().catch(()=>"unavailable"),headingCount:await page.getByRole("heading",{name:"Cancellation settlement",exact:true}).count(),clientErrors,networkErrors,events,lifecycle:await page.evaluate(() => (window as typeof window & { __journeyLifecycle?: unknown[] }).__journeyLifecycle),server:{port,pid:server.pid,childExit,childError,logs}},null,2));
         throw error;
       }
       console.log("Ticketing browser: cancellation preview, dismiss/no mutation, reopen and explicit zero-charge save passed.");
@@ -131,4 +174,10 @@ try {
   assert.equal((await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).status, "REISSUED");
   assert.equal((await prisma.booking.findUniqueOrThrow({ where: { id: successful.reissueBookingId } })).status, "REISSUED");
   console.log("Ticketing journey regressions passed: same-name passengers, duplicate tickets, status truth, retry safety, deadline closure, paid reissue rejection and cancellation/refund preservation.");
-} finally { server.kill("SIGTERM"); await prisma.$disconnect(); }
+} finally {
+  await stopServer();
+  mkdirSync("test-artifacts/journeys", { recursive: true });
+  writeFileSync("test-artifacts/journeys/ticketing-server.log", logs);
+  writeFileSync("test-artifacts/journeys/ticketing-server.json", JSON.stringify({ port, pid: server.pid, childExit, childError, elapsedMs: Date.now() - startedAt }, null, 2));
+  await prisma.$disconnect();
+}

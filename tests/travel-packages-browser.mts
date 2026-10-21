@@ -88,6 +88,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   if (await page.getByRole("button", { name: "Open navigation", exact: true }).getAttribute("aria-expanded") === "true") await page.keyboard.press("Escape");
   await page.getByRole("heading", { name: "Your package image library", exact: true }).scrollIntoViewIfNeeded();
+  await page.locator("#workspace-navigation").waitFor({ state:"hidden" });
   assert.equal(await page.locator("#workspace-navigation").isVisible(), false, "Image library is not obscured by closed mobile navigation");
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "Image library fits mobile viewport");
   await page.screenshot({ path: path.join(output, "media-library-mobile.png") });

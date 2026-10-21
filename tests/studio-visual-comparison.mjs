@@ -49,6 +49,7 @@ try {
       fs.writeFileSync(path.join(out, "mobile-navigation-geometry.json"), JSON.stringify(navGeometry, null, 2));
       await page.screenshot({ path: path.join(out, "mobile-navigation.png"), fullPage: false });
       await customerLink.click(); await page.waitForURL("**/customers");
+      await page.locator("#workspace-navigation").waitFor({ state:"hidden" });
       assert.equal(await page.locator("#workspace-navigation").isVisible(), false, "Real navigation closes the mobile drawer");
       await page.getByRole("button", { name: "Open navigation", exact: true }).click();
       const groupToggle = drawer.getByRole("button", { name: "Daily work", exact: true });
