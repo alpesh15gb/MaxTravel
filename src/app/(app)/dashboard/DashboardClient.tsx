@@ -50,6 +50,8 @@ function Dashboard({todayLabel}:{todayLabel:string}){
         .filter(([,n])=>n>0)
         .map(([value,n])=>({value,label:`${value[0]}${value.slice(1).toLowerCase()} (${n})`}))]
     :[{value:"ALL",label:"All (–)"}];
+  const primaryItemId = items.find(item => item.actions.length > 0)?.id;
+  const firstRunAction = data?.firstRun && items.length === 0 ? data.quickActions[0] : undefined;
   return <div className="workspace-page studio-dashboard">
     <div className="studio-dashboard-heading today-heading"><div><p className="studio-welcome">{data ? `Welcome back, ${data.name.split(" ")[0]}.` : "Your agency workspace"}</p>
       <PageHeader title="Today" description="See what needs a decision. Pick up where your team left off." />
@@ -61,7 +63,7 @@ function Dashboard({todayLabel}:{todayLabel:string}){
       <section id="attention" className="panel min-w-0 overflow-hidden" aria-label="Attention queue" aria-busy={refreshing}>
         <div className="attention-heading">
           <div><h2>{stream==="all"?"Needs your attention":WORKSTREAMS.find(w=>w.value===stream)?.label} <span className="attention-total">{data?items.length:"–"}</span></h2><p>Open a record to resolve the next step.</p></div>
-          <button className="btn-secondary" aria-label="Refresh" disabled={refreshing||!!busy} onClick={()=>void load()}><Icon name="refresh" size={14}/><span className="attention-refresh-label">{refreshing?"Refreshing…":"Refresh"}</span></button>
+          <button className={primaryItemId || firstRunAction ? "btn-secondary" : "btn-primary"} aria-label="Refresh" disabled={refreshing||!!busy} onClick={()=>void load()}><Icon name="refresh" size={14}/><span className="attention-refresh-label">{refreshing?"Refreshing…":"Refresh"}</span></button>
         </div>
         <div className="queue-filter-bar"><label className="today-work-area"><span className="field-label">Work area</span><select className="control" value={stream} onChange={e=>{setStream(e.target.value as Workstream);setFilter("ALL");}}>{WORKSTREAMS.map(w=><option key={w.value} value={w.value}>{w.label}</option>)}</select></label><ViewToggle label="Priority filter" value={filter} onChange={setFilter} options={filterOptions}/></div>
         {/* A failed action must not wear the green success banner: it read as confirmation. */}
@@ -69,13 +71,14 @@ function Dashboard({todayLabel}:{todayLabel:string}){
         {uncertain&&<p className="today-reconcile" role="status">New writes are paused. Refresh to reconcile the latest records before repeating an action.</p>}
         {!data&&!error&&<div role="status" className="p-6 text-sm text-slate-600">Loading deadlines and follow-ups…</div>}
         {data&&items.length===0&&<EmptyState icon="check" title={data.firstRun?"No follow-ups yet":"No items in this view"} description={data.firstRun?"There are no transactions yet. Add real customers and work records; deadlines and follow-ups will appear here automatically.":"No matching exceptions were found in your accessible records. Refresh as your operations change."}/>}
+        {firstRunAction&&<div className="px-6 pb-6"><Link className="btn-primary" href={firstRunAction.href}>{firstRunAction.label}<Icon name="arrow" size={14}/></Link></div>}
         {items.length>0&&<div className="divide-y divide-slate-100">{items.map(i=><article key={i.id} className={`attention-row attention-${i.severity.toLowerCase()}`}><div className="attention-record-icon" aria-hidden="true"><Icon name={WORKSTREAMS.find(w => w.value === workstream(i))?.icon ?? "tasks"} size={20}/></div>
           <div className="attention-record-content min-w-0 flex-1">
             <div className="mb-1 flex flex-wrap items-center gap-2"><Status tone={i.severity==="URGENT"?"danger":i.severity==="HIGH"?"warning":"info"}>{enumLabel(i.severity)}</Status><span className="text-small text-slate-500">{enumLabel(i.kind)}</span></div>
             <Link href={i.href} className="block text-sm font-semibold text-slate-900 hover:text-teal-700">{i.title}</Link>
             <p className="mt-1 text-xs leading-5 text-slate-500">{i.detail}</p>
           </div>
-          {i.actions.length>0&&<div className="attention-actions flex flex-col items-start gap-1.5 md:items-end"><button onClick={()=>act(i,i.actions[0])} disabled={!!busy||(!i.actions[0].href&&(uncertain||refreshing))} className="btn-secondary">{busy===i.id+i.actions[0].label?"Working…":i.actions[0].label}<Icon name="arrow" size={14}/></button>{i.actions.length>1&&<details className="max-w-full text-xs text-slate-500"><summary className="cursor-pointer py-1">More actions</summary><div className="mt-1 flex flex-wrap gap-2">{i.actions.slice(1).map(a=><button key={a.label} onClick={()=>act(i,a)} disabled={!!busy||(!a.href&&(uncertain||refreshing))} className="btn-secondary">{busy===i.id+a.label?"Working…":a.label}</button>)}</div></details>}</div>}
+          {i.actions.length>0&&<div className="attention-actions flex flex-col items-start gap-1.5 md:items-end"><button onClick={()=>act(i,i.actions[0])} disabled={!!busy||(!i.actions[0].href&&(uncertain||refreshing))} className={i.id===primaryItemId?"btn-primary":"btn-secondary"}>{busy===i.id+i.actions[0].label?"Working…":i.actions[0].label}<Icon name="arrow" size={14}/></button>{i.actions.length>1&&<details className="max-w-full text-xs text-slate-500"><summary className="cursor-pointer py-1">More actions</summary><div className="mt-1 flex flex-wrap gap-2">{i.actions.slice(1).map(a=><button key={a.label} onClick={()=>act(i,a)} disabled={!!busy||(!a.href&&(uncertain||refreshing))} className="btn-secondary">{busy===i.id+a.label?"Working…":a.label}</button>)}</div></details>}</div>}
         </article>)}</div>}
         {data&&<p className="attention-updated">Updated {clockLabel(new Date(data.generatedAt))} · Visibility follows your role and record access.</p>}
       </section>

@@ -290,14 +290,18 @@ try {
     await page.screenshot({ path: path.join(shotDir, `desktop-${name}.png`), fullPage: false });
   }
   await page.goto(`${base}/sales`, { waitUntil: "networkidle" });
-  const enquiry = page.locator("article").filter({ hasText: "Dubai family holiday" }).first();
-  if (!await enquiry.count()) fail("sales handoff did not render its accepted enquiry fixture");
+  const openEnquiry = page.getByRole("button", { name: "Open enquiry: Dubai family holiday", exact: true });
+  if (!await openEnquiry.count()) fail("sales handoff did not render its accepted enquiry fixture");
   else {
-    const convert = enquiry.getByRole("button", { name: "Create CRM booking from accepted quote" });
+    // The enquiry list now selects a dedicated workspace; use the real staff selection action.
+    await openEnquiry.click();
+    const enquiry = page.getByRole("region", { name: "Selected enquiry", exact: true });
+    await enquiry.getByRole("heading", { name: "Dubai family holiday", exact: true }).waitFor({ timeout: 10000 });
+    const convert = enquiry.getByRole("button", { name: "Create CRM booking from accepted quote", exact: true });
     if (!await convert.count()) fail("accepted enquiry has no CRM booking handoff action");
     else {
       await convert.click();
-      const linkedBooking = enquiry.getByRole("link", { name: "Open linked booking" });
+      const linkedBooking = enquiry.getByRole("link", { name: "Open linked booking", exact: true });
       await linkedBooking.waitFor({ timeout: 10000 });
       const bookingPath = await linkedBooking.getAttribute("href");
       const handoff = await page.goto(base + bookingPath, { waitUntil: "networkidle" });
