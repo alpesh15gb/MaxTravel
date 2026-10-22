@@ -10,10 +10,10 @@ import DensityControl from "./DensityControl";
 import Brand from "./Brand";
 export interface ShellUser { name: string; roleName: string; branchName: string | null; employeeCode: string; permissions: string[]; }
 const NAV: { href: string; label: string; icon: IconName; perm: string; group: string }[] = [
-  { href:"/dashboard",label:"Agency pulse",icon:"dashboard",perm:"dashboard:view",group:"Daily work" },
-  { href:"/sales",label:"Enquiries & quotes",icon:"customers",perm:"customer:view",group:"Daily work" },
-  { href:"/customers",label:"Customers",icon:"customers",perm:"customer:view",group:"Daily work" },
-  { href:"/tasks",label:"Tasks & follow-ups",icon:"tasks",perm:"task:view",group:"Daily work" },
+  { href:"/dashboard",label:"Today",icon:"dashboard",perm:"dashboard:view",group:"Daily work" },
+  { href:"/sales",label:"Enquiries & quotes",icon:"customers",perm:"customer:view",group:"Sales" },
+  { href:"/customers",label:"Customers",icon:"customers",perm:"customer:view",group:"Sales" },
+  { href:"/tasks",label:"Tasks & follow-ups",icon:"tasks",perm:"task:view",group:"Sales" },
   { href:"/visa",label:"Visa cases",icon:"visa",perm:"visa:view",group:"Travel desk" },
   { href:"/ticketing",label:"Ticketing",icon:"plane",perm:"ticketing:view",group:"Travel desk" },
   { href:"/online-bookings",label:"Online bookings",icon:"plane",perm:"ticketing:view",group:"Travel desk" },
@@ -23,14 +23,14 @@ const NAV: { href: string; label: string; icon: IconName; perm: string; group: s
   { href:"/reports",label:"Reports & insights",icon:"dashboard",perm:"payment:view",group:"Finance" },
   { href:"/refunds",label:"Refunds",icon:"refund",perm:"refund:view",group:"Finance" },
   { href:"/suppliers",label:"Suppliers",icon:"suppliers",perm:"supplier:view",group:"Finance" },
-  { href:"/incoming-documents",label:"Incoming documents",icon:"documents",perm:"whatsapp:view",group:"Manage" },
-  { href:"/whatsapp",label:"WhatsApp desk",icon:"message",perm:"whatsapp:view",group:"Manage" },
-  { href:"/employees",label:"Team",icon:"customers",perm:"employee:view",group:"Manage" },
-  { href:"/customer-tools",label:"Customer import",icon:"customers",perm:"customer:create",group:"Manage" },
-  { href:"/checklists",label:"Visa checklists",icon:"check",perm:"checklist:view",group:"Manage" },
-  { href:"/audit",label:"Audit trail",icon:"audit",perm:"audit:view",group:"Manage" },
-  { href:"/travel-packages",label:"Travel packages",icon:"compass",perm:"settings:manage",group:"Manage" },
-  { href:"/settings",label:"Agency settings",icon:"settings",perm:"settings:manage",group:"Manage" },
+  { href:"/incoming-documents",label:"Incoming documents",icon:"documents",perm:"whatsapp:view",group:"Travel desk" },
+  { href:"/whatsapp",label:"WhatsApp desk",icon:"message",perm:"whatsapp:view",group:"Travel desk" },
+  { href:"/employees",label:"Team",icon:"customers",perm:"employee:view",group:"Administration" },
+  { href:"/customer-tools",label:"Customer import",icon:"customers",perm:"customer:create",group:"Administration" },
+  { href:"/checklists",label:"Visa checklists",icon:"check",perm:"checklist:view",group:"Administration" },
+  { href:"/audit",label:"Audit trail",icon:"audit",perm:"audit:view",group:"Administration" },
+  { href:"/travel-packages",label:"Travel packages",icon:"compass",perm:"settings:manage",group:"Catalogue" },
+  { href:"/settings",label:"Agency settings",icon:"settings",perm:"settings:manage",group:"Administration" },
 ];
 const QUICK: { href: string; label: string; icon: IconName; perm: string }[] = [
   { href:"/visa/new",label:"New visa case",icon:"visa",perm:"visa:create" },
@@ -54,7 +54,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
   const [quickOpen, setQuickOpen] = useState(false); const [userOpen, setUserOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>(() => {
     const active = NAV.find(n => path === n.href || path.startsWith(n.href + "/"))?.group;
-    return [...new Set(NAV.map(n => n.group))].filter(group => group !== "Daily work" && group !== active);
+    return [...new Set(NAV.map(n => n.group))].filter(group => group !== "Daily work" && group !== "Sales" && group !== active);
   });
   useEffect(() => {
     const currentGroup = NAV.find(n => path === n.href || path.startsWith(n.href + "/"))?.group;
@@ -102,7 +102,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
   const nav = NAV.filter(n => user.permissions.includes(n.perm));
   const quick = QUICK.filter(q => user.permissions.includes(q.perm));
   const activeModule = nav.find(n => path === n.href || path.startsWith(n.href + "/"));
-  const groups = [...new Set(nav.map(n => n.group))];
+  const groups = ["Daily work", "Sales", "Travel desk", "Finance", "Catalogue", "Administration"].filter(group => nav.some(n => n.group === group));
   return <div className="operations-studio flex min-h-screen flex-col">
     <a href="#workspace-content" className="skip-link">Skip to workspace</a>
     {mobile && <button aria-label="Close navigation" className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm lg:hidden" onClick={() => setMobile(false)} />}
@@ -139,8 +139,8 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
     </header>
     <div className="workspace-shell-body flex min-h-0 flex-1">
       <aside ref={drawerRef} id="workspace-navigation" role={mobile ? "dialog" : undefined} aria-modal={mobile ? true : undefined} aria-label="Workspace navigation" data-drawer={mobile ? "open" : "closed"} className={`app-sidebar no-print ${mobile ? "translate-x-0 top-0" : "-translate-x-full"}`}>
-        <div className="studio-brand-row"><Link href="/dashboard" aria-label="Max Travel agency pulse" onClick={() => setMobile(false)}><Brand compact /></Link><button className="icon-button lg:hidden" aria-label="Close navigation" onClick={() => setMobile(false)}><Icon name="close" /></button></div>
-        <div className="studio-workspace-label"><span className="studio-agency-monogram" aria-hidden="true">{initials(agencyName)}</span><span><strong title={agencyName}>{agencyName}</strong><small>Operations studio</small></span></div>
+        <div className="studio-brand-row"><Link href="/dashboard" aria-label="Max Travel Today" onClick={() => setMobile(false)}><Brand compact /></Link><button className="icon-button lg:hidden" aria-label="Close navigation" onClick={() => setMobile(false)}><Icon name="close" /></button></div>
+        <div className="studio-workspace-label"><span className="studio-agency-monogram" aria-hidden="true">{initials(agencyName)}</span><span><strong title={agencyName}>{agencyName}</strong><small>Travel clearly · CRM</small></span></div>
         <nav aria-label="Main navigation" className="tos-scroll flex-1 overflow-y-auto px-3 pb-5 pt-1">
           {groups.map(group => {
             const expanded = !collapsedGroups.includes(group);

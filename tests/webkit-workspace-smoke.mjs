@@ -89,7 +89,7 @@ await withFixtureCleanup(async () => {
     assert((await seededCustomer.innerText()).includes("Meera Sharma"), "Seeded customer content must render before capture");
     await screenshot(`${name}-customers`);
     const menu = mobile ? await openMobileDrawer() : navigation;
-    const manage = menu.getByRole("button", { name: "Manage", exact: true });
+    const manage = menu.getByRole("button", { name: "Catalogue", exact: true });
     if (await manage.getAttribute("aria-expanded") === "false") await manage.click();
     await menu.getByRole("link", { name: "Travel packages", exact: true }).click(); await page.waitForURL("**/travel-packages");
     if (mobile) await page.locator("#workspace-navigation").waitFor({ state: "hidden" });

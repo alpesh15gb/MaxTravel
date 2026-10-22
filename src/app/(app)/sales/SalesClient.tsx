@@ -1,21 +1,318 @@
 "use client";
-import {useCallback,useEffect,useState} from "react";
+
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { dateTimeLabel } from "@/lib/dates";
+import { dateLabel, dateTimeLabel } from "@/lib/dates";
 import { enumLabel } from "@/lib/labels";
-type Quote={id:string;version:number;state:string;totalMinor:number|null;costMinor:number|null;bookingId:string|null;expiresAt:string;terms:string};
-type Lead={id:string;title:string;customerId:string;source:string;product:string;stage:string;destination:string|null;followUpAt:string|null;quotes:Quote[]};
-type Customer={id:string;name:string;code:string};type Data={leads:Lead[];customers:Customer[];canCreate:boolean;canEdit:boolean;canQuote:boolean;canConvert:boolean};
-type Item={description:string;quantity:number;priceMinor:number;costMinor:number};
-const money=(n:number|null)=>n===null?"Restricted":new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR"}).format(n/100);
-const stages=["NEW","QUALIFIED","QUOTED","WON","LOST"];
-export default function SalesClient(){const [data,setData]=useState<Data|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false),[filter,setFilter]=useState("ALL"),[showNew,setShowNew]=useState(false),[selected,setSelected]=useState<Lead|null>(null),[share,setShare]=useState(""),[terms,setTerms]=useState(""),[expiry,setExpiry]=useState(""),[items,setItems]=useState<Item[]>([{description:"",quantity:1,priceMinor:0,costMinor:0}]);
-const load=useCallback(async()=>{const r=await fetch("/api/sales");const d=await r.json();if(!r.ok)throw Error(d.error??"Cannot load enquiries.");setData(d);},[]);useEffect(()=>{load().catch(e=>setError(e.message));},[load]);
-async function action(body:Record<string,unknown>){setBusy(true);setError("");try{const r=await fetch("/api/sales",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error??"Sales update failed.");if(d.sharePath)setShare(new URL(d.sharePath,window.location.origin).href);await load();return true;}catch(e){setError(e instanceof Error?e.message:"Sales update failed.");return false;}finally{setBusy(false);}}
-return <div className="workspace-page space-y-6"><div className="flex flex-wrap justify-between gap-4"><div><h1 className="text-2xl font-semibold">Enquiries & quotations</h1><p className="text-sm text-slate-500 mt-2">Track follow-ups, share versioned proposals and convert accepted quotes.</p></div>{data?.canCreate&&<button className="btn-primary" onClick={()=>setShowNew(!showNew)}>{showNew?"Close form":"New enquiry"}</button>}</div>{error&&<p role="alert" className="form-error">{error}</p>}{share&&<div role="status" className="form-success"><p>Copy this private proposal link and send it to the customer. It will only be displayed here once.</p><input aria-label="Private proposal link" className="control mt-2" readOnly value={share} onFocus={e=>e.target.select()}/><button className="btn-secondary mt-2" onClick={()=>setShare("")}>Hide link</button></div>}{showNew&&<form className="panel p-6 space-y-4" onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);const follow=f.get("followUpAt")?.toString();const date=f.get("travelDate")?.toString();if(await action({action:"create",data:{customerId:f.get("customerId"),title:f.get("title"),source:f.get("source"),product:f.get("product"),budgetMinor:Math.round(Number(f.get("budget")??0)*100),destination:f.get("destination"),notes:f.get("notes"),followUpAt:follow?new Date(follow).toISOString():null,travelDate:date?new Date(date).toISOString():null}}))setShowNew(false);}}><h2 className="text-lg font-semibold">New enquiry</h2><div className="form-grid"><label>Customer<select name="customerId" className="control" required><option value="">Select customer</option>{data?.customers.map(c=><option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</select></label><label>Enquiry title<input className="control" name="title" required maxLength={200}/></label><label>Source<input className="control" name="source" required maxLength={100} placeholder="Website, referral, walk-in…"/></label><label>Product<select className="control" name="product"><option>FLIGHT</option><option>HOTEL</option></select></label><label>Destination / route<input className="control" name="destination" maxLength={200}/></label><label>Travel date<input className="control" type="date" name="travelDate"/></label><label>Follow-up deadline<input className="control" type="datetime-local" name="followUpAt"/></label>{data?.canQuote&&<label>Budget (INR)<input className="control" type="number" min="0" max="20000000" step="0.01" name="budget"/></label>}</div><label className="block">Notes<textarea className="control" name="notes" maxLength={4000}/></label><button className="btn-primary" disabled={busy}>Save enquiry</button></form>}
- <div className="flex flex-wrap gap-2" aria-label="Sales stages">{["ALL",...stages].map(s=><button type="button" key={s} aria-pressed={filter===s} className={filter===s?"rounded-lg border border-teal-600 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800":"btn-secondary"} onClick={()=>setFilter(s)}>{s==="ALL"?"All enquiries":enumLabel(s)} <span className="tabular-nums">{data?.leads.filter(l=>s==="ALL"||l.stage===s).length??0}</span></button>)}</div>
-{data&&data.leads.length===0&&<section className="panel p-8"><h2 className="font-semibold">No enquiries yet</h2><p className="mt-2">Add a customer, then record their travel enquiry.</p><Link className="btn-secondary mt-4" href="/customers">Customers</Link></section>}
-{data?.leads.filter(l=>filter==="ALL"||l.stage===filter).map(lead=><article className="panel p-6 space-y-4" key={lead.id}><div className="flex flex-wrap justify-between gap-4"><div><h2 className="text-lg font-semibold">{lead.title}</h2><p className="text-sm text-slate-500">{lead.product} · {lead.source} · {lead.destination??"Destination pending"}</p><Link className="text-teal-700 text-sm" href={`/customers/${lead.customerId}`}>Open customer</Link></div><span className={`rounded-full px-3 py-1 text-sm font-semibold ${lead.stage==="WON"?"bg-emerald-50 text-emerald-800":lead.stage==="LOST"?"bg-slate-100 text-slate-600":"bg-blue-50 text-blue-800"}`}>{enumLabel(lead.stage)}</span></div>{lead.followUpAt&&<p className={new Date(lead.followUpAt).getTime()<Date.now()?"text-amber-700":"text-slate-500"}>Follow up {new Date(lead.followUpAt).getTime()<Date.now()?"overdue":"due"}: {dateTimeLabel(lead.followUpAt)}</p>}{data.canEdit&&lead.stage!=="WON"&&<form className="flex flex-wrap gap-2" onSubmit={e=>{e.preventDefault();const form=new FormData(e.currentTarget);const follow=form.get("followUpAt")?.toString();action({action:"stage",leadId:lead.id,stage:form.get("stage"),lostReason:form.get("reason"),followUpAt:follow?new Date(follow).toISOString():null});}}><select className="control w-auto" aria-label="Enquiry stage" name="stage" defaultValue={lead.stage}>{stages.filter(s=>s!=="WON").map(s=><option key={s}>{s}</option>)}</select><input aria-label="Lost reason" name="reason" className="control w-auto" maxLength={500} placeholder="Reason if lost"/><input aria-label="Next follow-up" className="control w-auto" type="datetime-local" name="followUpAt" defaultValue={lead.followUpAt?new Date(new Date(lead.followUpAt).getTime()-new Date(lead.followUpAt).getTimezoneOffset()*60000).toISOString().slice(0,16):""}/><button className="btn-secondary" disabled={busy}>Update stage / follow-up</button></form>}
-{lead.quotes.map(q=><div className="rounded-xl border p-4 space-y-3" key={q.id}><p className="font-semibold">Quote v{q.version} · {q.state} · {money(q.totalMinor)}</p>{data.canQuote&&<p className="text-sm text-slate-500">Cost {money(q.costMinor)} · Margin {q.totalMinor!==null&&q.costMinor!==null?money(q.totalMinor-q.costMinor):"Restricted"}</p>}<div className="flex flex-wrap gap-2">{data.canQuote&&q.state==="DRAFT"&&<button className="btn-secondary" disabled={busy} onClick={()=>action({action:"publish",leadId:lead.id,quoteId:q.id})}>Publish private proposal</button>}{data.canConvert&&q.state==="ACCEPTED"&&!q.bookingId&&<button className="btn-primary" disabled={busy} onClick={()=>action({action:"convert",leadId:lead.id,quoteId:q.id})}>Create CRM booking from accepted quote</button>}{q.bookingId&&<Link className="btn-secondary" href={`/ticketing/${q.bookingId}`}>Open linked booking</Link>}{data.canQuote&&!q.bookingId&&!["WITHDRAWN","SUPERSEDED"].includes(q.state)&&<button className="btn-secondary" disabled={busy} onClick={()=>{if(window.confirm("Withdraw this quotation and invalidate its customer link?"))action({action:"withdraw",leadId:lead.id,quoteId:q.id});}}>Withdraw quote</button>}</div></div>)}{data.canQuote&&!["WON","LOST"].includes(lead.stage)&&<button className="btn-secondary" onClick={()=>{setSelected(lead);setTerms("");setExpiry("");setItems([{description:"",quantity:1,priceMinor:0,costMinor:0}]);}}>New quote version</button>}</article>)}
-{selected&&<section className="panel p-6 space-y-4"><h2 className="text-xl font-semibold">Quotation · {selected.title}</h2><p>Use a separate version for each revised offer. Include itinerary details in line descriptions and cancellation/payment conditions in terms.</p><form className="space-y-4" onSubmit={async e=>{e.preventDefault();if(await action({action:"quote",leadId:selected.id,items,terms,expiresAt:new Date(expiry).toISOString()}))setSelected(null);}}>{items.map((item,i)=><fieldset className="rounded-xl border p-4 space-y-2" key={i}><legend>Item {i+1}</legend><label className="block">Description / itinerary<textarea className="control" required maxLength={500} value={item.description} onChange={e=>setItems(old=>old.map((v,j)=>j===i?{...v,description:e.target.value}:v))}/></label><div className="form-grid">{([['quantity','Quantity'],['priceMinor','Unit price (INR)'],['costMinor','Unit supplier cost (INR)']] as const).map(([key,label])=><label key={key}>{label}<input className="control" type="number" min={key==="quantity"?1:0} step={key==="quantity"?1:0.01} required value={key==="quantity"?item[key]:item[key]/100} onChange={e=>setItems(old=>old.map((v,j)=>j===i?{...v,[key]:key==="quantity"?Number(e.target.value):Math.round(Number(e.target.value)*100)}:v))}/></label>)}</div>{items.length>1&&<button type="button" className="btn-secondary" onClick={()=>setItems(old=>old.filter((_,j)=>j!==i))}>Remove item</button>}</fieldset>)}<button type="button" className="btn-secondary" disabled={items.length>=100} onClick={()=>setItems(old=>[...old,{description:"",quantity:1,priceMinor:0,costMinor:0}])}>Add item</button><label className="block">Valid until<input className="control" type="datetime-local" required value={expiry} onChange={e=>setExpiry(e.target.value)}/></label><label className="block">Terms and inclusions<textarea className="control" required maxLength={10000} rows={6} value={terms} onChange={e=>setTerms(e.target.value)}/></label><p className="font-semibold">Total {money(items.reduce((n,i)=>n+i.quantity*i.priceMinor,0))}</p><div className="flex gap-3"><button className="btn-primary" disabled={busy}>Save draft version</button><button type="button" className="btn-secondary" onClick={()=>setSelected(null)}>Close</button></div></form></section>}</div>;
+import {
+  SALES_STAGES, matchingEnquiries, quoteExplanation, canPublishQuote, canStartQuote, hasPublishedShare,
+  type SalesLead, type SalesCustomer,
+} from "./sales-workspace";
+
+type Data = {
+  leads: SalesLead[]; customers: SalesCustomer[];
+  canCreate: boolean; canEdit: boolean; canQuote: boolean; canConvert: boolean;
+};
+type Item = { description: string; quantity: number; priceMinor: number; costMinor: number };
+type View = "list" | "lead" | "new" | "quote";
+const newItem = (): Item => ({ description: "", quantity: 1, priceMinor: 0, costMinor: 0 });
+const money = (value: number | null) => value === null ? "Restricted" :
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value / 100);
+const localDateTime = (value: string | null) => {
+  if (!value) return "";
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
+
+export default function SalesClient() {
+  const [data, setData] = useState<Data | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
+  const [uncertaintyReason, setUncertaintyReason] = useState("");
+  const [filter, setFilter] = useState("ALL");
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState<View>("list");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [share, setShare] = useState("");
+  const [shareContext, setShareContext] = useState("");
+  const [shareQuoteId, setShareQuoteId] = useState<string | null>(null);
+  const [terms, setTerms] = useState("");
+  const [expiry, setExpiry] = useState("");
+  const [items, setItems] = useState<Item[]>([newItem()]);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const [stageFormRevision, setStageFormRevision] = useState(0);
+  const mutationLock = useRef(false);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const errorSummary = useRef<HTMLDivElement>(null);
+  const uncertaintySummary = useRef<HTMLDivElement>(null);
+  const newButton = useRef<HTMLButtonElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const addItemButton = useRef<HTMLButtonElement>(null);
+  const shareInput = useRef<HTMLInputElement>(null);
+  const shareHeading = useRef<HTMLHeadingElement>(null);
+  const selected = data?.leads.find(lead => lead.id === selectedId);
+  const locked = busy || uncertain || loading;
+  // Every sales POST also requires customer:edit. Do not offer an action the API forbids.
+  const canQuote = Boolean(data?.canEdit && data.canQuote);
+  const canCreate = Boolean(data?.canEdit && data.canCreate);
+  const visible = data ? matchingEnquiries(data.leads, data.customers, query, filter) : [];
+
+  const load = useCallback(async () => {
+    const response = await fetch("/api/sales", { cache: "no-store" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error ?? "Cannot load enquiries.");
+    setData(result);
+    return result as Data;
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    load().catch(() => { if (active) setError("Enquiries could not be loaded. Retry to see the latest records."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [load]);
+
+  // Focus only after the new workspace is committed, never on an arbitrary timer.
+  useEffect(() => {
+    if (!focusRequest) return;
+    if (view === "list") {
+      const row = selectedId ? document.getElementById(`sales-open-${selectedId}`) : null;
+      const target = row ?? searchInput.current ?? newButton.current;
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView({ block: "nearest", behavior: "instant" });
+    } else {
+      heading.current?.focus({ preventScroll: true });
+      heading.current?.scrollIntoView({ block: "start", behavior: "instant" });
+    }
+  }, [focusRequest, view, selectedId]);
+  useEffect(() => {
+    if (!share) return;
+    shareHeading.current?.focus({ preventScroll: true });
+    shareHeading.current?.scrollIntoView({ block: "start", behavior: "instant" });
+  }, [share]);
+  useEffect(() => { if (error) errorSummary.current?.focus(); }, [error]);
+  useEffect(() => { if (uncertain) uncertaintySummary.current?.focus(); }, [uncertain]);
+
+  useEffect(() => {
+    if (!dirty && !busy) return;
+    const unload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    const navigate = (event: MouseEvent) => {
+      const anchor = (event.target as Element | null)?.closest("a[href]");
+      if (!anchor || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+      if (busy || !window.confirm("Leave this enquiry? Unsaved changes will be lost.")) {
+        event.preventDefault(); event.stopPropagation();
+      }
+    };
+    window.addEventListener("beforeunload", unload);
+    document.addEventListener("click", navigate, true);
+    return () => { window.removeEventListener("beforeunload", unload); document.removeEventListener("click", navigate, true); };
+  }, [dirty, busy]);
+
+  function leaveAllowed() {
+    return !mutationLock.current && (!dirty || window.confirm("Discard unsaved changes to this enquiry?"));
+  }
+  function open(viewNext: View, id: string | null = selectedId) {
+    if (!leaveAllowed()) return;
+    setDirty(false); setError(""); setSelectedId(id); setView(viewNext);
+    if (viewNext === "quote") { setItems([newItem()]); setTerms(""); setExpiry(""); }
+    setFocusRequest(value => value + 1);
+  }
+
+  function reconcileShare(latest: Data, quoteId: string | null = shareQuoteId) {
+    if (quoteId && !hasPublishedShare(latest.leads, quoteId)) {
+      setShare(""); setShareQuoteId(null); setShareContext("");
+    }
+  }
+
+  async function reload() {
+    if (mutationLock.current || (dirty && !window.confirm("Reload latest status and discard local edits? Copy anything you need first. A previous save may already have completed."))) return;
+    mutationLock.current = true; setLoading(true); setError("");
+    try {
+      const latest = await load();
+      reconcileShare(latest);
+      setUncertain(false); setDirty(false);
+      setView(selectedId && latest.leads.some(lead => lead.id === selectedId) ? "lead" : "list");
+      setNotice("Latest records loaded. Review the enquiry and quote versions before making another change.");
+      setFocusRequest(value => value + 1);
+    } catch { setError("Latest status could not be loaded. Keep your local notes and try loading again; do not repeat an uncertain save."); }
+    finally { mutationLock.current = false; setLoading(false); }
+  }
+
+  async function action(body: unknown): Promise<Record<string, unknown> | null> {
+    if (mutationLock.current || uncertain) return null;
+    const kind = (body as { action?: string }).action;
+    if (dirty && !["create", "quote", "stage"].includes(kind ?? "") &&
+      !window.confirm("Discard unsaved stage or follow-up edits before continuing?")) return null;
+    mutationLock.current = true; setBusy(true); setError(""); setNotice("");
+    let confirmed = false;
+    let activeShareId = shareQuoteId;
+    try {
+      const response = await fetch("/api/sales", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      if (!response.ok) {
+        if (response.status >= 500) throw new Error("uncertain");
+        setError(result.error ?? "The request was not accepted. Check the fields and permissions.");
+        return null;
+      }
+      confirmed = true;
+      const request = body as { leadId?: string; quoteId?: string };
+      if (kind === "withdraw" && request.quoteId === activeShareId) {
+        setShare(""); setShareQuoteId(null); setShareContext(""); activeShareId = null;
+      }
+      if (typeof result.sharePath === "string" && /^\/proposal#[a-f0-9]{64}$/.test(result.sharePath)) {
+        const sourceLead = data?.leads.find(lead => lead.id === request.leadId);
+        const sourceQuote = sourceLead?.quotes.find(quote => quote.id === request.quoteId);
+        activeShareId = request.quoteId ?? null;
+        setShareQuoteId(activeShareId);
+        setShareContext(`${sourceLead?.title ?? "Published enquiry"}${sourceQuote ? ` · Quote v${sourceQuote.version}` : ""}`);
+        setShare(new URL(result.sharePath, window.location.origin).href);
+      }
+      const latest = await load();
+      reconcileShare(latest, activeShareId);
+      // A confirmed action may leave the persisted stage/follow-up unchanged (e.g. withdraw).
+      // Remount uncontrolled fields before clearing dirty state, so discarded edits cannot survive.
+      // Keep this separate from focusRequest: publishing must retain private-link heading focus.
+      setStageFormRevision(revision => revision + 1);
+      setDirty(false); setNotice("Saved. The latest enquiry record is shown below.");
+      return result;
+    } catch {
+      setUncertain(true); setError("");
+      setUncertaintyReason(confirmed
+        ? "The save was acknowledged, but the latest record could not be loaded. Do not save again. Reload latest status and review it first."
+        : "The save outcome is unknown. It may have completed. Do not submit again; reload latest status and review the enquiry before continuing.");
+      return null;
+    } finally { mutationLock.current = false; setBusy(false); }
+  }
+
+  function updateItem(index: number, patch: Partial<Item>) {
+    setItems(previous => previous.map((item, position) => position === index ? { ...item, ...patch } : item));
+    setDirty(true);
+  }
+  const customerName = (id: string) => data?.customers.find(customer => customer.id === id)?.name ?? "Customer record";
+  const headingProps = { ref: heading, tabIndex: -1, className: "text-xl font-semibold scroll-mt-24" };
+
+  return <div className="workspace-page sales-workspace">
+    <header className="sales-header flex flex-wrap items-start justify-between gap-4">
+      <div><p className="sales-eyebrow text-sm font-semibold">Sales workspace</p><h1 className="text-3xl font-semibold">Enquiries &amp; quotations</h1>
+        <p className="mt-2 text-sm text-slate-600">Understand the request. Prepare a private proposal. Keep the next step clear.</p></div>
+      {canCreate && <button ref={newButton} className={view === "new" || view === "quote" ? "btn" : "btn btn-primary"} disabled={locked} onClick={() => open("new", null)}>New enquiry</button>}
+    </header>
+
+    {error && <div ref={errorSummary} tabIndex={-1} role="alert" className="form-error space-y-3"><p>{error}</p>
+      {!uncertain && !data && <button className="btn" disabled={loading || busy} onClick={() => void reload()}>{loading ? "Loading…" : "Reload latest status"}</button>}</div>}
+    {uncertain && <div ref={uncertaintySummary} tabIndex={-1} role="alert" className="form-error space-y-3"><p>{uncertaintyReason}</p><p>Changes remain locked across this workspace until the latest status is loaded.</p><button className="btn" disabled={loading || busy} onClick={() => void reload()}>{loading ? "Loading…" : "Reload latest status"}</button></div>}
+    {notice && <p role="status" className="form-success">{notice}</p>}
+    {share && <section className="sales-private-link panel p-5 space-y-3" aria-label="Private proposal link">
+      <h2 ref={shareHeading} tabIndex={-1} className="text-lg font-semibold scroll-mt-24">Private proposal link — copy before leaving</h2><p className="font-semibold break-words">For enquiry: {shareContext}</p>
+      <p className="text-sm">This link is shown only once. Anyone with it can view the proposal. Send it only to the intended customer; it is not a public package listing.</p>
+      {uncertain && <p className="text-sm">Link status is unverified. Reload latest status before sharing.</p>}
+      <label className="block text-sm font-medium">Private proposal link<input ref={shareInput} className="control mt-2" readOnly disabled={uncertain} value={share} onFocus={event => event.target.select()} /></label>
+      <div className="sales-actions flex flex-wrap gap-2"><button className="btn" disabled={uncertain || busy} onClick={async () => {
+        try { await navigator.clipboard.writeText(share); setNotice("Private link copied. Share it only with the intended customer."); }
+        catch { shareInput.current?.focus(); shareInput.current?.select(); setNotice("Select and copy the private link manually."); }
+      }}>Copy private link</button><button className="btn" onClick={() => {
+        if (window.confirm("Hide this one-time link? Make sure you have copied it first.")) { setShare(""); setShareQuoteId(null); setShareContext(""); heading.current?.focus(); }
+      }}>Hide link</button></div>
+    </section>}
+
+    {loading && !data && <p role="status" className="panel p-6">Loading your enquiries…</p>}
+    {data && <>
+      <div className="sales-toolbar flex flex-wrap items-end gap-3">
+        <label className="min-w-0 flex-1 text-sm font-medium">Search enquiries<input ref={searchInput} className="control mt-1" value={query} onChange={event => setQuery(event.target.value)} placeholder="Customer, destination or enquiry" /></label>
+        <label className="text-sm font-medium">Filter by stage<select className="control mt-1" value={filter} onChange={event => setFilter(event.target.value)}><option value="ALL">All stages ({data.leads.length})</option>{SALES_STAGES.map(stage => <option key={stage} value={stage}>{enumLabel(stage)} ({data.leads.filter(lead => lead.stage === stage).length})</option>)}</select></label>
+        <button className="btn" aria-label="Refresh records" disabled={busy || loading} onClick={() => void reload()}>{loading ? "Loading…" : "Refresh"}</button>
+      </div>
+      <p className="text-sm text-slate-600">Showing {visible.length} of {data.leads.length} loaded enquiries in your permitted scope. Up to 200 most recently updated enquiries are loaded.{data.customers.length >= 500 ? " Customer selection is limited to the first 500 names." : ""}</p>
+      <div className="sales-layout grid gap-5" data-detail={view !== "list"}>
+        <section className="sales-list panel overflow-hidden" aria-label="Enquiry list">
+          <div className="border-b p-4"><h2 className="font-semibold">Your enquiry list</h2><p className="text-sm text-slate-600">Open one request to work on its next step.</p></div>
+          {!data.leads.length ? <div className="p-6 space-y-3"><h3 className="font-semibold">No enquiries yet</h3><p className="text-sm">Start with an existing customer, then record their travel request.</p><Link className="btn" href="/customers">Open customers</Link></div>
+            : !visible.length ? <div className="p-6 space-y-3"><h3 className="font-semibold">No matching enquiries</h3><p className="text-sm">Try a different customer, destination or stage. Your selected enquiry stays open.</p><button className="btn" onClick={() => { setQuery(""); setFilter("ALL"); searchInput.current?.focus(); }}>Clear filters</button></div>
+              : <ul className="divide-y">{visible.map(lead => <li key={lead.id}><button id={`sales-open-${lead.id}`} className={`sales-row w-full p-4 text-left ${selectedId === lead.id && view !== "new" ? "is-selected" : ""}`} aria-label={`Open enquiry: ${lead.title}`} aria-current={selectedId === lead.id && view !== "new" ? "true" : undefined} onClick={() => open("lead", lead.id)}>
+                <span className="block font-semibold break-words">{lead.title}</span><span className="block text-sm text-slate-600">{customerName(lead.customerId)} · {enumLabel(lead.product)}</span>
+                <span className="sales-row-meta mt-2 flex flex-wrap gap-2 text-sm"><span className="pill">{enumLabel(lead.stage)}</span><span>{lead.followUpAt ? `Follow-up ${dateTimeLabel(lead.followUpAt)}` : "No follow-up set"}</span></span>
+              </button></li>)}</ul>}
+        </section>
+        <section className={`sales-record panel min-w-0 p-5 ${view === "quote" || view === "new" ? "sales-editor" : ""}`} aria-label="Selected enquiry">
+          {view === "list" && <div className="py-10 space-y-3"><p className="sales-eyebrow text-sm font-semibold">One enquiry, one clear next step</p><h2 className="text-2xl font-semibold">Choose a request to get started</h2><p className="text-slate-600">Review the customer’s request, prepare a quotation, or follow up on a private proposal.</p><ol className="sales-lifecycle flex flex-wrap gap-3 text-sm"><li>1. Enquiry</li><li>2. Draft quotation</li><li>3. Private proposal</li><li>4. Accepted → CRM booking</li></ol></div>}
+          {view !== "list" && <button className="btn mb-4" disabled={busy || loading} onClick={() => open("list")}>Back to enquiries</button>}
+          {view === "new" && <>
+            <h2 {...headingProps}>New enquiry</h2><p className="mt-2 mb-5 text-sm text-slate-600">Choose an existing customer and record the request. This does not create a booking.</p><p className="mb-4 text-sm text-slate-600">Date/time fields use your device’s local time. Saved follow-up and expiry labels are shown in IST.</p>
+            <form key={`new-${focusRequest}`} onChange={() => setDirty(true)} onSubmit={async event => {
+              event.preventDefault(); const form = new FormData(event.currentTarget); const follow = String(form.get("follow") ?? ""); const travel = String(form.get("date") ?? "");
+              const result = await action({ action: "create", data: { customerId: form.get("customer"), title: form.get("title"), source: form.get("source"), product: form.get("product"), budgetMinor: Math.round(Number(form.get("budget") ?? 0) * 100), destination: form.get("destination"), notes: form.get("notes"), followUpAt: follow ? new Date(follow).toISOString() : null, travelDate: travel ? new Date(travel).toISOString() : null } });
+              if (result && typeof result.id === "string") { setSelectedId(result.id); setView("lead"); setFocusRequest(value => value + 1); }
+            }}>
+              <fieldset disabled={locked} className="space-y-4"><div className="sales-editor-grid grid gap-4 sm:grid-cols-2">
+                <label className="text-sm font-medium">Customer<select className="control mt-1" name="customer" required defaultValue=""><option value="" disabled>Select an existing customer</option>{data.customers.map(customer => <option key={customer.id} value={customer.id}>{customer.code} · {customer.name}</option>)}</select></label>
+                <label className="text-sm font-medium">Enquiry title<input className="control mt-1" name="title" required maxLength={200} /></label>
+                <label className="text-sm font-medium">Source<input className="control mt-1" name="source" required maxLength={100} placeholder="Website, referral, walk-in…" /></label>
+                <label className="text-sm font-medium">Product<select className="control mt-1" name="product"><option value="FLIGHT">Flight</option><option value="HOTEL">Hotel</option></select></label>
+                <label className="text-sm font-medium">Destination / route<input className="control mt-1" name="destination" maxLength={200} /></label>
+                <label className="text-sm font-medium">Travel date<input className="control mt-1" name="date" type="date" /></label>
+                <label className="text-sm font-medium">Follow-up deadline<input className="control mt-1" name="follow" type="datetime-local" /></label>
+                {canQuote && <label className="text-sm font-medium">Budget (INR)<input className="control mt-1" name="budget" type="number" min={0} max={20000000} step="0.01" /></label>}
+              </div><label className="block text-sm font-medium">Notes<textarea className="control mt-1" name="notes" maxLength={4000} rows={4} /></label>
+                {!data.customers.length && <p className="text-sm">No customer is available in this picker. Add an eligible customer first from Customers.</p>}
+                <div className="sales-editor-footer sales-actions flex flex-wrap items-center gap-3"><button className="btn btn-primary" disabled={!data.customers.length}>Save enquiry</button><button type="button" className="btn" onClick={() => open("list")}>Close enquiry</button><span className="text-sm">{dirty ? "Unsaved changes — keep this page open until saved." : "Not saved yet"}</span></div>
+              </fieldset>
+            </form>
+          </>}
+          {view !== "new" && view !== "list" && !selected && <p>This enquiry is no longer in the loaded view. Return to the enquiry list or refresh your permitted records.</p>}
+          {selected && view === "lead" && <>
+            <div className="sales-record-header space-y-3"><div className="flex flex-wrap items-center gap-2"><span className="pill">{enumLabel(selected.stage)}</span><span className="text-sm">{enumLabel(selected.product)}</span></div>
+              <h2 {...headingProps}>{selected.title}</h2><p className="text-sm text-slate-600">{customerName(selected.customerId)} · {selected.source}</p>
+              <div className="sales-actions flex flex-wrap gap-2">{canQuote && canStartQuote(selected) && <button className={selected.quotes.length ? "btn" : "btn btn-primary"} disabled={locked} onClick={() => open("quote")}>New quote version</button>}<Link className="btn" href={`/customers/${selected.customerId}`}>Open customer</Link></div>
+            </div>
+            <dl className="sales-summary grid gap-4 py-5 sm:grid-cols-2"><div><dt className="text-sm text-slate-600">Destination / route</dt><dd className="font-medium">{selected.destination || "Not recorded"}</dd></div><div><dt className="text-sm text-slate-600">Next follow-up</dt><dd className="font-medium">{selected.followUpAt ? dateTimeLabel(selected.followUpAt) : "Not set"}</dd></div><div><dt className="text-sm text-slate-600">Travel date</dt><dd className="font-medium">{selected.travelDate ? dateLabel(selected.travelDate) : "Not recorded"}</dd></div>{selected.budgetMinor !== null && selected.budgetMinor !== undefined && <div><dt className="text-sm text-slate-600">Customer budget</dt><dd className="font-medium">{money(selected.budgetMinor)}</dd></div>}</dl>{selected.notes && <section className="mb-5 space-y-2"><h3 className="font-semibold">Enquiry notes</h3><p className="whitespace-pre-wrap break-words text-sm">{selected.notes}</p></section>}
+            {data.canEdit && selected.stage !== "WON" && <details className="border-y py-4"><summary className="cursor-pointer font-semibold">Update stage / follow-up</summary><form key={`${selected.id}:${selected.stage}:${selected.followUpAt}:${focusRequest}:${stageFormRevision}`} className="mt-4 space-y-4" onChange={() => setDirty(true)} onSubmit={async event => {
+              event.preventDefault(); const form = new FormData(event.currentTarget); const follow = String(form.get("follow") ?? "");
+              await action({ action: "stage", leadId: selected.id, stage: form.get("stage"), lostReason: form.get("reason"), followUpAt: follow ? new Date(follow).toISOString() : null });
+            }}><fieldset disabled={locked} className="sales-editor-grid grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">Enquiry stage<select className="control mt-1" name="stage" defaultValue={selected.stage}>{SALES_STAGES.filter(stage => stage !== "WON").map(stage => <option key={stage} value={stage}>{enumLabel(stage)}</option>)}</select></label><label className="text-sm font-medium">Next follow-up<input className="control mt-1" name="follow" type="datetime-local" defaultValue={localDateTime(selected.followUpAt)} /></label><label className="text-sm font-medium sm:col-span-2">Lost reason (required for Lost)<input className="control mt-1" name="reason" maxLength={500} defaultValue={selected.lostReason ?? ""} /></label><button className="btn justify-self-start">Save stage / follow-up</button></fieldset></form></details>}
+            <div className="mt-6 mb-4"><h3 className="text-lg font-semibold">Quotation history</h3><p className="text-sm text-slate-600">Drafts stay private. Publishing creates a private customer proposal, not a public package.</p></div>
+            {!selected.quotes.length && <p className="py-4 text-slate-600">No quotations yet. Prepare the first version when the request is ready.</p>}
+            <div className="sales-quote-list space-y-4">{selected.quotes.map(quote => <article key={quote.id} className="sales-quote rounded-xl border p-4 space-y-3">
+              <div className="flex flex-wrap justify-between gap-2"><h4 className="font-semibold">Quote v{quote.version} · {enumLabel(quote.state)}</h4><span className="font-semibold tabular-nums">{money(quote.totalMinor)}</span></div>
+              <p className="text-sm">{quoteExplanation(quote)}</p><p className="text-sm text-slate-600">Valid until {dateTimeLabel(quote.expiresAt)}{new Date(quote.expiresAt).getTime() <= Date.now() ? " · Expired" : ""}</p>
+              {canQuote && <p className="text-sm text-slate-600">Cost {money(quote.costMinor)} · Margin {money(quote.totalMinor !== null && quote.costMinor !== null ? quote.totalMinor - quote.costMinor : null)}</p>}
+              <details className="text-sm"><summary className="cursor-pointer font-medium">View quotation details</summary><div className="mt-3 space-y-3">{quote.items?.length ? <ol className="space-y-3">{quote.items.map((item, position) => <li key={position}><p className="whitespace-pre-wrap break-words">{item.description}</p><p className="text-slate-600">{item.quantity} × {money(item.priceMinor)}{canQuote ? ` · Cost per unit ${money(item.costMinor)}` : ""}</p></li>)}</ol> : <p>Line-item amounts are not available in this view.</p>}<h5 className="font-semibold">Terms and inclusions</h5><p className="whitespace-pre-wrap break-words">{quote.terms}</p></div></details>
+              <div className="sales-actions flex flex-wrap gap-2">{canQuote && quote.state === "DRAFT" && <button className="btn btn-primary" disabled={locked || !canPublishQuote(selected, quote)} onClick={() => {
+                if (window.confirm("Publish this private proposal? Any earlier published proposal link will stop working.")) void action({ action: "publish", leadId: selected.id, quoteId: quote.id });
+              }}>Publish private proposal</button>}
+                {canQuote && data.canConvert && quote.state === "ACCEPTED" && !quote.bookingId && <button className="btn btn-primary" disabled={locked || ["WON", "LOST"].includes(selected.stage)} onClick={() => void action({ action: "convert", leadId: selected.id, quoteId: quote.id })}>Create CRM booking from accepted quote</button>}
+                {quote.state === "ACCEPTED" && !quote.bookingId && selected.stage === "LOST" && <p className="text-sm">Reopen this enquiry before creating a CRM booking.</p>}
+                {quote.state === "ACCEPTED" && !quote.bookingId && selected.stage === "WON" && <p className="text-sm">This enquiry is already won. Review its recorded booking before proceeding.</p>}
+                {quote.bookingId && <Link className="btn btn-primary" href={`/ticketing/${quote.bookingId}`}>Open linked booking</Link>}
+                {canQuote && !quote.bookingId && !["WITHDRAWN", "SUPERSEDED"].includes(quote.state) && <button className="btn" disabled={locked} onClick={() => { if (window.confirm("Withdraw this quotation and invalidate its customer link?")) void action({ action: "withdraw", leadId: selected.id, quoteId: quote.id }); }}>Withdraw quote</button>}
+              </div>{quote.state === "DRAFT" && !canPublishQuote(selected, quote) && <p className="text-sm">Publishing requires the latest, unexpired draft and an open enquiry.</p>}
+            </article>)}</div>
+          </>}
+          {selected && view === "quote" && <>
+            <h2 {...headingProps}>Quotation · {selected.title}</h2><p className="mt-2 mb-5 text-sm text-slate-600">Prepare a new draft version. Saving does not publish or send it. Describe the itinerary, inclusions and terms clearly.</p><p className="mb-4 text-sm text-slate-600">Enter the expiry in your device’s local time; saved expiry labels are shown in IST.</p>
+            <form onSubmit={async event => { event.preventDefault();
+              const total = items.reduce((sum, item) => sum + item.quantity * item.priceMinor, 0);
+              const cost = items.reduce((sum, item) => sum + item.quantity * item.costMinor, 0);
+              if (total <= 0 || total > 2000000000 || cost > 2000000000) { setError("Quotation total must be above zero and no more than ₹20,000,000. Total cost must also be within this limit."); return; }
+              if (new Date(expiry).getTime() <= Date.now()) { setError("Choose a future quotation expiry."); return; }
+              const result = await action({ action: "quote", leadId: selected.id, items, terms, expiresAt: new Date(expiry).toISOString() }); if (result) { setView("lead"); setFocusRequest(value => value + 1); } }}>
+              <fieldset disabled={locked} className="space-y-5">{items.map((item, index) => <fieldset key={index} className="sales-line-item rounded-xl border p-4 space-y-3"><legend className="px-2 font-semibold">Item {index + 1}</legend>
+                <label className="block text-sm font-medium">Description / itinerary<textarea className="control mt-1" required maxLength={500} rows={3} value={item.description} onChange={event => updateItem(index, { description: event.target.value })} /></label>
+                <div className="sales-line-fields grid gap-3 sm:grid-cols-3"><label className="text-sm font-medium">Quantity<input className="control mt-1" type="number" required min={1} max={1000} step={1} value={item.quantity} onChange={event => updateItem(index, { quantity: Number(event.target.value) })} /></label><label className="text-sm font-medium">Price per unit (INR)<input className="control mt-1" type="number" required min={0} max={1000000} step="0.01" value={item.priceMinor / 100} onChange={event => updateItem(index, { priceMinor: Math.round(Number(event.target.value) * 100) })} /></label><label className="text-sm font-medium">Cost per unit (INR)<input className="control mt-1" type="number" required min={0} max={1000000} step="0.01" value={item.costMinor / 100} onChange={event => updateItem(index, { costMinor: Math.round(Number(event.target.value) * 100) })} /></label></div>
+                {items.length > 1 && <button className="btn" type="button" aria-label={`Remove item ${index + 1}`} onClick={() => { setItems(previous => previous.filter((_, position) => position !== index)); setDirty(true); addItemButton.current?.focus(); }}>Remove item</button>}
+              </fieldset>)}
+                <button ref={addItemButton} type="button" className="btn" disabled={items.length >= 100} onClick={() => { setItems(previous => [...previous, newItem()]); setDirty(true); }}>Add item</button>
+                <label className="block text-sm font-medium">Valid until<input className="control mt-1" type="datetime-local" required value={expiry} onChange={event => { setExpiry(event.target.value); setDirty(true); }} /></label>
+                <label className="block text-sm font-medium">Terms and inclusions<textarea className="control mt-1" required maxLength={10000} rows={6} value={terms} onChange={event => { setTerms(event.target.value); setDirty(true); }} /></label>
+                <div className="sales-editor-footer space-y-3"><p className="font-semibold">Quotation total {money(items.reduce((total, item) => total + item.quantity * item.priceMinor, 0))}</p><div className="sales-actions flex flex-wrap gap-3"><button className="btn btn-primary">Save draft version</button><button type="button" className="btn" onClick={() => open("lead")}>Close quotation</button></div><p className="text-sm text-slate-600">{dirty ? "Unsaved changes — save or explicitly discard before leaving." : "New draft — not yet saved or shared."}</p></div>
+              </fieldset>
+            </form>
+          </>}
+        </section>
+      </div>
+    </>}
+  </div>;
 }

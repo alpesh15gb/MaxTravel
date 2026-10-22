@@ -67,6 +67,11 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   await context.addCookies([{ name: "tos_session", value: ownerCookie.split("=")[1], url: origin }]);
   const page = await context.newPage(); const errors: string[] = []; page.on("pageerror", (e: Error) => errors.push(e.message));
+  async function editorSection(name: string) {
+    const picker = page.getByLabel("Edit section", { exact: true });
+    if (await picker.isVisible()) await picker.selectOption(name);
+    else await page.getByRole("button", { name, exact: true }).click();
+  }
   await page.goto(origin + "/travel-packages");
   await page.getByText("Your next great trip starts here").waitFor();
   await page.getByRole("button", { name: "+ Create package", exact: true }).click();
@@ -79,7 +84,7 @@ try {
   const fullDraft = { ...emptyPackage, title: "Kerala discovery", destination: "Kerala", summary: "Slow days along the backwaters", description: "A locally planned journey with time to explore.", itinerary: [{ day: 1, title: "Arrive and unwind", description: "Local arrival transfer and time at leisure." }], inclusions: ["Arrival transfer"], exclusions: ["Flights"], terms: "Final quote must be accepted before payment.", cancellationPolicy: "Supplier cancellation terms apply to the confirmed quote.", availabilityNotes: "Dates and accommodation are subject to confirmation.", contactEmail: "travel@example.test", internalNotes: "PRIVATE never public" };
   const update = await fetch(origin + `/api/travel-packages/${row.id}`, { method: "PATCH", headers: { Cookie: ownerCookie, "Content-Type": "application/json", Origin: origin }, body: JSON.stringify({ slug: row.slug, draft: fullDraft, revision: row.revision }) }); assert.equal(update.status, 200);
   await page.reload(); await page.getByRole("button", { name: /Kerala discovery.*Kerala/ }).click();
-  await page.getByRole("button", { name: "Images", exact: true }).click();
+  await editorSection("Images");
   await page.getByLabel("Upload package image", { exact: true }).setInputFiles({ name: "synthetic.png", mimeType: "image/png", buffer: imageBytes });
   await page.getByRole("button", { name: "Use as cover", exact: true }).waitFor();
   await page.getByRole("button", { name: "Use as cover", exact: true }).click();
@@ -112,16 +117,16 @@ try {
   await page.screenshot({ path: path.join(output, "media-description-mobile.png"), animations: "disabled" });
   writeFileSync(path.join(output, "media-controls-mobile-geometry.json"), JSON.stringify({ uploadBox, choiceBox, altBox }, null, 2));
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.getByRole("button", { name: "Preview", exact: true }).click();
+  await editorSection("Preview");
   await page.getByText("Required content is complete.", { exact: false }).waitFor();
   page.once("dialog", dialog => dialog.accept()); await page.getByRole("button", { name: "Publish to website", exact: true }).click();
   await page.getByText("Published version is available to the website. Open the customer page to verify it.").waitFor();
   const publicResponse = await fetch(origin + "/api/public/travel-packages/kerala-discovery"); assert.equal(publicResponse.status, 200); assert(!(await publicResponse.text()).includes("PRIVATE"));
-  await page.getByRole("button", { name: "Overview", exact: true }).click();
+  await editorSection("Overview");
   await page.getByLabel("Package title", { exact: true }).fill("Kerala new draft");
   page.once("dialog", dialog => dialog.dismiss()); await page.getByRole("button", { name: "Close editor", exact: true }).click();
   assert.equal(await page.getByLabel("Package title", { exact: true }).inputValue(), "Kerala new draft");
-  page.once("dialog", dialog => dialog.dismiss()); await page.getByRole("link", { name: "Agency pulse", exact: true }).click(); assert(page.url().endsWith("/travel-packages"));
+  page.once("dialog", dialog => dialog.dismiss()); await page.getByRole("link", { name: "Today", exact: true }).click(); assert(page.url().endsWith("/travel-packages"));
   await page.getByRole("button", { name: "Save draft", exact: true }).click(); await page.getByText("Draft saved. Any published version is unchanged.").waitFor();
   assert.equal((await (await fetch(origin + "/api/public/travel-packages/kerala-discovery")).json()).package.title, "Kerala discovery");
   const viewportEvidence: unknown[] = [];
