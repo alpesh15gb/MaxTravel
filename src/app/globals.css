@@ -629,6 +629,10 @@ main table tbody tr:hover { background:var(--brand-50); }
 .studio-rail-footer [role="alert"] { color:var(--danger-200); }
 .package-studio fieldset { scroll-padding-bottom:120px; }
 .package-studio fieldset input,.package-studio fieldset textarea,.package-studio fieldset select { scroll-margin-bottom:140px; }
+/* Narrow save bars wrap into multiple rows; keyboard focus must clear the whole bar. */
+@media (max-width:639px) {
+  .package-studio fieldset input,.package-studio fieldset textarea,.package-studio fieldset select { scroll-margin-bottom:calc(var(--package-actions-height, 224px) + 16px); }
+}
 @media (max-width:1023px) { .studio-nav-group .nav-section { min-height:44px; margin-block:8px 2px; } }
 /* On a phone, the attention list is the job—not a second screen below queue controls. */
 @media (max-width:767px) {

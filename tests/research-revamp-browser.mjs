@@ -171,7 +171,24 @@ await withFixtureCleanup(async()=>{
     if(!before)await page.getByText('Website: Published snapshot',{exact:true}).waitFor();await capture(`${width}-package-editor`);
     await page.getByRole('button',{name:'Close editor',exact:true}).click();await page.getByRole('button',{name:'+ Create package',exact:true}).click();
     await handoff(page.getByRole('heading',{name:'New package',exact:true}),page.getByLabel('Package title',{exact:true}),`${width}-new-package`);await capture(`${width}-new-package`);
-    if(!before&&width<768)await keyboardSlugAboveSaveBar(`${width}-package-keyboard-slug`);
+    if(!before&&width<768){
+      await keyboardSlugAboveSaveBar(`${width}-package-keyboard-slug`);
+      await page.getByRole('button',{name:'Close editor',exact:true}).click();
+      await page.getByRole('button',{name:'+ Create package',exact:true}).click();
+      const zoomHeading=await page.getByRole('heading',{name:'New package',exact:true}).elementHandle();
+      try{await page.waitForFunction(node=>document.activeElement===node,zoomHeading,{timeout:5000});}finally{await zoomHeading.dispose();}
+      // Explicit text-resize stress, not a claim of browser-chrome zoom or a physical device.
+      // Read all computed sizes before applying them, avoiding compounded inheritance.
+      await page.getByRole('region',{name:'Package editor',exact:true}).evaluate(editor=>{
+        const sizes=[editor,...editor.querySelectorAll('*')].filter(node=>node instanceof HTMLElement).map(node=>{
+          const style=getComputedStyle(node);return {node,font:parseFloat(style.fontSize),line:parseFloat(style.lineHeight)};
+        });
+        for(const {node,font,line} of sizes){if(Number.isFinite(font))node.style.fontSize=`${font*2}px`;if(Number.isFinite(line))node.style.lineHeight=`${line*2}px`;}
+      });
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      report.scenarios.push({name:`${width}-editor-text-resize`,mode:'200% computed editor text and line-height; not browser-chrome zoom'});persist();
+      await keyboardSlugAboveSaveBar(`${width}-package-keyboard-slug-text200`);
+    }
     await within(context.close(),3000,'viewport context close');page=undefined;
   }
   // Same saved-draft isolation contract is enforced on baseline and candidate; no publishing from Save.

@@ -18,6 +18,7 @@ export default function PackagesClient() {
   const [busy, setBusy] = useState(false); const [uncertain, setUncertain] = useState(false);
   const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [search, setSearch] = useState(""); const [truncated, setTruncated] = useState(false);
   const mutationLock = useRef(false);
+  const editorElement = useRef<HTMLElement>(null); const actionBar = useRef<HTMLDivElement>(null);
   const heading = useRef<HTMLHeadingElement>(null); const errorSummary = useRef<HTMLDivElement>(null); const createButton = useRef<HTMLButtonElement>(null);
   async function load() {
     setLoading(true); setLoadFailed(false); setError("");
@@ -27,6 +28,17 @@ export default function PackagesClient() {
   }
   useEffect(() => { void load(); }, []);
   useEffect(() => { if (error) errorSummary.current?.focus(); }, [error]);
+  useEffect(() => {
+    const editor = editorElement.current; const actions = actionBar.current;
+    if (!editing || !editor || !actions) return;
+    // Wrapped actions/text resizing change the sticky bar's height. This only
+    // changes focus-scroll clearance, never layout size, so it cannot resize-loop.
+    const measure = () => editor.style.setProperty("--package-actions-height", `${Math.ceil(actions.getBoundingClientRect().height)}px`);
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(actions); window.addEventListener("resize", measure);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
+  }, [editing]);
   useEffect(() => {
     if (!editorFocusRequest) return;
     // Commit the editor before focusing, then reveal its first fields below the fixed workspace header.
@@ -103,7 +115,7 @@ export default function PackagesClient() {
         {loading ? <p role="status" className="p-6 text-slate-500">Loading your catalogue…</p> : loadFailed ? <EmptyState title="Catalogue unavailable" description="We could not load your packages. Retry before creating or editing content." action="Retry loading" onAction={() => void load()} /> : !items.length ? <EmptyState title="Your next great trip starts here" description="Create a private draft. Add itinerary, honest pricing and enquiry details before publishing." action="Create your first package" onAction={() => open(null)} /> : !filtered.length ? <EmptyState title="No matching packages" description="Try a different title, destination or status." /> : <div className={`grid gap-3 ${editing ? "" : "md:grid-cols-2 xl:grid-cols-3"}`}>{filtered.map(i => <button key={i.id} aria-current={selected?.id === i.id ? "true" : undefined} disabled={busy || uncertain} onClick={() => open(i)} className={`package-catalogue-card rounded-2xl border bg-white p-5 text-left transition hover:border-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600 ${selected?.id === i.id ? "border-teal-600 ring-1 ring-teal-600" : "border-slate-200"}`}><Status tone={i.status === "PUBLISHED" ? "success" : "neutral"}>{i.status === "PUBLISHED" ? "Published" : i.status === "ARCHIVED" ? "Archived" : "Private draft"}</Status><h2 className="mt-3 break-words font-semibold text-slate-900">{i.title}</h2><p className="mt-1 text-sm text-slate-500">{i.destination || "Destination to add"} · {i.durationDays} days</p>{i.hasUnpublishedChanges && <p className="mt-3 text-xs font-medium text-amber-800">Unpublished changes</p>}<p className="mt-3 text-xs text-slate-500">/{i.slug}</p></button>)}</div>}
         {!loading && !loadFailed && error && !editing && <button className="btn-secondary mt-3" onClick={() => void load()}>Retry loading</button>}
       </section>
-      {editing && <section className="package-editor min-w-0 rounded-2xl border border-slate-200 bg-white" aria-label="Package editor">
+      {editing && <section ref={editorElement} className="package-editor min-w-0 rounded-2xl border border-slate-200 bg-white" aria-label="Package editor">
         <div className="border-b border-slate-200 p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 ref={heading} tabIndex={-1} className="scroll-mt-24 text-xl font-semibold">{selected ? selected.title : "New package"}</h2><p className="mt-1 text-sm text-slate-500">{dirty ? "Unsaved edits" : selected ? `Saved draft · revision ${selected.revision}` : "Start with a title and public URL"} · Enquiry only</p></div><button className="btn-ghost" disabled={busy} onClick={() => { if (!dirty || window.confirm("Discard your unsaved edits?")) { setEditing(false); setDirty(false); window.setTimeout(() => createButton.current?.focus(), 0); } }}>Close editor</button></div>
           <details className="package-publication"><summary>Website: {selected?.status === "PUBLISHED" ? "Published snapshot" : "Not published"}{selected?.status === "PUBLISHED" && (dirty || selected.hasUnpublishedChanges) ? " · Draft changes pending" : ""}</summary><p>{selected?.status === "PUBLISHED" ? "Saving this draft does not change the published snapshot. Republish only when the updated content is ready for customers." : "Only an explicit publication makes this package public. A package enquiry is never an instant booking confirmation."}</p></details>
           <label className="package-section-picker field"><span className="field-label">Edit section</span><select className="control" value={section} onChange={e => setSection(e.target.value as Section)}>{sections.map(s => <option key={s} value={s}>{s === "Preview" ? "Draft text preview" : s}</option>)}</select></label>
@@ -152,7 +164,7 @@ export default function PackagesClient() {
             <div className="rounded-xl border border-slate-200 p-4"><h4 className="font-semibold">Publish checklist</h4>{publicationErrors.length ? <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-amber-900">{publicationErrors.map((e, i) => <li key={i}>{e}</li>)}</ul> : <p className="mt-2 text-sm text-teal-800">Required content is complete. Review accuracy, image rights and public contact details before publishing.</p>}</div>
           </>}
         </fieldset>
-        <div className="flex flex-wrap items-center gap-2 rounded-b-2xl border-t border-slate-200 bg-slate-50 p-5">
+        <div ref={actionBar} className="flex flex-wrap items-center gap-2 rounded-b-2xl border-t border-slate-200 bg-slate-50 p-5">
           {selected?.status !== "ARCHIVED" ? <><button className="btn-primary" disabled={busy || uncertain} onClick={() => void save("SAVE")}>{busy ? "Working…" : "Save draft"}</button><button className="btn-secondary" disabled={busy || uncertain || !selected} onClick={() => void save("PUBLISH")}>{selected?.status === "PUBLISHED" ? "Republish changes" : "Publish to website"}</button>{!selected && <span className="text-xs text-slate-500">Save once before publishing.</span>}{selected?.status === "PUBLISHED" && <button className="btn-ghost" disabled={busy || uncertain || dirty} title={dirty ? "Save or discard edits first" : undefined} onClick={() => void save("UNPUBLISH")}>Unpublish</button>}{selected && <button className="btn-ghost ml-auto" disabled={busy || uncertain || dirty} title={dirty ? "Save or discard edits first" : undefined} onClick={() => void save("ARCHIVE")}>Archive</button>}</> : <><p className="mr-auto text-sm text-slate-500">Archived and hidden from customers. Restore to edit.</p><button className="btn-primary" disabled={busy || uncertain} onClick={() => void save("RESTORE")}>Restore as draft</button></>}
         </div>
       </section>}
