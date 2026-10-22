@@ -31,7 +31,10 @@ jobs:
         run: npm run build
       - name: Observe queue transitions
         if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' }}
-        run: node --import tsx tests/online-bookings-query.mts --browser
+        timeout-minutes: 5
+        run: |
+          node --test tests/fixture-lifecycle.test.mjs
+          node --import tsx tests/online-bookings-query.mts --browser
       - name: Observe three cancellation transitions without retrying a failure
         if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' }}
         env:

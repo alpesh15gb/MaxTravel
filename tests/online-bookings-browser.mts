@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { drainDiagnostics, observeDiagnostic, stopFixtureChild, withFixtureCleanup, within } from "./fixture-lifecycle.mjs";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -20,18 +21,19 @@ export async function verifyOnlineBookingsUi(db: PrismaClient, databaseUrl: stri
   let logs = ""; server.stdout.on("data", value => logs += value); server.stderr.on("data", value => logs += value);
   let browser: import("playwright").Browser | undefined;
   let page: import("playwright").Page | undefined;
-  const navigationEvidence: unknown[] = [], responseReads: Promise<void>[] = [];
-  try {
+  const navigationEvidence: unknown[] = [], responseReads: ReturnType<typeof observeDiagnostic>[] = [];
+  let skippedResponseReads = 0;
+  await withFixtureCleanup(async () => {
     let ready = false;
     for (let i = 0; i < 80; i++) {
-      if (server.exitCode !== null) throw Error(logs);
+      if (server.exitCode !== null || server.signalCode !== null) throw Error(logs);
       try { if ((await fetch(origin + "/api/health", { signal: AbortSignal.timeout(2000) })).ok) { ready = true; break; } } catch {}
       await new Promise(r => setTimeout(r, 250));
     }
     assert(ready, logs);
-    const login = await fetch(origin + "/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json", Origin: origin }, body: JSON.stringify({ email: "a@example.test", password }) });
+    const login = await fetch(origin + "/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json", Origin: origin }, body: JSON.stringify({ email: "a@example.test", password }), signal: AbortSignal.timeout(10_000) });
     assert.equal(login.status, 200); const cookie = login.headers.get("set-cookie")!.split(";")[0];
-    const load = async (query = "") => { const response = await fetch(origin + "/online-bookings" + query, { headers: { Cookie: cookie } }); assert.equal(response.status, 200); return (await response.text()).replaceAll("<!-- -->", ""); };
+    const load = async (query = "") => { const response = await fetch(origin + "/online-bookings" + query, { headers: { Cookie: cookie }, signal: AbortSignal.timeout(10_000) }); assert.equal(response.status, 200); return (await response.text()).replaceAll("<!-- -->", ""); };
     let html = await load(); assert(html.includes("50 bookings")); assert(html.includes("Older bookings")); assert(!html.includes("ONLINE-OTHER</"));
     html = await load("?q=ONLINE-001"); assert(html.includes("ONLINE-001")); assert(html.includes("1 booking")); assert(!html.includes("ONLINE-OTHER</"));
     html = await load("?q=does-not-exist"); assert(html.includes("No matching online bookings"));
@@ -39,15 +41,28 @@ export async function verifyOnlineBookingsUi(db: PrismaClient, databaseUrl: stri
     console.log("PASS online queue HTTP: authenticated server rendering, old-record search, empty and malformed states");
     if (!browserEnabled) return;
     const { chromium } = await import("./browser.mjs");
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ headless: true, timeout: 30_000 });
+    assert(browser, "Fixture browser did not launch");
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    context.setDefaultTimeout(30_000);
+    context.setDefaultNavigationTimeout(30_000);
     await context.addCookies([{ name: "tos_session", value: cookie.slice(cookie.indexOf("=") + 1), url: origin }]);
     await context.addInitScript(() => { for (const event of ["pagehide","pageshow","beforeunload"]) window.addEventListener(event, () => console.info("QUEUE_LIFECYCLE",event,Date.now(),location.pathname,location.search)); });
     page = await context.newPage(); const errors: string[] = [];
     page.on("console", message => { if (message.type() === "error" || message.text().startsWith("QUEUE_LIFECYCLE")) navigationEvidence.push({event:"console",at:Date.now(),type:message.type(),text:message.text().slice(0,1500)}); });
     page.on("framenavigated", frame => { if (frame === page!.mainFrame()) navigationEvidence.push({event:"navigation",at:Date.now(),url:frame.url()}); });
     page.on("requestfailed", request => { const url = new URL(request.url()); navigationEvidence.push({ event:"requestfailed", at:Date.now(), path:url.pathname, direction:url.searchParams.get("direction"), error:request.failure()?.errorText }); });
-    page.on("response", response => { const url = new URL(response.url()); if (url.pathname !== "/online-bookings") return; responseReads.push((async () => { const body = await response.text().catch(() => "unavailable"); navigationEvidence.push({ event:"response", at:Date.now(), status:response.status(), direction:url.searchParams.get("direction"), rsc:url.searchParams.has("_rsc"), type:response.headers()["content-type"], references:[...new Set(body.match(/ONLINE-[A-Z0-9-]+/g) || [])].slice(0,60) }); })()); });
+    page.on("response", response => {
+      const url = new URL(response.url()); if (url.pathname !== "/online-bookings") return;
+      if (responseReads.length >= 100) { skippedResponseReads++; return; } // Bound observers, not requests.
+      const label = `queue-response-${responseReads.length}`;
+      const evidence = { event: "response", label, at: Date.now(), status: response.status(), direction: url.searchParams.get("direction"), rsc: url.searchParams.has("_rsc"), type: response.headers()["content-type"], references: [] as string[] };
+      navigationEvidence.push(evidence); // Headers survive even if the streaming body never completes.
+      responseReads.push(observeDiagnostic(label, async () => {
+        const body = await response.text();
+        evidence.references = [...new Set(body.match(/ONLINE-[A-Z0-9-]+/g) || [])].slice(0, 60);
+      }));
+    });
     page.on("pageerror", error => errors.push(error.message));
     // Never contact a provider: expanding details only gets this synthetic command list.
     const submittedIds: string[] = [];
@@ -168,12 +183,40 @@ export async function verifyOnlineBookingsUi(db: PrismaClient, databaseUrl: stri
     await page.goto(origin + "/online-bookings?cursor=%25"); await page.getByRole("alert").filter({ hasText: "These filters" }).waitFor();
     assert.deepEqual(errors, []);
     console.log("PASS online queue browser: >100 rows, older/newer/first, filter retention/reset, 390/320px overflow, keyboard submit, honest empty/invalid state");
-  } finally {
-    await Promise.allSettled(responseReads);
-    if (page) { await page.screenshot({path:resolve(output,"terminal-state.png"),fullPage:false}).catch(() => {}); navigationEvidence.push({event:"terminal",url:page.url(),status:await page.locator("main").innerText().catch(() => "unavailable")}); }
-    await writeFile(resolve(output,"navigation-evidence.json"),JSON.stringify(navigationEvidence,null,2));
-    await writeFile(resolve(output, "server.log"), logs);
-    await browser?.close();
-    if (server.exitCode === null) { const exited = new Promise<void>(r => server.once("exit", () => r())); server.kill("SIGTERM"); await exited; }
-  }
+  }, async (primaryFailure: { error: unknown } | undefined) => {
+    const cleanupErrors: Error[] = [];
+    const attempt = async (label: string, action: () => Promise<unknown>, timeout = 5000) => {
+      try { await within(action(), timeout, label); }
+      catch (error) { cleanupErrors.push(error instanceof Error ? error : new Error(String(error))); navigationEvidence.push({ event: "cleanup-error", label, error: String(error) }); }
+    };
+    const recordReads = (phase: string) => navigationEvidence.push({ event: "diagnostic-reads", phase, skippedResponseReads, reads: responseReads.map(({ label, state, error }) => ({ label, state, error })) });
+    const persist = async () => {
+      await writeFile(resolve(output, "navigation-evidence.json"), JSON.stringify(navigationEvidence, null, 2));
+      await writeFile(resolve(output, "server.log"), logs);
+    };
+    if (primaryFailure) {
+      console.error("Original queue test failure (before diagnostic teardown):", primaryFailure.error);
+      navigationEvidence.push({ event: "primary-failure", error: String(primaryFailure.error), stack: primaryFailure.error instanceof Error ? primaryFailure.error.stack : undefined });
+    }
+    // Save pending states and the original failure before any browser-dependent cleanup.
+    recordReads("before-cleanup");
+    await attempt("persist initial evidence", persist);
+    page?.removeAllListeners("response");
+    if (page) {
+      await attempt("terminal screenshot", () => page!.screenshot({ path: resolve(output, "terminal-state.png"), fullPage: false, timeout: 3000 }), 4000);
+      await attempt("terminal main text", async () => { navigationEvidence.push({ event: "terminal", url: page!.url(), status: await page!.locator("main").innerText({ timeout: 2000 }) }); }, 3000);
+    }
+    await attempt("persist terminal evidence", persist);
+    // Closing the browser cancels unfinished streams before the bounded observational drain.
+    if (browser) await attempt("close fixture browser", () => browser!.close());
+    await attempt("drain diagnostic responses", async () => {
+      const report = await drainDiagnostics(responseReads, 2000);
+      if (report.some((read: { state: string }) => read.state === "timed-out")) throw new Error("Diagnostic response reads timed out after browser close; see diagnostic-reads evidence.");
+    }, 3000);
+    recordReads("after-browser-close");
+    await attempt("stop owned fixture server", () => stopFixtureChild(server), 6000);
+    navigationEvidence.push({ event: "cleanup-summary", errors: cleanupErrors.map(error => error.message) });
+    await attempt("persist final evidence", persist);
+    if (cleanupErrors.length) throw new AggregateError(cleanupErrors, "Queue fixture teardown failed; original test failure, if any, is preserved.");
+  });
 }

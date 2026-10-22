@@ -1,0 +1,52 @@
+name: WebKit workspace smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: ["**"]
+    paths:
+      - ".github/workflows/webkit-workspace-smoke.yml"
+      - "tests/webkit-workspace-smoke.mjs"
+      - "tests/visual-review-server.mjs"
+      - "tests/fixture-lifecycle.mjs"
+      - "src/components/Shell.tsx"
+      - "src/app/(app)/travel-packages/PackagesClient.tsx"
+      - "src/app/globals.css"
+      - "package.json"
+      - "package-lock.json"
+permissions:
+  contents: read
+concurrency:
+  group: webkit-workspace-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  smoke:
+    name: Linux WebKit desktop and iPhone emulation
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: "file:./ci.db"
+      JWT_SECRET: "ci-only-webkit-placeholder-not-used-anywhere-real-0123456789abcdef"
+      WA_PROVIDER: manual
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Install pinned Linux WebKit engine
+        run: npx playwright install --with-deps webkit
+      - run: npm run build
+      - name: Isolated WebKit workspace smoke (not physical Safari)
+        timeout-minutes: 6
+        run: node tests/webkit-workspace-smoke.mjs
+      - name: Preserve engine, viewport and failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webkit-workspace-evidence
+          path: test-artifacts/webkit-workspace/
+          if-no-files-found: warn
+          retention-days: 14

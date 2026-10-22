@@ -139,7 +139,10 @@ jobs:
         run: npm run test:journeys
       - name: Verify scoped online booking queue and responsive action recovery
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
-        run: node --import tsx tests/online-bookings-query.mts --browser
+        timeout-minutes: 5
+        run: |
+          node --test tests/fixture-lifecycle.test.mjs
+          node --import tsx tests/online-bookings-query.mts --browser
       - name: Verify task-first mobile workspace journeys
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         run: node tests/mobile-workspace-browser.mjs
