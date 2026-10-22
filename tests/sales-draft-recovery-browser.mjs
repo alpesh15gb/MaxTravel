@@ -117,11 +117,23 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
   const s=await start('late-publish');await page.getByRole('button',{name:'Save draft version',exact:true}).click();await page.getByRole('region',{name:'Selected enquiry',exact:true}).getByText('Staff-only draft. Not shared with the customer or published in the package catalogue.',{exact:true}).waitFor();
   let release,committed;const held=new Promise(resolve=>release=resolve),commit=new Promise(resolve=>committed=resolve);
   await page.route('**/api/sales',async route=>{if(route.request().method()==='POST'&&route.request().postDataJSON()?.action==='publish'){const response=await route.fetch({timeout:15000});assert.equal(response.status(),200);committed();await within(held,30000,'held publish response');await route.fulfill({response});}else await route.fallback();});
+  let caseFailure;
   try{
    await confirmClick(page.getByRole('button',{name:'Publish private proposal',exact:true}),'Publish this private proposal? Any earlier published proposal link will stop working.');await within(commit,15000,'server publish commit');await back();await forward(s.id,false);await page.getByRole('button',{name:`Open enquiry: ${s.title}`,exact:true}).waitFor();
-   assert.equal(await page.getByRole('region',{name:'Private proposal link',exact:true}).count(),0);const refreshed=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/sales'&&response.request().method()==='GET',{timeout:15000});release();assert.equal((await refreshed).status(),200);await page.getByText('Saved. The latest enquiry record is shown below.',{exact:true}).waitFor();await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(node=>node.textContent?.trim()==='New enquiry'&&!node.disabled),undefined,{timeout:15000});
+   assert.equal(await page.getByRole('region',{name:'Private proposal link',exact:true}).count(),0);
+   const delivered=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/sales'&&response.request().method()==='POST'&&response.request().postDataJSON()?.action==='publish',{timeout:15000});
+   const refreshed=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/sales'&&response.request().method()==='GET',{timeout:15000});release();
+   const [publishResponse,currentRead]=await Promise.all([delivered,refreshed]);assert.equal(publishResponse.status(),200);assert.equal(await within(publishResponse.finished(),15000,'delivered publish response'),null);
+   assert.equal(currentRead.status(),200);assert.equal(await within(currentRead.finished(),15000,'resumed record read'),null);
+   // A departed activation's toast is not a contract. Verify the current, freshly read record instead.
+   await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(node=>node.textContent?.trim()==='New enquiry'&&!node.disabled),undefined,{timeout:15000});
+   await page.getByRole('button',{name:`Open enquiry: ${s.title}`,exact:true}).click();
+   const selected=page.getByRole('region',{name:'Selected enquiry',exact:true});
+   await selected.getByRole('heading',{name:'Quote v1 · Published',exact:true}).waitFor();
+   await selected.getByText('Private customer proposal. Accessible through its private link, not the public package catalogue.',{exact:true}).waitFor();
    assert.equal(await page.getByRole('region',{name:'Private proposal link',exact:true}).count(),0,'Late private link is not revealed in another activation');assert.equal(await page.getByLabel('Private proposal link',{exact:true}).count(),0);assert.equal(await db.salesQuote.count({where:{leadId:s.id,state:'PUBLISHED'}}),1);assert.equal(s.writes.filter(action=>action==='publish').length,1,'Navigation never republishes');report.scenarios.push({name:'late-publish-link-withheld',passed:true});await screenshot('late-publish-withheld');
-  }finally{release();await page.unroute('**/api/sales');await within(s.context.close(),3000,'publish context close');}
+  }catch(error){caseFailure=error;report.failure=String(error);persist();await within(page.screenshot({path:path.join(out,'late-publish-failure.png'),timeout:3000,mask:[page.locator('#sales-private-link')]}),3000,'late publish failure screenshot').catch(()=>{});throw error;
+  }finally{release();try{await within(page.unroute('**/api/sales'),3000,'publish route cleanup');await within(s.context.close(),3000,'publish context close');}catch(error){if(caseFailure){report.cleanupFailure=String(error);persist();}else throw error;}}
  }
  // Full document replacement intentionally ends memory-only recovery.
  {
