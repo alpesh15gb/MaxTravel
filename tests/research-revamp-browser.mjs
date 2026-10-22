@@ -56,6 +56,36 @@ async function handoff(heading, field, name) {
   report.scenarios.push({name,...geometry});
   if(!before) {assert(geometry.focused,`${name}: application focuses editor heading`);for(const b of [geometry.heading,geometry.field])assert(b&&b.top>=64&&b.bottom<=geometry.height,`${name}: heading/firstfield visible without test scrolling`);}
 }
+async function keyboardSlugAboveSaveBar(name) {
+  const field=page.getByLabel('Public URL slug',{exact:false});
+  // Start from the app-focused editor heading. No locator focus/click/scroll may
+  // mask a keyboard handoff defect behind the sticky save bar.
+  let reached=false;
+  for(let i=0;i<20;i++){
+    if(await field.evaluate(node=>document.activeElement===node)){reached=true;break;}
+    await page.keyboard.press('Tab');
+  }
+  assert(reached,`${name}: keyboard reaches the slug without scripted focus`);
+  const handle=await field.elementHandle();assert(handle,'Keyboard-focused slug exists');let settlingError;
+  try{
+    await page.waitForFunction(node=>{
+      const footer=node.closest('section[aria-label="Package editor"]')?.lastElementChild;
+      if(!footer)return false;
+      const r=node.getBoundingClientRect(),bar=footer.getBoundingClientRect();
+      const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+      return document.activeElement===node&&r.left>=0&&r.right<=innerWidth&&r.top>=64&&r.bottom<=innerHeight&&r.bottom<=bar.top&&bar.top<innerHeight&&hit===node;
+    },handle,{timeout:5000});
+  }catch(error){settlingError=error;}finally{await handle.dispose();}
+  const geometry=await field.evaluate(node=>{
+    const r=node.getBoundingClientRect(),bar=node.closest('section[aria-label="Package editor"]').lastElementChild.getBoundingClientRect();
+    const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+    return {focused:document.activeElement===node,field:{left:r.left,right:r.right,top:r.top,bottom:r.bottom},footer:{top:bar.top,bottom:bar.bottom},pointerReachable:hit===node,width:innerWidth,height:innerHeight};
+  });
+  report.scenarios.push({name,...geometry});persist();
+  assert(geometry.focused&&geometry.field.left>=0&&geometry.field.right<=geometry.width&&geometry.field.top>=64&&geometry.field.bottom<=geometry.height&&geometry.field.bottom<=geometry.footer.top&&geometry.footer.top<geometry.height&&geometry.pointerReachable,`${name}: complete focused slug is above sticky save bar and pointer-reachable`);
+  if(settlingError)throw settlingError;
+  await capture(name);
+}
 async function login(context,email='review@visual.test') {
   page=await context.newPage(); page.on('pageerror',error=>report.errors.push(error.message));
   await page.goto(base+'/login'); await page.getByLabel('Work email',{exact:true}).fill(email);
@@ -141,6 +171,7 @@ await withFixtureCleanup(async()=>{
     if(!before)await page.getByText('Website: Published snapshot',{exact:true}).waitFor();await capture(`${width}-package-editor`);
     await page.getByRole('button',{name:'Close editor',exact:true}).click();await page.getByRole('button',{name:'+ Create package',exact:true}).click();
     await handoff(page.getByRole('heading',{name:'New package',exact:true}),page.getByLabel('Package title',{exact:true}),`${width}-new-package`);await capture(`${width}-new-package`);
+    if(!before&&width<768)await keyboardSlugAboveSaveBar(`${width}-package-keyboard-slug`);
     await within(context.close(),3000,'viewport context close');page=undefined;
   }
   // Same saved-draft isolation contract is enforced on baseline and candidate; no publishing from Save.
