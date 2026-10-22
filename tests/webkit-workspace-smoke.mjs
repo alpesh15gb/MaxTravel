@@ -72,7 +72,10 @@ await withFixtureCleanup(async () => {
     await page.getByLabel("Work email", { exact: true }).fill("review@visual.test");
     await page.getByLabel("Password", { exact: true }).fill("Review-Visual-2026!");
     await page.getByRole("button", { name: "Sign in to workspace", exact: true }).click();
-    await page.waitForURL("**/dashboard"); await page.locator("main h1").waitFor(); await screenshot(`${name}-dashboard`);
+    await page.waitForURL("**/dashboard"); await page.locator("main h1").waitFor();
+    // Route headings can precede client data. Require the actual seeded record, not a skeleton.
+    await page.locator(`main .attention-row a[href="/ticketing/${fixture.bookingId}"]:visible`).waitFor();
+    await screenshot(`${name}-dashboard`);
     const mobile = name === "iphone-emulation";
     const navigation = mobile ? await openMobileDrawer() : page.locator("#workspace-navigation");
     const customer = navigation.getByRole("link", { name: "Customers", exact: true });
@@ -81,6 +84,9 @@ await withFixtureCleanup(async () => {
     if (mobile) await screenshot(`${name}-navigation`);
     await customer.click(); await page.waitForURL("**/customers");
     if (mobile) await page.locator("#workspace-navigation").waitFor({ state: "hidden" });
+    const seededCustomer = page.locator(`main a[href="/customers/${fixture.customerId}"]:visible`);
+    await seededCustomer.waitFor();
+    assert((await seededCustomer.innerText()).includes("Meera Sharma"), "Seeded customer content must render before capture");
     await screenshot(`${name}-customers`);
     const menu = mobile ? await openMobileDrawer() : navigation;
     const manage = menu.getByRole("button", { name: "Manage", exact: true });
@@ -98,7 +104,7 @@ await withFixtureCleanup(async () => {
       return { heading: box(heading), firstField: box(title), width: innerWidth, height: innerHeight, headingFocused: document.activeElement === heading, userAgent: navigator.userAgent };
     });
     for (const target of [geometry.heading, geometry.firstField]) assert(target && target.top >= 64 && target.bottom <= geometry.height, "Editor heading and first field must be visible without test scrolling");
-    assert(geometry.headingFocused); report.scenarios.push({ name, geometry, navigation: reachable });
+    assert(geometry.headingFocused); report.scenarios.push({ name, geometry, navigation: reachable, settledFixtureContent: { dashboardBooking: true, customer: true } });
     await screenshot(`${name}-package-editor`);
     await page.getByLabel("Package title", { exact: true }).fill("Synthetic WebKit draft; not published");
     page.once("dialog", dialog => dialog.dismiss()); await page.getByRole("button", { name: "Close editor", exact: true }).click();
