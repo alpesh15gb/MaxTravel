@@ -99,16 +99,16 @@ try {
       const events: unknown[] = [];
       let refreshRequest: { url: string; headers: Record<string, string> } | null = null;
       const at = () => Date.now() - startedAt;
-      await page.addInitScript(() => {
-        const target = window as typeof window & { __journeyLifecycle?: unknown[] };
+      await page.addInitScript({ content: `(() => {
+        const target = window;
         target.__journeyLifecycle = [{ event: "init", at: Date.now() }];
-        const report = (detail: Record<string, unknown>) => console.debug("JOURNEY_TRANSPORT", JSON.stringify({ at: Date.now(), ...detail }));
+        const report = (detail) => console.debug("JOURNEY_TRANSPORT", JSON.stringify({ at: Date.now(), ...detail }));
         const abort = AbortController.prototype.abort;
-        AbortController.prototype.abort = function(reason?: unknown) { report({ event: "abort-controller", stack: new Error().stack?.slice(0, 1600) }); return abort.call(this, reason); };
+        AbortController.prototype.abort = function(reason) { report({ event: "abort-controller", stack: new Error().stack?.slice(0, 1600) }); return abort.call(this, reason); };
         const cancel = ReadableStreamDefaultReader.prototype.cancel;
-        ReadableStreamDefaultReader.prototype.cancel = function(reason?: unknown) { report({ event: "reader-cancel", stack: new Error().stack?.slice(0, 1600) }); return cancel.call(this, reason); };
+        ReadableStreamDefaultReader.prototype.cancel = function(reason) { report({ event: "reader-cancel", stack: new Error().stack?.slice(0, 1600) }); return cancel.call(this, reason); };
         const originalFetch = window.fetch.bind(window);
-        window.fetch = function(input: RequestInfo | URL, init?: RequestInit) {
+        window.fetch = function(input, init) {
           const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
           if (headers.get("rsc") !== "1") return originalFetch(input, init);
           const url = input instanceof Request ? input.url : String(input);
@@ -123,7 +123,8 @@ try {
         };
 
         for (const event of ["pagehide", "pageshow", "beforeunload", "visibilitychange"]) window.addEventListener(event, e => { const detail = { event, at: Date.now(), persisted: "persisted" in e ? e.persisted : undefined, visibility: document.visibilityState }; target.__journeyLifecycle?.push(detail); console.debug("JOURNEY_LIFECYCLE", JSON.stringify(detail)); });
-      });
+        window.__journeyProbeReady = true;
+      })();` });
       page.on("console", message => events.push({ elapsedMs: at(), event: "console", type: message.type(), text: message.text().slice(0, 2000) }));
       page.on("framenavigated", frame => { if (frame === page.mainFrame()) events.push({ elapsedMs: at(), event: "navigation", url: frame.url() }); });
       page.on("request", request => {
@@ -147,6 +148,7 @@ try {
       page.on("requestfailed",request=>networkErrors.push({elapsedMs:at(),method:request.method(),url:request.url(),rsc:request.headers().rsc,prefetch:request.headers()["next-router-prefetch"],error:request.failure()?.errorText}));
       page.on("response",response=>{if(response.status()>=400)networkErrors.push({status:response.status(),path:new URL(response.url()).pathname});});
       await page.goto(`${origin}/ticketing/${replacementId}`);
+      assert.equal(await page.evaluate("window.__journeyProbeReady === true"), true, `Diagnostic init must execute before the journey: ${clientErrors.join("; ")}`);
       await page.getByLabel("Booking status", { exact: true }).selectOption("CANCELLED");
       const dialog = page.getByRole("dialog");
       await dialog.getByLabel("Supplier cancellation charge (INR) *", { exact: true }).fill("25");
@@ -180,7 +182,62 @@ try {
           return { status: fresh.status, bytes: Buffer.byteLength(body), sha256: createHash("sha256").update(body).digest("hex"), hasSettlement: body.includes("Cancellation settlement"), hasCancelled: body.includes('"status":"CANCELLED"'), hasReissueRequested: body.includes('"status":"REISSUE_REQUESTED"'), hasRedirect: body.includes("NEXT_REDIRECT"), hasNotFound: body.includes("NEXT_HTTP_ERROR_FALLBACK"), headers: Object.fromEntries(["content-type", "content-length", "content-encoding", "transfer-encoding", "vary", "x-nextjs-postponed", "x-nextjs-cache"].map(name => [name, fresh.headers.get(name)])) };
         }).catch(error => ({ error: String(error) })) : { error: "No current-route refresh request observed" };
         const resourceTiming = await page.evaluate(() => performance.getEntriesByType("resource").filter(entry => entry.name.includes("_rsc=")).map(entry => { const r = entry as PerformanceResourceTiming; return { url: r.name, startTime: r.startTime, duration: r.duration, transferSize: r.transferSize, encodedBodySize: r.encodedBodySize, decodedBodySize: r.decodedBodySize }; }));
-        writeFileSync("test-artifacts/journeys/ticketing-cancellation-failure.json",JSON.stringify({postStatus:response.status(),stored,serverView,serverRsc,resourceTiming,renderedStatus:await page.getByLabel("Booking status",{exact:true}).inputValue().catch(()=>"unavailable"),headingCount:await page.getByRole("heading",{name:"Cancellation settlement",exact:true}).count(),clientErrors,networkErrors,events,lifecycle:await page.evaluate(() => (window as typeof window & { __journeyLifecycle?: unknown[] }).__journeyLifecycle),server:{port,pid:server.pid,childExit,childError,logs}},null,2));
+        const reactStateProbe = `(() => {
+          const bookingId = ${JSON.stringify(replacementId)};
+          function data(object, key) { return object && typeof object === "object" ? Object.getOwnPropertyDescriptor(object, key)?.value : undefined; }
+          function modelStatuses(value) {
+            const seen = new Set(), found = new Set(), pending = [[value, 0]];
+            while (pending.length && seen.size < 10000) {
+              const [item, depth] = pending.pop();
+              if (!item || typeof item !== "object" || seen.has(item) || depth > 35) continue;
+              seen.add(item);
+              const descriptors = Object.getOwnPropertyDescriptors(item);
+              if (descriptors.id?.value === bookingId && typeof descriptors.status?.value === "string") found.add(descriptors.status.value);
+              if (item instanceof Map) for (const child of Map.prototype.values.call(item)) pending.push([child, depth + 1]);
+              for (const descriptor of Object.values(descriptors)) if ("value" in descriptor && descriptor.value && typeof descriptor.value === "object") pending.push([descriptor.value, depth + 1]);
+            }
+            return { statuses: [...found], visited: seen.size, truncated: pending.length > 0 };
+          }
+          const containers = [document, document.documentElement, document.body];
+          const roots = [];
+          for (const container of containers) {
+            const key = Object.getOwnPropertyNames(container).find(name => name.startsWith("__reactContainer$"));
+            const root = key && data(data(container, key), "stateNode");
+            if (data(root, "current") && !roots.includes(root)) roots.push(root);
+          }
+          return roots.map(root => {
+            const queues = [], records = [], routerHooks = [], seen = new Set(), pending = [data(root, "current")], queueSeen = new Set();
+            while (pending.length && seen.size < 10000) {
+              const fiber = pending.pop(); if (!fiber || seen.has(fiber)) continue; seen.add(fiber);
+              if (data(fiber, "child")) pending.push(data(fiber, "child")); if (data(fiber, "sibling")) pending.push(data(fiber, "sibling"));
+              const props = data(fiber, "memoizedProps");
+              if (data(data(props, "b"), "id") === bookingId) records.push({ current: data(data(props, "b"), "status"), pending: data(data(data(fiber, "pendingProps"), "b"), "status"), alternate: data(data(data(data(fiber, "alternate"), "memoizedProps"), "b"), "status"), lanes: data(fiber, "lanes"), childLanes: data(fiber, "childLanes") });
+              const queue = data(props, "actionQueue");
+              if (queue) {
+                const hooks = []; let hook = data(fiber, "memoizedState");
+                for (let i = 0; hook && i < 12; i++, hook = data(hook, "next")) {
+                  const state = data(hook, "memoizedState"), status = data(state, "status");
+                  if (["pending", "fulfilled", "rejected"].includes(status)) hooks.push({ index: i, status, models: modelStatuses(data(data(state, "value"), "cache")) });
+                }
+                if (hooks.length) routerHooks.push(hooks);
+              }
+              if (queue && !queueSeen.has(queue)) {
+                queueSeen.add(queue);
+                queues.push({ pending: data(data(data(queue, "pending"), "payload"), "type") ?? null, cacheModels: modelStatuses(data(data(queue, "state"), "cache")) });
+              }
+            }
+            return { pendingLanes: data(root, "pendingLanes"), suspendedLanes: data(root, "suspendedLanes"), pingedLanes: data(root, "pingedLanes"), warmLanes: data(root, "warmLanes"), finishedLanes: data(root, "finishedLanes"), queues, routerHooks, records, fibersVisited: seen.size };
+          });
+        })()`;
+        const reactState = await page.evaluate(reactStateProbe).catch(error => ({ error: String(error) }));
+        writeFileSync("test-artifacts/journeys/ticketing-cancellation-failure.json",JSON.stringify({postStatus:response.status(),stored,serverView,serverRsc,resourceTiming,reactState,renderedStatus:await page.getByLabel("Booking status",{exact:true}).inputValue().catch(()=>"unavailable"),headingCount:await page.getByRole("heading",{name:"Cancellation settlement",exact:true}).count(),clientErrors,networkErrors,events,lifecycle:await page.evaluate(() => (window as typeof window & { __journeyLifecycle?: unknown[] }).__journeyLifecycle),server:{port,pid:server.pid,childExit,childError,logs}},null,2));
+        // Failure-only controlled observation: a normal non-mutating menu toggle must never turn this failed assertion green.
+        const urgentObservation = await (async () => {
+          await page.getByRole("button", { name: "Account menu", exact: true }).click({ timeout: 1000 });
+          const settlementVisible = await page.getByRole("heading", { name: "Cancellation settlement", exact: true }).waitFor({ state: "visible", timeout: 1000 }).then(() => true).catch(() => false);
+          return { settlementVisible, renderedStatus: await page.getByLabel("Booking status", { exact: true }).inputValue().catch(() => "unavailable"), reactState: await page.evaluate(reactStateProbe).catch(error => ({ error: String(error) })) };
+        })().catch(error => ({ error: String(error) }));
+        writeFileSync("test-artifacts/journeys/ticketing-post-failure-menu-observation.json", JSON.stringify(urgentObservation, null, 2));
         throw error;
       }
       console.log("Ticketing browser: cancellation preview, dismiss/no mutation, reopen and explicit zero-charge save passed.");

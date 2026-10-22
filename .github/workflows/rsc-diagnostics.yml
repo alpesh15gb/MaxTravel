@@ -1,0 +1,55 @@
+# Fast, isolated diagnostics only. The complete CI workflow remains the release gate.
+name: Transition stability diagnostics
+on:
+  push:
+    branches: [feat/crm-package-media, feat/crm-framework-security]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: transition-diagnostics-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  DATABASE_URL: "file:./ci.db"
+  JWT_SECRET: "ci-only-placeholder-secret-not-used-anywhere-real-0123456789abcdef"
+jobs:
+  transitions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx playwright install --with-deps chromium
+      - name: Build exact candidate
+        id: candidate_build
+        run: npm run build
+      - name: Observe queue transitions
+        if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' }}
+        run: node --import tsx tests/online-bookings-query.mts --browser
+      - name: Observe three cancellation transitions without retrying a failure
+        if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' }}
+        env:
+          DATABASE_URL: "file:./ticketing-journey-verification.db"
+          TICKETING_BROWSER: "true"
+        run: |
+          set -e
+          npx prisma migrate deploy
+          for iteration in 1 2 3; do
+            echo "Cancellation diagnostic observation ${iteration}/3"
+            node --import tsx tests/ticketing-journey.mts
+          done
+      - name: Retain original failures and observational evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transition-diagnostics
+          path: |
+            test-artifacts/journeys/
+            test-artifacts/online-bookings/
+          if-no-files-found: warn
