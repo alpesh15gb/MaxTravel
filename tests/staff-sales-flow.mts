@@ -14,6 +14,7 @@ const user=await prisma.user.create({data:{employeeCode:`SEC-${suffix}`,email:`s
 const customer=await prisma.customer.create({data:{code:`SEC-${suffix}`,name:"Synthetic customer",phone:"",city:"Test",branchId:branch.id,assignedToId:user.id}});
 const server=spawn(process.execPath,["node_modules/next/dist/bin/next","start","-p","3217","-H","127.0.0.1"],{env:{...process.env,APP_ORIGIN:origin,JWT_SECRET:randomBytes(48).toString("hex"),CRM_DATA_ENCRYPTION_KEY:process.env.CRM_DATA_ENCRYPTION_KEY,WA_PROVIDER:"manual"},stdio:["ignore","pipe","pipe"]});let logs="";server.stdout.on("data",v=>logs+=v);server.stderr.on("data",v=>logs+=v);
 async function post(path:string,body:unknown,cookie=""){const response=await fetch(origin+path,{method:"POST",headers:{"Content-Type":"application/json",Origin:origin,...(cookie?{Cookie:cookie}:{})},body:JSON.stringify(body)});const data=await response.json();return {response,data,cookie:response.headers.get("set-cookie")?.split(";")[0]??""};}
+async function currentSales(leadId:string,cookie:string){const response=await fetch(origin+`/api/sales?leadId=${encodeURIComponent(leadId)}`,{headers:{Cookie:cookie},signal:AbortSignal.timeout(15000)});assert.equal(response.status,200);assert.match(response.headers.get("cache-control")??"",/no-store/);return response.json();}
 try{
  let ready=false;for(let attempt=0;attempt<80;attempt++){try{const r=await fetch(origin+"/api/health");if(r.ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,500));}assert(ready,logs);
  const signed=await post("/api/auth/login",{email:user.email,password});assert.equal(signed.response.status,200);assert(signed.cookie);const cookie=signed.cookie;
@@ -27,7 +28,13 @@ try{
  const recovered=await post("/api/auth/login",{email:user.email,password,code:confirm.data.recovery[0]});assert.equal(recovered.response.status,200);
  assert.equal((await post("/api/auth/login",{email:user.email,password,code:confirm.data.recovery[0]})).response.status,401,"Recovery code must be single-use");
  const lead=await post("/api/sales",{action:"create",data:{customerId:customer.id,title:"Test hotel stay",source:"Fixture",product:"HOTEL",budgetMinor:50000,destination:"Test city"}},cookie);assert.equal(lead.response.status,200,JSON.stringify(lead.data));
- const quote=await post("/api/sales",{action:"quote",leadId:lead.data.id,items:[{description:"Two nights with breakfast",quantity:2,priceMinor:10000,costMinor:7000}],terms:"Synthetic terms: no reservation or payment made.",expiresAt:new Date(Date.now()+3600000).toISOString()},cookie);assert.equal(quote.response.status,200,JSON.stringify(quote.data));
+ const initialSales=await currentSales(lead.data.id,cookie);
+ assert.match(initialSales.recoveryContext,/^[a-f0-9]{64}$/);assert.match(initialSales.lead.baseRevision,/^[a-f0-9]{64}$/);
+ assert.notEqual(initialSales.recoveryContext,(await currentSales(lead.data.id,recovered.cookie)).recoveryContext,"A different login session must not recover another session's local draft");
+ const quoteInput={action:"quote",leadId:lead.data.id,items:[{description:"Fixture revision test",quantity:1,priceMinor:10000,costMinor:7000}],terms:"No reservation made.",expiresAt:new Date(Date.now()+3600000).toISOString()};
+ const missingBase=await post("/api/sales",quoteInput,cookie);assert.equal(missingBase.response.status,409);assert.equal(missingBase.data.code,"QUOTE_REVISION_CONFLICT");assert.equal(await prisma.salesQuote.count({where:{leadId:lead.data.id}}),0);
+ const quote=await post("/api/sales",{action:"quote",leadId:lead.data.id,baseRevision:(await currentSales(lead.data.id,cookie)).lead.baseRevision,items:[{description:"Two nights with breakfast",quantity:2,priceMinor:10000,costMinor:7000}],terms:"Synthetic terms: no reservation or payment made.",expiresAt:new Date(Date.now()+3600000).toISOString()},cookie);assert.equal(quote.response.status,200,JSON.stringify(quote.data));
+ const staleBase=await post("/api/sales",{...quoteInput,baseRevision:initialSales.lead.baseRevision},cookie);assert.equal(staleBase.response.status,409);assert.equal(staleBase.data.code,"QUOTE_REVISION_CONFLICT");assert.equal(await prisma.salesQuote.count({where:{leadId:lead.data.id}}),1,"Stale retry cannot create a duplicate quotation");
  const publish=await post("/api/sales",{action:"publish",leadId:lead.data.id,quoteId:quote.data.quoteId},cookie);assert.equal(publish.response.status,200);const token=publish.data.sharePath.split("#")[1];
  const view=await post("/api/proposals",{action:"view",token});assert.equal(view.response.status,200);assert.equal(view.data.totalMinor,20000);assert(!JSON.stringify(view.data).includes("costMinor"));
  assert.equal((await post("/api/proposals",{action:"accept",token,name:"Customer"})).response.status,400);
@@ -45,7 +52,7 @@ try{
  assert.equal(await prisma.auditLog.count({where:{entity:"Task",entityId:task.data.task.id,action:"STATUS"}}),1,"Each actual task transition is audited exactly once");
  const reopened=await post("/api/tasks/status",{taskId:task.data.task.id,status:"OPEN"},cookie);assert.equal(reopened.data.task.completedAt,null);
  const lostLead=await post("/api/sales",{action:"create",data:{customerId:customer.id,title:"Closed enquiry regression",source:"Fixture",product:"HOTEL",budgetMinor:10000}},cookie);
- const lostQuote=await post("/api/sales",{action:"quote",leadId:lostLead.data.id,items:[{description:"Fixture stay",quantity:1,priceMinor:10000,costMinor:7000}],terms:"No real reservation.",expiresAt:new Date(Date.now()+3600000).toISOString()},cookie);
+ const lostQuote=await post("/api/sales",{action:"quote",leadId:lostLead.data.id,baseRevision:(await currentSales(lostLead.data.id,cookie)).lead.baseRevision,items:[{description:"Fixture stay",quantity:1,priceMinor:10000,costMinor:7000}],terms:"No real reservation.",expiresAt:new Date(Date.now()+3600000).toISOString()},cookie);
  assert.equal((await post("/api/sales",{action:"stage",leadId:lostLead.data.id,stage:"LOST",lostReason:"Customer cancelled"},cookie)).response.status,200);
  assert.equal((await post("/api/sales",{action:"publish",leadId:lostLead.data.id,quoteId:lostQuote.data.quoteId},cookie)).response.status,409,"Publishing must not silently reopen lost work");
  assert.equal((await post("/api/sales",{action:"stage",leadId:lostLead.data.id,stage:"QUALIFIED"},cookie)).response.status,200);
@@ -85,17 +92,46 @@ try{
  const mergeTarget=await prisma.customer.create({data:{code:`KEEP-${suffix}`,name:"Retained fixture",phone:"+919876500000",city:"Test",branchId:branch.id,assignedToId:user.id}});
  const merged=await post("/api/customers/merge",{sourceId:mergeSource.id,targetId:mergeTarget.id,confirm:`${mergeSource.code} -> ${mergeTarget.code}`},cookie);assert.equal(merged.response.status,200,JSON.stringify(merged.data));assert.equal((await prisma.customer.findUniqueOrThrow({where:{id:mergeSource.id}})).mergedIntoId,mergeTarget.id);assert.equal(await prisma.traveller.count({where:{customerId:mergeTarget.id}}),1);
  const blockedMerge=await post("/api/customers/merge",{sourceId:customer.id,targetId:mergeTarget.id,confirm:`${customer.code} -> ${mergeTarget.code}`},cookie);assert.equal(blockedMerge.response.status,409,"Never merge a source with financial history");
+ // The revision includes older proposals, not only the most recent draft.
+ const historyLead=await post("/api/sales",{action:"create",data:{customerId:customer.id,title:"Historical proposal revision",source:"Fixture",product:"HOTEL",budgetMinor:10000}},cookie);
+ const historyInput={...quoteInput,leadId:historyLead.data.id};
+ const historyFirst=await post("/api/sales",{...historyInput,baseRevision:(await currentSales(historyLead.data.id,cookie)).lead.baseRevision},cookie);assert.equal(historyFirst.response.status,200);
+ const historyPublished=await post("/api/sales",{action:"publish",leadId:historyLead.data.id,quoteId:historyFirst.data.quoteId},cookie);assert.equal(historyPublished.response.status,200);
+ const historySecond=await post("/api/sales",{...historyInput,baseRevision:(await currentSales(historyLead.data.id,cookie)).lead.baseRevision},cookie);assert.equal(historySecond.response.status,200);
+ const beforeOldAcceptance=await currentSales(historyLead.data.id,cookie);
+ const olderAccepted=await post("/api/proposals",{action:"accept",token:historyPublished.data.sharePath.split("#")[1],name:"Synthetic customer",consent:true});assert.equal(olderAccepted.response.status,200);
+ const afterOldAcceptance=await currentSales(historyLead.data.id,cookie);assert.notEqual(beforeOldAcceptance.lead.baseRevision,afterOldAcceptance.lead.baseRevision);
+ const historicalConflict=await post("/api/sales",{...historyInput,baseRevision:beforeOldAcceptance.lead.baseRevision},cookie);assert.equal(historicalConflict.response.status,409);assert.equal(historicalConflict.data.code,"QUOTE_REVISION_CONFLICT");assert.equal(await prisma.salesQuote.count({where:{leadId:historyLead.data.id}}),2);
+ const beforeStage=afterOldAcceptance.lead.baseRevision;
+ assert.equal((await post("/api/sales",{action:"stage",leadId:historyLead.data.id,stage:"QUALIFIED"},cookie)).response.status,200);
+ assert.notEqual(beforeStage,(await currentSales(historyLead.data.id,cookie)).lead.baseRevision);
+ assert.equal((await post("/api/sales",{...historyInput,baseRevision:beforeStage},cookie)).data.code,"QUOTE_REVISION_CONFLICT");
  const otherBranch=await prisma.branch.create({data:{code:`OTHER-${suffix}`,name:"Other synthetic branch",city:"Test"}});const managerRole=await prisma.role.upsert({where:{key:"BRANCH_MANAGER"},create:{key:"BRANCH_MANAGER",name:"Branch manager",desc:"Fixture role"},update:{}});const outsider=await prisma.user.create({data:{employeeCode:`OTHER-${suffix}`,name:"Other branch manager",email:`other-${suffix}@example.test`,phone:"",passwordHash:await bcrypt.hash(password,12),roleId:managerRole.id,branchId:otherBranch.id}});const outsideLogin=await post("/api/auth/login",{email:outsider.email,password});assert.equal(outsideLogin.response.status,200);const outsideCookie=outsideLogin.cookie;
  assert.equal((await post("/api/sales",{action:"stage",leadId:lead.data.id,stage:"LOST",lostReason:"Out of scope"},outsideCookie)).response.status,403);
  assert.equal((await post("/api/customers/import",{action:"preview",csv,branchId:branch.id},outsideCookie)).response.status,403);
  const outsideSales=await fetch(origin+"/api/sales",{headers:{Cookie:outsideCookie}}).then(r=>r.json());assert.equal(outsideSales.leads.length,0);
+ assert.equal((await fetch(origin+`/api/sales?leadId=${lead.data.id}`,{headers:{Cookie:outsideCookie}})).status,404,"Fresh recovery cannot cross branch boundaries");
+ assert.equal((await fetch(origin+"/api/sales?leadId=missing-fixture",{headers:{Cookie:cookie}})).status,404);
+
  // Regression: branch-scoped mutation must not access a record with no branch.
  const unscopedTask=await prisma.task.create({data:{title:"Unscoped fixture",ownerId:user.id,creatorId:user.id}});
  assert.equal((await post("/api/tasks/status",{taskId:unscopedTask.id,status:"DONE"},outsideCookie)).response.status,403);
+ const opsRole=await prisma.role.upsert({where:{key:"OPERATIONS"},create:{key:"OPERATIONS",name:"Operations",desc:"Fixture role"},update:{}});
+ const ops=await prisma.user.create({data:{employeeCode:`OPS-${suffix}`,name:"Scoped non-finance fixture",email:`ops-${suffix}@example.test`,phone:"",passwordHash:await bcrypt.hash(password,12),roleId:opsRole.id,branchId:branch.id}});
+ const opsLogin=await post("/api/auth/login",{email:ops.email,password});assert.equal(opsLogin.response.status,200);
+ const redacted=await currentSales(historyLead.data.id,opsLogin.cookie);assert.equal(redacted.canQuote,false);assert.equal(redacted.lead.budgetMinor,null);assert.equal(redacted.lead.quotes[0].totalMinor,null);assert.equal(redacted.lead.quotes[0].costMinor,null);assert.deepEqual(redacted.lead.quotes[0].items,[]);assert(!JSON.stringify(redacted).includes("shareHash"));assert(!Object.hasOwn(redacted,"sessionId"));
+ assert.equal((await post("/api/sales",{...historyInput,baseRevision:redacted.lead.baseRevision},opsLogin.cookie)).response.status,403,"Revision token is not a write capability");
+ const readOnlyRole=await prisma.role.upsert({where:{key:"READ_ONLY"},create:{key:"READ_ONLY",name:"Read only",desc:"Fixture role"},update:{}});
+ await prisma.user.update({where:{id:ops.id},data:{roleId:readOnlyRole.id}});
+ const changedAccess=await currentSales(historyLead.data.id,opsLogin.cookie);assert.notEqual(changedAccess.recoveryContext,redacted.recoveryContext);assert.equal(changedAccess.canEdit,false);
+ const mergedCustomer=await prisma.customer.create({data:{code:`REC-MERGED-${suffix}`,name:"Merged recovery fixture",phone:"",city:"Test",branchId:branch.id,assignedToId:user.id,mergedIntoId:customer.id}});
+ const mergedLead=await prisma.salesLead.create({data:{customerId:mergedCustomer.id,branchId:branch.id,ownerId:user.id,title:"Merged inaccessible enquiry",source:"Fixture"}});
+ assert.equal((await fetch(origin+`/api/sales?leadId=${mergedLead.id}`,{headers:{Cookie:cookie}})).status,404,"Recovery excludes consolidated customer records");
  // A picker's 500-customer display limit must never hide existing scoped enquiries.
  await prisma.customer.createMany({data:Array.from({length:501},(_,i)=>({code:`PAGE-${suffix}-${i}`,name:`AAA picker fixture ${i}`,phone:"",city:"Test",branchId:branch.id,assignedToId:user.id}))});
  const pagedSales=await fetch(origin+"/api/sales",{headers:{Cookie:cookie}}).then(r=>r.json());
  assert(!pagedSales.customers.some((c:{id:string})=>c.id===customer.id),"Fixture customer must be beyond the picker limit");
+ assert.equal((await currentSales(lead.data.id,cookie)).lead.id,lead.data.id,"Fresh recovery remains available beyond the customer picker cap");
  assert(pagedSales.leads.some((l:{id:string})=>l.id===lead.data.id),"Existing enquiries remain visible beyond customer picker limit");
  const forcedOrigin="http://127.0.0.1:3218";const forced=spawn(process.execPath,["node_modules/next/dist/bin/next","start","-p","3218","-H","127.0.0.1"],{env:{...process.env,APP_ORIGIN:forcedOrigin,JWT_SECRET:randomBytes(48).toString("hex"),CRM_REQUIRE_MFA:"true"},stdio:"ignore"});
  try{let ready=false;for(let i=0;i<60;i++){try{if((await fetch(forcedOrigin+"/api/health")).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}assert(ready,"MFA-enforced fixture server must become ready");const r=await fetch(forcedOrigin+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json",Origin:forcedOrigin},body:JSON.stringify({email:outsider.email,password})});assert.equal(r.status,200);const c=r.headers.get("set-cookie")!.split(";")[0];assert.equal((await fetch(forcedOrigin+"/api/sales",{headers:{Cookie:c}})).status,403,"Unenrolled staff cannot access business APIs when MFA is required");const dashboard=await fetch(forcedOrigin+"/dashboard",{headers:{Cookie:c},redirect:"manual"});assert(dashboard.headers.get("location")?.includes("/account-security"),"Unenrolled staff must be routed to enrolment");assert.equal((await fetch(forcedOrigin+"/api/auth/security",{headers:{Cookie:c}})).status,200,"Enrolment must remain available");}finally{forced.kill();}

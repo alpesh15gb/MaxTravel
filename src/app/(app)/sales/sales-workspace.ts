@@ -6,6 +6,7 @@ export type SalesQuote = {
   costMinor: number | null; items?: { description: string; quantity: number; priceMinor: number; costMinor: number }[]; bookingId: string | null; expiresAt: string; terms: string;
 };
 export type SalesLead = {
+  baseRevision?: string;
   id: string; title: string; customerId: string; source: string; product: string;
   stage: string; notes?: string | null; travelDate?: string | null; budgetMinor?: number | null; lostReason?: string | null; destination: string | null; followUpAt: string | null; quotes: SalesQuote[];
 };

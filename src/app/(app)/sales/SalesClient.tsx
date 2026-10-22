@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSalesDraftEntry, useSalesDraftMemory } from "@/components/SalesDraftProvider";
+import type { QuoteDraftEntry, QuoteDraftFields } from "@/lib/sales-draft-memory";
 import { dateLabel, dateTimeLabel } from "@/lib/dates";
 import { enumLabel } from "@/lib/labels";
 import {
@@ -10,11 +12,13 @@ import {
 } from "./sales-workspace";
 
 type Data = {
-  leads: SalesLead[]; customers: SalesCustomer[];
+  leads: SalesLead[]; customers: SalesCustomer[]; recoveryContext: string;
   canCreate: boolean; canEdit: boolean; canQuote: boolean; canConvert: boolean;
 };
 type Item = { description: string; quantity: number; priceMinor: number; costMinor: number };
 type View = "list" | "lead" | "new" | "quote";
+type Recovery = { nonce: string; kind: "checking" | "ready" | "stale" | "pending" | "unknown" | "unavailable"; lead?: SalesLead };
+type ActiveQuote = { nonce: string; leadId: string; baseRevision: string };
 const newItem = (): Item => ({ description: "", quantity: 1, priceMinor: 0, costMinor: 0 });
 const money = (value: number | null) => value === null ? "Restricted" :
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value / 100);
@@ -25,6 +29,18 @@ const localDateTime = (value: string | null) => {
 };
 
 export default function SalesClient() {
+  const draftMemory = useSalesDraftMemory();
+  const retainedDraft = useSalesDraftEntry();
+  const activeQuote = useRef<ActiveQuote | null>(null);
+  const liveFields = useRef<QuoteDraftFields>({ items: [newItem()], terms: "", expiry: "" });
+  const recoveryCheck = useRef(0);
+  const readGeneration = useRef(0);
+  const activationGeneration = useRef(0);
+  const [recovery, setRecovery] = useState<Recovery | null>(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [retentionError, setRetentionError] = useState("");
+  const [contextChanged, setContextChanged] = useState(false);
+  const recoveryHeading = useRef<HTMLHeadingElement>(null);
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -55,26 +71,90 @@ export default function SalesClient() {
   const shareInput = useRef<HTMLInputElement>(null);
   const shareHeading = useRef<HTMLHeadingElement>(null);
   const selected = data?.leads.find(lead => lead.id === selectedId);
-  const locked = busy || uncertain || loading;
+  const locked = busy || uncertain || loading || recoveryBusy || Boolean(retainedDraft && retainedDraft.phase !== "editing");
   // Every sales POST also requires customer:edit. Do not offer an action the API forbids.
   const canQuote = Boolean(data?.canEdit && data.canQuote);
   const canCreate = Boolean(data?.canEdit && data.canCreate);
   const visible = data ? matchingEnquiries(data.leads, data.customers, query, filter) : [];
 
   const load = useCallback(async () => {
+    const generation = ++readGeneration.current;
     const response = await fetch("/api/sales", { cache: "no-store" });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error ?? "Cannot load enquiries.");
-    setData(result);
+    if (generation !== readGeneration.current) throw new Error("A newer enquiry read replaced this request. Review the latest status.");
+    if (!response.ok) {
+      if ([401, 403, 404].includes(response.status)) {
+        draftMemory.clear(); setContextChanged(true); setData(null); setView("list"); setSelectedId(null); setDirty(false);
+        setItems([newItem()]); setTerms(""); setExpiry(""); setShare(""); setShareContext(""); setShareQuoteId(null);
+        activeQuote.current = null;
+        throw new Error("Staff session or access changed. Reload this workspace before continuing.");
+      }
+      throw new Error(result.error ?? "Cannot load enquiries.");
+    }
+    if (result.recoveryContext !== draftMemory.context) {
+      draftMemory.clear(); setContextChanged(true); setData(null); setShare(""); setShareContext(""); setShareQuoteId(null);
+      throw new Error("Staff session or access changed. Reload this workspace before continuing.");
+    }
+    setContextChanged(false); setData(result);
     return result as Data;
-  }, []);
+  }, [draftMemory]);
+
+  const checkRecovery = useCallback(async (entry: QuoteDraftEntry): Promise<Recovery | null> => {
+    const generation = ++recoveryCheck.current;
+    setRecovery({ nonce: entry.nonce, kind: "checking" });
+    try {
+      const response = await fetch(`/api/sales?leadId=${encodeURIComponent(entry.leadId)}`, { cache: "no-store" });
+      const result = await response.json();
+      if (generation !== recoveryCheck.current || draftMemory.getSnapshot()?.nonce !== entry.nonce) return null;
+      if ([401, 403, 404].includes(response.status) || (response.ok &&
+          (result.recoveryContext !== draftMemory.context || !result.canEdit || !result.canQuote))) {
+        draftMemory.clear(entry.nonce); setRecovery(null);
+        if (response.ok && result.recoveryContext !== draftMemory.context) { setContextChanged(true); setData(null); setShare(""); setShareContext(""); setShareQuoteId(null); }
+        setError("The saved quotation was cleared because its staff session or permitted record is no longer available."); return null;
+      }
+      if (!response.ok) throw new Error("unavailable");
+      const latest = draftMemory.getSnapshot();
+      if (!latest || !result.lead || result.lead.id !== entry.leadId) throw new Error("unavailable");
+      const kind: Recovery["kind"] = latest.phase === "submitting" ? "pending" : latest.phase === "uncertain" ? "unknown"
+        : result.lead.baseRevision !== entry.baseRevision || !canStartQuote(result.lead) || result.lead.quotes.some((quote: { state: string }) => quote.state === "ACCEPTED") ? "stale" : "ready";
+      const checked = { nonce: entry.nonce, kind, lead: result.lead };
+      setRecovery(checked); return checked;
+    } catch {
+      if (generation === recoveryCheck.current && draftMemory.getSnapshot()?.nonce === entry.nonce)
+        setRecovery({ nonce: entry.nonce, kind: "unavailable" });
+      return null;
+    }
+  }, [draftMemory]);
+
+  useLayoutEffect(() => {
+    let active = true;
+    activationGeneration.current += 1;
+    // Reset before paint: Activity may preserve old fields while hidden, but cannot authorize their reveal.
+    // Activity/Back restoration is not authorization. Re-check before exposing any retained text.
+    setLoading(true); setData(null); setRecovery(null); setView("list"); setDirty(false); activeQuote.current = null;
+    setItems([newItem()]); setTerms(""); setExpiry("");
+    setShare(""); setShareContext(""); setShareQuoteId(null);
+    draftMemory.expire();
+    load().then(async () => {
+      const entry = draftMemory.getSnapshot();
+      if (active && entry) await checkRecovery(entry);
+    }).catch(error => { if (active) setError(error instanceof Error && error.message.startsWith("Staff session or access changed") ? error.message : "Enquiries could not be loaded. Retry to see the latest records."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; activationGeneration.current += 1; recoveryCheck.current += 1; readGeneration.current += 1; };
+  }, [load, checkRecovery, draftMemory]);
 
   useEffect(() => {
-    let active = true;
-    load().catch(() => { if (active) setError("Enquiries could not be loaded. Retry to see the latest records."); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [load]);
+    if (!recovery) return;
+    if (!retainedDraft) { setRecovery(null); setLoading(true); void load().catch(() => setError("Reload latest status to review the enquiry.")).finally(() => setLoading(false)); return; }
+    if (recovery.nonce !== retainedDraft.nonce || !recovery.lead) return;
+    if (retainedDraft.phase === "editing" && ["pending", "unknown"].includes(recovery.kind)) {
+      void checkRecovery(retainedDraft); return;
+    }
+    const kind = retainedDraft.phase === "submitting" ? "pending" : retainedDraft.phase === "uncertain" ? "unknown" : recovery.kind;
+    if (kind !== recovery.kind) setRecovery({ ...recovery, kind });
+  }, [retainedDraft, recovery, load, checkRecovery]);
+
+  useEffect(() => { if (recovery && recovery.kind !== "checking") recoveryHeading.current?.focus(); }, [recovery]);
 
   // Focus only after the new workspace is committed, never on an arbitrary timer.
   useEffect(() => {
@@ -105,20 +185,31 @@ export default function SalesClient() {
       if (!anchor || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
       if (busy || !window.confirm("Leave this enquiry? Unsaved changes will be lost.")) {
         event.preventDefault(); event.stopPropagation();
-      }
+      } else if (activeQuote.current) draftMemory.clear(activeQuote.current.nonce);
     };
     window.addEventListener("beforeunload", unload);
     document.addEventListener("click", navigate, true);
     return () => { window.removeEventListener("beforeunload", unload); document.removeEventListener("click", navigate, true); };
-  }, [dirty, busy]);
+  }, [dirty, busy, draftMemory]);
 
   function leaveAllowed() {
     return !mutationLock.current && (!dirty || window.confirm("Discard unsaved changes to this enquiry?"));
   }
   function open(viewNext: View, id: string | null = selectedId) {
     if (!leaveAllowed()) return;
+    if (viewNext === "quote" && draftMemory.getSnapshot() && draftMemory.getSnapshot()?.nonce !== activeQuote.current?.nonce) {
+      setError("Restore or explicitly discard the retained quotation before starting another one."); return;
+    }
+    if (activeQuote.current) draftMemory.clear(activeQuote.current.nonce);
+    activeQuote.current = null; if (!draftMemory.getSnapshot()) setRecovery(null); setRetentionError("");
     setDirty(false); setError(""); setSelectedId(id); setView(viewNext);
-    if (viewNext === "quote") { setItems([newItem()]); setTerms(""); setExpiry(""); }
+    if (viewNext === "quote") {
+      const lead = data?.leads.find(item => item.id === id);
+      if (!lead?.baseRevision) { setError("Reload latest status before preparing a quotation."); setView("lead"); return; }
+      activeQuote.current = { nonce: crypto.randomUUID(), leadId: lead.id, baseRevision: lead.baseRevision };
+      liveFields.current = { items: [newItem()], terms: "", expiry: "" };
+      setItems(liveFields.current.items); setTerms(""); setExpiry("");
+    }
     setFocusRequest(value => value + 1);
   }
 
@@ -129,11 +220,15 @@ export default function SalesClient() {
   }
 
   async function reload() {
-    if (mutationLock.current || (dirty && !window.confirm("Reload latest status and discard local edits? Copy anything you need first. A previous save may already have completed."))) return;
+    if (mutationLock.current || draftMemory.getSnapshot()?.phase === "submitting" || (dirty && !window.confirm("Reload latest status and discard local edits? Copy anything you need first. A previous save may already have completed."))) return;
     mutationLock.current = true; setLoading(true); setError("");
     try {
       const latest = await load();
       reconcileShare(latest);
+      if (activeQuote.current) draftMemory.clear(activeQuote.current.nonce);
+      activeQuote.current = null;
+      const retained = draftMemory.getSnapshot();
+      if (retained) await checkRecovery(retained);
       setUncertain(false); setDirty(false);
       setView(selectedId && latest.leads.some(lead => lead.id === selectedId) ? "lead" : "list");
       setNotice("Latest records loaded. Review the enquiry and quote versions before making another change.");
@@ -143,10 +238,15 @@ export default function SalesClient() {
   }
 
   async function action(body: unknown): Promise<Record<string, unknown> | null> {
-    if (mutationLock.current || uncertain) return null;
+    if (mutationLock.current || uncertain || (draftMemory.getSnapshot() && draftMemory.getSnapshot()?.phase !== "editing")) return null;
     const kind = (body as { action?: string }).action;
     if (dirty && !["create", "quote", "stage"].includes(kind ?? "") &&
       !window.confirm("Discard unsaved stage or follow-up edits before continuing?")) return null;
+    const actionActivation = activationGeneration.current;
+    const quoteNonce = kind === "quote" ? activeQuote.current?.nonce : null;
+    if (kind === "quote" && (!quoteNonce || !activeQuote.current || !draftMemory.retain(activeQuote.current, liveFields.current) || !draftMemory.beginSubmit(quoteNonce))) {
+      setError("This quotation cannot be safely retained for submission. Review its size and reload latest status if needed."); return null;
+    }
     mutationLock.current = true; setBusy(true); setError(""); setNotice("");
     let confirmed = false;
     let activeShareId = shareQuoteId;
@@ -155,15 +255,27 @@ export default function SalesClient() {
       const result = await response.json();
       if (!response.ok) {
         if (response.status >= 500) throw new Error("uncertain");
+        if (quoteNonce) draftMemory.settle(quoteNonce, "rejected");
+        if ([401, 403, 404].includes(response.status)) {
+          draftMemory.clear(quoteNonce ?? undefined); activeQuote.current = null;
+          setData(null); setView("list"); setDirty(false); setItems([newItem()]); setTerms(""); setExpiry("");
+          setShare(""); setShareContext(""); setShareQuoteId(null);
+        }
+        if (quoteNonce && result.code === "QUOTE_REVISION_CONFLICT") {
+          const entry = draftMemory.getSnapshot();
+          activeQuote.current = null; setDirty(false); setView("list");
+          if (entry) await checkRecovery(entry);
+        }
         setError(result.error ?? "The request was not accepted. Check the fields and permissions.");
         return null;
       }
       confirmed = true;
+      if (quoteNonce) draftMemory.settle(quoteNonce, "acknowledged");
       const request = body as { leadId?: string; quoteId?: string };
       if (kind === "withdraw" && request.quoteId === activeShareId) {
         setShare(""); setShareQuoteId(null); setShareContext(""); activeShareId = null;
       }
-      if (typeof result.sharePath === "string" && /^\/proposal#[a-f0-9]{64}$/.test(result.sharePath)) {
+      if (actionActivation === activationGeneration.current && typeof result.sharePath === "string" && /^\/proposal#[a-f0-9]{64}$/.test(result.sharePath)) {
         const sourceLead = data?.leads.find(lead => lead.id === request.leadId);
         const sourceQuote = sourceLead?.quotes.find(quote => quote.id === request.quoteId);
         activeShareId = request.quoteId ?? null;
@@ -180,6 +292,7 @@ export default function SalesClient() {
       setDirty(false); setNotice("Saved. The latest enquiry record is shown below.");
       return result;
     } catch {
+      if (quoteNonce && !confirmed) draftMemory.settle(quoteNonce, "uncertain");
       setUncertain(true); setError("");
       setUncertaintyReason(confirmed
         ? "The save was acknowledged, but the latest record could not be loaded. Do not save again. Reload latest status and review it first."
@@ -188,9 +301,56 @@ export default function SalesClient() {
     } finally { mutationLock.current = false; setBusy(false); }
   }
 
+  function changeQuote(patch: Partial<QuoteDraftFields>) {
+    const fields = { ...liveFields.current, ...patch };
+    liveFields.current = fields;
+    if (activeQuote.current) {
+      const kept = draftMemory.retain(activeQuote.current, fields);
+      setRetentionError(kept ? "" : "This quotation is too large for temporary recovery. Keep this page open; its latest edits cannot be recovered after navigation.");
+    }
+    setItems(fields.items); setTerms(fields.terms); setExpiry(fields.expiry); setDirty(true);
+  }
   function updateItem(index: number, patch: Partial<Item>) {
-    setItems(previous => previous.map((item, position) => position === index ? { ...item, ...patch } : item));
-    setDirty(true);
+    changeQuote({ items: liveFields.current.items.map((item, position) => position === index ? { ...item, ...patch } : item) });
+  }
+  async function restoreQuote() {
+    const entry = draftMemory.getSnapshot();
+    if (!entry?.fields || recoveryBusy) return;
+    setRecoveryBusy(true);
+    const checked = await checkRecovery(entry);
+    const latest = draftMemory.getSnapshot();
+    if (checked?.kind === "ready" && checked.lead && latest?.nonce === entry.nonce && latest.fields) {
+      setData(previous => previous ? { ...previous, leads: [checked.lead!, ...previous.leads.filter(lead => lead.id !== checked.lead!.id)] } : previous);
+      activeQuote.current = { nonce: latest.nonce, leadId: latest.leadId, baseRevision: latest.baseRevision };
+      liveFields.current = structuredClone(latest.fields);
+      setItems(liveFields.current.items); setTerms(liveFields.current.terms); setExpiry(liveFields.current.expiry);
+      setSelectedId(latest.leadId); setView("quote"); setDirty(true); setRecovery(null); setError("");
+      setFocusRequest(value => value + 1);
+    }
+    setRecoveryBusy(false);
+  }
+  async function reviewRetainedQuote() {
+    const entry = draftMemory.getSnapshot();
+    if (!entry || recoveryBusy) return;
+    setRecoveryBusy(true);
+    const checked = await checkRecovery(entry);
+    if (checked?.lead) {
+      const lead = checked.lead;
+      setData(previous => previous ? { ...previous, leads: [lead, ...previous.leads.filter(item => item.id !== lead.id)] } : previous);
+      setSelectedId(lead.id); setView("lead"); setDirty(false); activeQuote.current = null;
+      setFocusRequest(value => value + 1);
+    }
+    setRecoveryBusy(false);
+  }
+  function discardRetainedQuote() {
+    const entry = draftMemory.getSnapshot();
+    if (!entry || entry.phase === "submitting") return;
+    if (!window.confirm(entry.phase === "uncertain"
+      ? "Discard this saved copy after reviewing the latest enquiry? This does not cancel a request that may still complete. Never automatically repeat the old save."
+      : "Discard this unsaved quotation copy? This cannot be undone.")) return;
+    draftMemory.clear(entry.nonce); setRecovery(null); setUncertain(false); setDirty(false); activeQuote.current = null;
+    setItems([newItem()]); setTerms(""); setExpiry(""); setView(selectedId ? "lead" : "list");
+    setFocusRequest(value => value + 1);
   }
   const customerName = (id: string) => data?.customers.find(customer => customer.id === id)?.name ?? "Customer record";
   const headingProps = { ref: heading, tabIndex: -1, className: "text-xl font-semibold scroll-mt-24" };
@@ -203,9 +363,35 @@ export default function SalesClient() {
     </header>
 
     {error && <div ref={errorSummary} tabIndex={-1} role="alert" className="form-error space-y-3"><p>{error}</p>
-      {!uncertain && !data && <button className="btn" disabled={loading || busy} onClick={() => void reload()}>{loading ? "Loading…" : "Reload latest status"}</button>}</div>}
+      {contextChanged && <button className="btn" onClick={() => window.location.reload()}>Reload workspace</button>}
+      {!contextChanged && !uncertain && !data && <button className="btn" disabled={loading || busy} onClick={() => void reload()}>{loading ? "Loading…" : "Reload latest status"}</button>}</div>}
     {uncertain && <div ref={uncertaintySummary} tabIndex={-1} role="alert" className="form-error space-y-3"><p>{uncertaintyReason}</p><p>Changes remain locked across this workspace until the latest status is loaded.</p><button className="btn" disabled={loading || busy} onClick={() => void reload()}>{loading ? "Loading…" : "Reload latest status"}</button></div>}
     {notice && <p role="status" className="form-success">{notice}</p>}
+    {retentionError && <p role="alert" className="form-error">{retentionError}</p>}
+    {recovery && retainedDraft && recovery.nonce === retainedDraft.nonce && <section className="panel p-5 space-y-3" aria-label="Quotation recovery" data-recovery-state={recovery.kind}>
+      <h2 ref={recoveryHeading} tabIndex={-1} className="text-lg font-semibold scroll-mt-24">{["pending", "unknown"].includes(recovery.kind) ? "Review an unresolved quotation save" : "Recover an unsaved quotation"}</h2>
+      {recovery.kind === "checking" && <p role="status">Checking your current access and the latest enquiry…</p>}
+      {recovery.kind === "unavailable" && <><p role="alert">Access could not be rechecked. The copy stays hidden; retry before restoring it.</p><button className="btn" disabled={recoveryBusy} onClick={() => void checkRecovery(retainedDraft)}>Retry recovery check</button></>}
+      {recovery.lead && <>
+        <p className="font-semibold break-words">{recovery.lead.title}</p>
+        {recovery.kind === "ready" && <p>The enquiry is unchanged. Restore your quotation to continue editing; saving remains a separate action.</p>}
+        {recovery.kind === "stale" && <p role="alert">The enquiry or a quotation changed while you were away. Your old copy is read-only and cannot overwrite the latest version.</p>}
+        {recovery.kind === "pending" && <p role="alert">The previous quotation save is still pending. Do not submit again. Wait for its outcome and review the latest enquiry.</p>}
+        {recovery.kind === "unknown" && <p role="alert">The previous save outcome is unknown. It may have completed. This copy cannot be restored or resubmitted; review the latest enquiry before discarding it.</p>}
+        <div className="flex flex-wrap gap-3">
+          {recovery.kind === "ready" && retainedDraft.fields && <button className="btn btn-primary" disabled={recoveryBusy} onClick={() => void restoreQuote()}>Restore quotation</button>}
+          <button className="btn" disabled={recoveryBusy} onClick={() => void reviewRetainedQuote()}>Review latest enquiry</button>
+          <button className="btn" disabled={recoveryBusy || retainedDraft.phase === "submitting"} onClick={discardRetainedQuote}>Discard saved draft</button>
+        </div>
+        {retainedDraft.fields && recovery.kind !== "ready" && <details><summary className="cursor-pointer py-3 font-medium">Read retained text without applying it</summary><div className="space-y-3">
+          {retainedDraft.fields.items.map((item, index) => <div key={index}><p className="font-semibold">Item {index + 1}</p><p className="whitespace-pre-wrap break-words">{item.description}</p><p>{item.quantity} × {money(item.priceMinor)} · Cost per unit {money(item.costMinor)}</p></div>)}
+          <h3 className="font-semibold">Terms and inclusions</h3><p className="whitespace-pre-wrap break-words">{retainedDraft.fields.terms}</p><p>Original expiry (device local time): {retainedDraft.fields.expiry || "Not entered"}</p>
+        </div></details>}
+        {!retainedDraft.fields && <p>The temporary text copy has expired. The unresolved save still needs review.</p>}
+
+      </>}
+      <p className="text-sm text-slate-600">One temporary copy stays in this signed-in tab for 30 minutes after the last edit. Reloading, closing the tab or signing out clears it. Nothing is sent automatically.</p>
+    </section>}
     {share && <section className="sales-private-link panel p-5 space-y-3" aria-label="Private proposal link">
       <h2 ref={shareHeading} tabIndex={-1} className="text-lg font-semibold scroll-mt-24">Private proposal link — copy before leaving</h2><p className="font-semibold break-words">For enquiry: {shareContext}</p>
       <p className="text-sm">This link is shown only once. Anyone with it can view the proposal. Send it only to the intended customer; it is not a public package listing.</p>
@@ -298,16 +484,16 @@ export default function SalesClient() {
               const cost = items.reduce((sum, item) => sum + item.quantity * item.costMinor, 0);
               if (total <= 0 || total > 2000000000 || cost > 2000000000) { setError("Quotation total must be above zero and no more than ₹20,000,000. Total cost must also be within this limit."); return; }
               if (new Date(expiry).getTime() <= Date.now()) { setError("Choose a future quotation expiry."); return; }
-              const result = await action({ action: "quote", leadId: selected.id, items, terms, expiresAt: new Date(expiry).toISOString() }); if (result) { setView("lead"); setFocusRequest(value => value + 1); } }}>
+              const result = await action({ action: "quote", leadId: selected.id, baseRevision: activeQuote.current?.baseRevision, items, terms, expiresAt: new Date(expiry).toISOString() }); if (result) { setView("lead"); setFocusRequest(value => value + 1); } }}>
               <fieldset disabled={locked} className="space-y-5">{items.map((item, index) => <fieldset key={index} className="sales-line-item rounded-xl border p-4 space-y-3"><legend className="px-2 font-semibold">Item {index + 1}</legend>
                 <div className="field text-sm font-medium"><label className="field-label" htmlFor={`sales-item-${index}-description`}>Description / itinerary</label><textarea id={`sales-item-${index}-description`} className="control mt-1" required maxLength={500} rows={3} value={item.description} onChange={event => updateItem(index, { description: event.target.value })} /></div>
                 <div className="sales-line-fields grid gap-3 sm:grid-cols-3"><div className="field text-sm font-medium"><label className="field-label" htmlFor={`sales-item-${index}-quantity`}>Quantity</label><input id={`sales-item-${index}-quantity`} className="control mt-1" type="number" required min={1} max={1000} step={1} value={item.quantity} onChange={event => updateItem(index, { quantity: Number(event.target.value) })} /></div><div className="field text-sm font-medium"><label className="field-label" htmlFor={`sales-item-${index}-price`}>Price per unit (INR)</label><input id={`sales-item-${index}-price`} className="control mt-1" type="number" required min={0} max={1000000} step="0.01" value={item.priceMinor / 100} onChange={event => updateItem(index, { priceMinor: Math.round(Number(event.target.value) * 100) })} /></div><div className="field text-sm font-medium"><label className="field-label" htmlFor={`sales-item-${index}-cost`}>Cost per unit (INR)</label><input id={`sales-item-${index}-cost`} className="control mt-1" type="number" required min={0} max={1000000} step="0.01" value={item.costMinor / 100} onChange={event => updateItem(index, { costMinor: Math.round(Number(event.target.value) * 100) })} /></div></div>
-                {items.length > 1 && <button className="btn" type="button" aria-label={`Remove item ${index + 1}`} onClick={() => { setItems(previous => previous.filter((_, position) => position !== index)); setDirty(true); addItemButton.current?.focus(); }}>Remove item</button>}
+                {items.length > 1 && <button className="btn" type="button" aria-label={`Remove item ${index + 1}`} onClick={() => { changeQuote({ items: liveFields.current.items.filter((_, position) => position !== index) }); addItemButton.current?.focus(); }}>Remove item</button>}
               </fieldset>)}
-                <button ref={addItemButton} type="button" className="btn" disabled={items.length >= 100} onClick={() => { setItems(previous => [...previous, newItem()]); setDirty(true); }}>Add item</button>
-                <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-quote-expiry">Valid until</label><input id="sales-quote-expiry" className="control mt-1" type="datetime-local" required value={expiry} onChange={event => { setExpiry(event.target.value); setDirty(true); }} /></div>
-                <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-quote-terms">Terms and inclusions</label><textarea id="sales-quote-terms" className="control mt-1" required maxLength={10000} rows={6} value={terms} onChange={event => { setTerms(event.target.value); setDirty(true); }} /></div>
-                <div className="sales-editor-footer space-y-3"><p className="font-semibold">Quotation total {money(items.reduce((total, item) => total + item.quantity * item.priceMinor, 0))}</p><div className="sales-actions flex flex-wrap gap-3"><button className="btn btn-primary">Save draft version</button><button type="button" className="btn" onClick={() => open("lead")}>Close quotation</button></div><p className="text-sm text-slate-600">{dirty ? "Unsaved changes — save or explicitly discard before leaving." : "New draft — not yet saved or shared."}</p></div>
+                <button ref={addItemButton} type="button" className="btn" disabled={items.length >= 100} onClick={() => { changeQuote({ items: [...liveFields.current.items, newItem()] }); }}>Add item</button>
+                <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-quote-expiry">Valid until</label><input id="sales-quote-expiry" className="control mt-1" type="datetime-local" required value={expiry} onChange={event => { changeQuote({ expiry: event.target.value }); }} /></div>
+                <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-quote-terms">Terms and inclusions</label><textarea id="sales-quote-terms" className="control mt-1" required maxLength={10000} rows={6} value={terms} onChange={event => { changeQuote({ terms: event.target.value }); }} /></div>
+                <div className="sales-editor-footer space-y-3"><p className="font-semibold">Quotation total {money(items.reduce((total, item) => total + item.quantity * item.priceMinor, 0))}</p><div className="sales-actions flex flex-wrap gap-3"><button className="btn btn-primary">Save draft version</button><button type="button" className="btn" onClick={() => open("lead")}>Close quotation</button></div><p className="text-sm text-slate-600">{dirty ? "Unsaved changes — save or explicitly discard before leaving." : "New draft — not yet saved or shared."}</p><p className="text-sm text-slate-600">A temporary quotation copy supports Back/Forward recovery in this signed-in tab for up to 30 minutes. Reloading, closing the tab or signing out clears that copy.</p></div>
               </fieldset>
             </form>
           </>}
