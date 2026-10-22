@@ -102,6 +102,7 @@ try {
       await page.addInitScript({ content: `(() => {
         const target = window;
         target.__journeyLifecycle = [{ event: "init", at: Date.now() }];
+        if (${process.env.TICKETING_TRANSPORT_PROBE === "1"}) {
         const report = (detail) => console.debug("JOURNEY_TRANSPORT", JSON.stringify({ at: Date.now(), ...detail }));
         const abort = AbortController.prototype.abort;
         AbortController.prototype.abort = function(reason) { report({ event: "abort-controller", stack: new Error().stack?.slice(0, 1600) }); return abort.call(this, reason); };
@@ -122,6 +123,7 @@ try {
           return pending; // Preserve the original fetch promise and response stream without teeing.
         };
 
+        }
         for (const event of ["pagehide", "pageshow", "beforeunload", "visibilitychange"]) window.addEventListener(event, e => { const detail = { event, at: Date.now(), persisted: "persisted" in e ? e.persisted : undefined, visibility: document.visibilityState }; target.__journeyLifecycle?.push(detail); console.debug("JOURNEY_LIFECYCLE", JSON.stringify(detail)); });
         window.__journeyProbeReady = true;
       })();` });
@@ -230,7 +232,7 @@ try {
           });
         })()`;
         const reactState = await page.evaluate(reactStateProbe).catch(error => ({ error: String(error) }));
-        writeFileSync("test-artifacts/journeys/ticketing-cancellation-failure.json",JSON.stringify({postStatus:response.status(),stored,serverView,serverRsc,resourceTiming,reactState,renderedStatus:await page.getByLabel("Booking status",{exact:true}).inputValue().catch(()=>"unavailable"),headingCount:await page.getByRole("heading",{name:"Cancellation settlement",exact:true}).count(),clientErrors,networkErrors,events,lifecycle:await page.evaluate(() => (window as typeof window & { __journeyLifecycle?: unknown[] }).__journeyLifecycle),server:{port,pid:server.pid,childExit,childError,logs}},null,2));
+        writeFileSync("test-artifacts/journeys/ticketing-cancellation-failure.json",JSON.stringify({transportProbe:process.env.TICKETING_TRANSPORT_PROBE === "1",postStatus:response.status(),stored,serverView,serverRsc,resourceTiming,reactState,renderedStatus:await page.getByLabel("Booking status",{exact:true}).inputValue().catch(()=>"unavailable"),headingCount:await page.getByRole("heading",{name:"Cancellation settlement",exact:true}).count(),clientErrors,networkErrors,events,lifecycle:await page.evaluate(() => (window as typeof window & { __journeyLifecycle?: unknown[] }).__journeyLifecycle),server:{port,pid:server.pid,childExit,childError,logs}},null,2));
         // Failure-only controlled observation: a normal non-mutating menu toggle must never turn this failed assertion green.
         const urgentObservation = await (async () => {
           await page.getByRole("button", { name: "Account menu", exact: true }).click({ timeout: 1000 });

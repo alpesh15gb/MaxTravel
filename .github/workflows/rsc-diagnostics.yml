@@ -37,6 +37,7 @@ jobs:
         env:
           DATABASE_URL: "file:./ticketing-journey-verification.db"
           TICKETING_BROWSER: "true"
+          TICKETING_TRANSPORT_PROBE: "1"
         run: |
           set -e
           npx prisma migrate deploy

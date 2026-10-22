@@ -143,10 +143,15 @@ employee or changing a password invalidates their existing sessions.
 
 ## Verification
 
+Next.js 16 requires Node.js 20.9 or newer; the container and CI use Node.js 22 or newer.
+Development and production builds explicitly retain webpack. The ESLint 8 configuration
+remains on its compatible `eslint-config-next` 15.5.28 version so this framework migration
+does not change lint rules; lint runs separately because Next.js 16 removed `next lint`.
+
 ```bash
 npm run typecheck    # tsc --noEmit
-npm run lint         # next lint
-npm run build        # production build
+npm run lint         # ESLint CLI (existing rules)
+npm run build        # production webpack build
 npm test             # isolated regression suite (138 checks), then the accessibility gate
 npm run test:a11y    # the accessibility gate alone (run npm run build first)
 ```

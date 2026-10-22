@@ -15,7 +15,7 @@ a static site and it is not serverless: it is a single long-running Node process
 
 | Component | What it is | Where it lives |
 |---|---|---|
-| Application server | Next.js 15 on Node, serving pages and API routes on port 3000 | one process on the host (or one container) |
+| Application server | Next.js 16 on Node, serving pages and API routes on port 3000 | one process on the host (or one container) |
 | Database | **SQLite**, a single file | `DATABASE_URL`, by default `prisma/dev.db` |
 | Private uploads | Customer documents, never public, served only through short-lived signed URLs | `UPLOAD_ROOT`, by default `./uploads` |
 | Session secret | Signs the staff session cookie (HS256, 12-hour lifetime) | `JWT_SECRET` in the environment |
@@ -439,7 +439,7 @@ Operational notes for this path:
   that deploys do not mutate data unattended, run `npm run db:migrate` as a separate step and skip
   it in the entrypoint.
 - **Node version.** The image pins the version it was tested with. For a bare-metal install use a
-  current Node LTS (Node 20 or newer).
+  current Node LTS (at least Node 20.9; the image uses Node 22).
 - **Backups inside a container** are just the same commands run against the mounted volume; run
   `scripts/backup.mjs` on the host, pointed at `/srv/travel-os-data`, rather than baking backups
   into the image.
