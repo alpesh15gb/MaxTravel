@@ -1,18 +1,45 @@
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:net";
 import { randomBytes, randomUUID, randomInt, createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import bcrypt from "bcryptjs";
 import { prisma } from "../src/lib/db";
 
 if (process.env.DATABASE_URL !== "file:./ticketing-journey-verification.db") throw Error("Use only isolated ticketing-journey-verification.db.");
-const port = randomInt(20000, 60000);
-const origin = `http://127.0.0.1:${port}`, suffix = randomUUID(), password = randomBytes(30).toString("hex");
+async function reserveFixturePort() {
+  // Linux CI must not accidentally select a port used by outgoing client sockets.
+  const ephemeral = process.platform === "linux"
+    ? readFileSync("/proc/sys/net/ipv4/ip_local_port_range", "utf8").trim().split(/\s+/).map(Number)
+    : [49152, 65535]; // IANA dynamic range on other supported development hosts.
+  assert(ephemeral.length === 2 && ephemeral.every(Number.isInteger) && ephemeral[0] > 0 && ephemeral[1] <= 65535 && ephemeral[0] <= ephemeral[1], "Cannot determine a safe fixture port range");
+  const candidates = Array.from({ length: 32768 - 1024 }, (_, index) => index + 1024)
+    .filter(candidate => candidate < ephemeral[0] || candidate > ephemeral[1]);
+  for (let attempt = 0; attempt < 64 && candidates.length; attempt++) {
+    const candidate = candidates.splice(randomInt(candidates.length), 1)[0];
+    const reservation = await new Promise<Server | null>((resolve, reject) => {
+      const listener = createServer();
+      listener.once("error", (error: NodeJS.ErrnoException) => {
+        if (error.code === "EADDRINUSE") resolve(null);
+        else reject(error);
+      });
+      listener.listen({ host: "127.0.0.1", port: candidate, exclusive: true }, () => resolve(listener));
+    });
+    if (reservation) return { port: candidate, release: () => new Promise<void>((resolve, reject) => reservation.close(error => error ? reject(error) : resolve())) };
+  }
+  throw Error("No available non-ephemeral loopback port found for the isolated ticketing fixture");
+}
+const suffix = randomUUID(), password = randomBytes(30).toString("hex");
 const ticketPrefix = `123${randomInt(100000000, 1000000000)}`; // Unique per isolated run; repeated runs retain prior fixture tickets.
 const role = await prisma.role.upsert({ where: { key: "OWNER" }, create: { key: "OWNER", name: "Fixture owner", desc: "Isolated ticketing verification" }, update: {} });
 const branch = await prisma.branch.create({ data: { code: suffix, name: "Synthetic ticketing branch", city: "Test" } });
 const user = await prisma.user.create({ data: { employeeCode: suffix, email: `${suffix}@example.test`, name: "Synthetic operator", phone: "", passwordHash: await bcrypt.hash(password, 12), roleId: role.id, branchId: branch.id } });
 const customer = await prisma.customer.create({ data: { code: suffix, name: "Synthetic ticket customer", phone: "", city: "Test", branchId: branch.id, assignedToId: user.id, travellers: { create: [{ fullName: "Same Name" }, { fullName: "Same Name" }] } }, include: { travellers: true } });
+const allocation = await reserveFixturePort();
+const port = allocation.port, origin = `http://127.0.0.1:${port}`;
+// Normal Next CLI cannot inherit this listener. Release immediately before spawning;
+// any rare intervening collision still fails the owned-child readiness checks, never retries the journey.
+await allocation.release();
 const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", String(port), "-H", "127.0.0.1"], { env: { ...process.env, APP_ORIGIN: origin, JWT_SECRET: randomBytes(48).toString("hex"), WA_PROVIDER: "manual" }, stdio: ["ignore", "pipe", "pipe"] });
 let logs = "", cookie = "";
 const startedAt = Date.now();

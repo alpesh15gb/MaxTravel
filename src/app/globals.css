@@ -690,3 +690,11 @@ main table tbody tr:hover { background:var(--brand-50); }
   .dashboard-kpi-financial > a { display:flex; align-items:center; min-height:44px; }
   .dashboard-kpi-financial > a .stat-card { width:100%; }
 }
+
+/* Online queue touch targets: override the legacy 42px mobile field floor only here. */
+.online-bookings-filters input:not([type=checkbox]):not([type=radio]),
+.online-bookings-filters select,
+.online-bookings-records input:not([type=checkbox]):not([type=radio]),
+.online-bookings-records select,
+.online-bookings-records textarea,
+.online-bookings-records button { min-height:44px; }

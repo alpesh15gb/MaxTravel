@@ -93,7 +93,24 @@ export async function verifyOnlineBookingsUi(db: PrismaClient, databaseUrl: stri
       assert.equal(await firstAction.getByLabel("Action", { exact: true }).inputValue(), "CANCELLATION_REQUEST");
       assert.equal(await firstAction.getByLabel("Reason / customer-facing note").inputValue(), "Unsaved synthetic note retained across resize");
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `No overflow at ${width}px`);
-      const searchBox = await page.getByLabel("Search bookings", { exact: true }).boundingBox(); assert(searchBox && searchBox.height >= 44);
+      const controlGeometry = [];
+      for (const [label, locator] of [
+        ["Search bookings", page.getByLabel("Search bookings", { exact: true })],
+        ["Product", page.getByLabel("Product", { exact: true })],
+        ["CRM status", page.getByLabel("CRM status", { exact: true })],
+        ["Action", firstAction.getByLabel("Action", { exact: true })],
+        ["Reason / customer-facing note", firstAction.getByLabel("Reason / customer-facing note")],
+      ] as const) {
+        controlGeometry.push({ label, ...await locator.evaluate(element => {
+          const rect = element.getBoundingClientRect(), style = getComputedStyle(element);
+          return { tag: element.tagName, id: element.id, x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+            minHeight: style.minHeight, cssHeight: style.height, boxSizing: style.boxSizing,
+            paddingTop: style.paddingTop, paddingBottom: style.paddingBottom, fontSize: style.fontSize };
+        }) });
+      }
+      navigationEvidence.push({ event: "queue-control-geometry", viewportWidth: width, controls: controlGeometry });
+      const searchBox = await page.getByLabel("Search bookings", { exact: true }).boundingBox(); assert(searchBox && searchBox.height >= 44, `Search touch target at ${width}px: ${JSON.stringify(controlGeometry[0])}`);
+      assert(controlGeometry.every(control => control.height >= 44), `Queue touch targets at ${width}px: ${JSON.stringify(controlGeometry)}`);
       await page.screenshot({ path: resolve(output, `queue-mobile-${width}.png`) });
     }
     await firstAction.getByRole("button", { name: "Request cancellation review", exact: true }).click();
