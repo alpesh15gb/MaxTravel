@@ -12,6 +12,7 @@ type Section = typeof sections[number];
 export default function PackagesClient() {
   const [items, setItems] = useState<CatalogueItem[]>([]); const [loading, setLoading] = useState(true); const [loadFailed, setLoadFailed] = useState(false);
   const [selected, setSelected] = useState<Item | null>(null); const [editing, setEditing] = useState(false);
+  const [editorFocusRequest, setEditorFocusRequest] = useState(0);
   const [draft, setDraft] = useState<PackageDraft>(structuredClone(emptyPackage)); const [slug, setSlug] = useState("");
   const [section, setSection] = useState<Section>("Overview"); const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false); const [uncertain, setUncertain] = useState(false);
@@ -26,6 +27,12 @@ export default function PackagesClient() {
   }
   useEffect(() => { void load(); }, []);
   useEffect(() => { if (error) errorSummary.current?.focus(); }, [error]);
+  useEffect(() => {
+    if (!editorFocusRequest) return;
+    // Commit the editor before focusing, then reveal its first fields below the fixed workspace header.
+    heading.current?.focus({ preventScroll: true });
+    heading.current?.scrollIntoView({ block: "start", behavior: "auto" });
+  }, [editorFocusRequest]);
   useEffect(() => {
     const confirmNavigation = (event: MouseEvent) => {
       const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
@@ -49,7 +56,7 @@ export default function PackagesClient() {
         if (!response.ok) throw new Error(body.error || "Could not open this package."); item = body.package;
       }
       setSelected(item); setDraft(structuredClone(item?.draft ?? emptyPackage)); setSlug(item?.slug ?? ""); setEditing(true); setSection("Overview"); setDirty(false); setNotice("");
-      window.setTimeout(() => heading.current?.focus(), 0);
+      setEditorFocusRequest(request => request + 1);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not open this package. Please retry."); }
     finally { setBusy(false); }
   }
@@ -97,7 +104,7 @@ export default function PackagesClient() {
         {!loading && !loadFailed && error && !editing && <button className="btn-secondary mt-3" onClick={() => void load()}>Retry loading</button>}
       </section>
       {editing && <section className="min-w-0 rounded-2xl border border-slate-200 bg-white" aria-label="Package editor">
-        <div className="border-b border-slate-200 p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 ref={heading} tabIndex={-1} className="text-xl font-semibold">{selected ? selected.title : "New package"}</h2><p className="mt-1 text-sm text-slate-500">{dirty ? "Unsaved edits" : selected ? `Revision ${selected.revision}` : "Start with a title and public URL"} · Enquiry only, never instant confirmation</p></div><button className="btn-ghost" disabled={busy} onClick={() => { if (!dirty || window.confirm("Discard your unsaved edits?")) { setEditing(false); setDirty(false); window.setTimeout(() => createButton.current?.focus(), 0); } }}>Close editor</button></div>
+        <div className="border-b border-slate-200 p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 ref={heading} tabIndex={-1} className="scroll-mt-24 text-xl font-semibold">{selected ? selected.title : "New package"}</h2><p className="mt-1 text-sm text-slate-500">{dirty ? "Unsaved edits" : selected ? `Revision ${selected.revision}` : "Start with a title and public URL"} · Enquiry only, never instant confirmation</p></div><button className="btn-ghost" disabled={busy} onClick={() => { if (!dirty || window.confirm("Discard your unsaved edits?")) { setEditing(false); setDirty(false); window.setTimeout(() => createButton.current?.focus(), 0); } }}>Close editor</button></div>
           <div role="group" aria-label="Editor sections" className="mt-5 flex flex-wrap gap-2">{sections.map(s => <button key={s} className={section === s ? "btn-primary" : "btn-secondary"} aria-pressed={section === s} onClick={() => setSection(s)}>{s}</button>)}</div>
         </div>
         <fieldset disabled={busy || uncertain || selected?.status === "ARCHIVED"} className="min-w-0 space-y-5 p-5 sm:p-6"><legend className="sr-only">{section}</legend>
