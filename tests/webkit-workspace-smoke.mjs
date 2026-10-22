@@ -84,7 +84,7 @@ await withFixtureCleanup(async () => {
     if (mobile) await screenshot(`${name}-navigation`);
     await customer.click(); await page.waitForURL("**/customers");
     if (mobile) await page.locator("#workspace-navigation").waitFor({ state: "hidden" });
-    const seededCustomer = page.locator(`main a[href="/customers/${fixture.customerId}"]:visible`);
+    const seededCustomer = page.locator(`main a[href="/customers/${fixture.customerId}"]:visible`).filter({ hasText: "Meera Sharma" });
     await seededCustomer.waitFor();
     assert((await seededCustomer.innerText()).includes("Meera Sharma"), "Seeded customer content must render before capture");
     await screenshot(`${name}-customers`);
