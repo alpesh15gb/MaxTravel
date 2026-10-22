@@ -70,6 +70,17 @@ export async function verifyOnlineBookingsUi(db: PrismaClient, databaseUrl: stri
     assert.equal(seen.length, 136); assert.equal(new Set(seen).size, 136); assert(!seen.includes("ONLINE-OTHER"));
     await page.getByRole("link", { name: "← Newer bookings" }).click(); await page.waitForFunction(() => document.querySelectorAll("tbody tr").length === 50); assert.deepEqual(await references(), second);
     await page.getByRole("link", { name: "First page", exact: true }).click(); await page.waitForURL(origin + "/online-bookings"); assert.deepEqual(await references(), first);
+    // No applied criteria on page two: Clear must discard both cursor and unsent control edits.
+    await page.getByRole("link", { name: "Older bookings →" }).click(); await page.waitForURL(/direction=older/);
+    assert.deepEqual(await references(), second);
+    await page.getByLabel("Search bookings", { exact: true }).fill("Unsent filter draft");
+    await page.getByLabel("Product", { exact: true }).selectOption("HOTEL");
+    await page.getByLabel("CRM status", { exact: true }).selectOption("ENQUIRY");
+    await page.getByRole("link", { name: "Clear", exact: true }).click(); await page.waitForURL(origin + "/online-bookings");
+    assert.equal(await page.getByLabel("Search bookings", { exact: true }).inputValue(), "", "Clear resets visible search");
+    assert.equal(await page.getByLabel("Product", { exact: true }).inputValue(), "", "Clear resets visible product");
+    assert.equal(await page.getByLabel("CRM status", { exact: true }).inputValue(), "", "Clear resets visible CRM status");
+    assert.deepEqual(await references(), first, "Clear restores unfiltered first-page records");
     await page.getByLabel("Search bookings", { exact: true }).fill("ONLINE-001"); await page.getByRole("button", { name: "Apply filters" }).click(); await page.waitForURL(/q=ONLINE-001/); assert.deepEqual(await references(), ["ONLINE-001"]);
     await page.getByLabel("Search bookings", { exact: true }).fill("Shared customer"); await page.getByLabel("Product", { exact: true }).selectOption("HOTEL"); await page.getByLabel("CRM status", { exact: true }).selectOption("ENQUIRY"); await page.getByRole("button", { name: "Apply filters" }).click(); await page.waitForURL(/product=HOTEL/);
     assert.equal((await references()).length, 50);
@@ -77,6 +88,13 @@ export async function verifyOnlineBookingsUi(db: PrismaClient, databaseUrl: stri
     await page.getByRole("button", { name: "Apply filters" }).click(); await page.waitForURL(url => !url.searchParams.has("cursor")); assert.equal((await references()).length, 50);
     await page.screenshot({ path: resolve(output, "filtered-desktop.png") });
     await page.getByRole("link", { name: "Clear", exact: true }).click(); await page.waitForURL(origin + "/online-bookings");
+    assert.equal(await page.getByLabel("Search bookings", { exact: true }).inputValue(), "", "Clear resets visible search");
+    assert.equal(await page.getByLabel("Product", { exact: true }).inputValue(), "", "Clear resets visible product");
+    assert.equal(await page.getByLabel("CRM status", { exact: true }).inputValue(), "", "Clear resets visible CRM status");
+    assert.deepEqual(await references(), first, "Clear restores unfiltered first-page records");
+    await page.getByRole("button", { name: "Apply filters", exact: true }).click();
+    await page.waitForURL(url => url.pathname === "/online-bookings" && ["q", "product", "status"].every(key => url.searchParams.get(key) === ""));
+    assert.deepEqual(await references(), first, "Applying the cleared form remains unfiltered");
     assert.equal(await page.locator("summary").filter({ hasText: "Manage online booking" }).count(), 50);
     const firstAction = page.locator("tbody tr").first().locator("details").first();
     await firstAction.locator("summary").click();
@@ -86,13 +104,38 @@ export async function verifyOnlineBookingsUi(db: PrismaClient, databaseUrl: stri
     await firstAction.getByRole("button", { name: "Request cancellation review", exact: true }).click();
     await firstAction.getByRole("status").filter({ hasText: "Synthetic uncertain response" }).waitFor();
     assert.equal(submittedIds.length, 1);
+    // Same normalized unfiltered URL: native reset changes only the filter form, not pending actions.
+    await page.getByLabel("Search bookings", { exact: true }).fill("Unsent filter draft");
+    await page.getByLabel("Product", { exact: true }).selectOption("HOTEL");
+    await page.getByLabel("CRM status", { exact: true }).selectOption("ENQUIRY");
+    const beforeResetUrl = page.url();
+    await page.getByRole("button", { name: "Clear", exact: true }).click();
+    assert.equal(page.url(), beforeResetUrl, "Clearing unsent criteria needs no navigation");
+    assert.equal(await page.getByLabel("Search bookings", { exact: true }).inputValue(), "", "Clear resets visible search");
+    assert.equal(await page.getByLabel("Product", { exact: true }).inputValue(), "", "Clear resets visible product");
+    assert.equal(await page.getByLabel("CRM status", { exact: true }).inputValue(), "", "Clear resets visible CRM status");
+    assert.deepEqual(await references(), first, "Clear restores unfiltered first-page records");
+    assert.equal(await firstAction.getByLabel("Action", { exact: true }).inputValue(), "CANCELLATION_REQUEST");
+    assert.equal(await firstAction.getByLabel("Reason / customer-facing note").inputValue(), "Unsaved synthetic note retained across resize");
+    await firstAction.getByRole("status").filter({ hasText: "Synthetic uncertain response" }).waitFor();
+    assert.equal(submittedIds.length, 1, "Filter reset never submits or clears the uncertain action");
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 844 });
       await page.getByRole("table", { name: "Online bookings", exact: true }).waitFor();
       assert.equal(await page.locator("summary").filter({ hasText: "Manage online booking" }).count(), 50, "One action instance per booking across resize");
       assert.equal(await firstAction.getByLabel("Action", { exact: true }).inputValue(), "CANCELLATION_REQUEST");
       assert.equal(await firstAction.getByLabel("Reason / customer-facing note").inputValue(), "Unsaved synthetic note retained across resize");
-      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `No overflow at ${width}px`);
+      navigationEvidence.push({ event: "queue-overflow-geometry", ...await page.evaluate(() => {
+        const viewportWidth = innerWidth;
+        const overflowing = Array.from(document.querySelectorAll("body *")).slice(0, 2500).flatMap(element => {
+          const rect = element.getBoundingClientRect(), style = getComputedStyle(element);
+          if (!rect.width || !rect.height || style.display === "none" || style.visibility === "hidden" || (rect.right <= viewportWidth && rect.left >= 0)) return [];
+          return [{ tag: element.tagName, id: element.id, classes: String(element.className).slice(0, 160),
+            x: rect.x, right: rect.right, width: rect.width, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth,
+            minWidth: style.minWidth, maxWidth: style.maxWidth, whiteSpace: style.whiteSpace, overflowWrap: style.overflowWrap, display: style.display }];
+        }).sort((a, b) => b.right - a.right).slice(0, 24);
+        return { viewportWidth, documentWidth: document.documentElement.scrollWidth, bodyWidth: document.body.scrollWidth, scrollX, overflowing };
+      }) });
       const controlGeometry = [];
       for (const [label, locator] of [
         ["Search bookings", page.getByLabel("Search bookings", { exact: true })],
@@ -109,6 +152,7 @@ export async function verifyOnlineBookingsUi(db: PrismaClient, databaseUrl: stri
         }) });
       }
       navigationEvidence.push({ event: "queue-control-geometry", viewportWidth: width, controls: controlGeometry });
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `No overflow at ${width}px`);
       const searchBox = await page.getByLabel("Search bookings", { exact: true }).boundingBox(); assert(searchBox && searchBox.height >= 44, `Search touch target at ${width}px: ${JSON.stringify(controlGeometry[0])}`);
       assert(controlGeometry.every(control => control.height >= 44), `Queue touch targets at ${width}px: ${JSON.stringify(controlGeometry)}`);
       await page.screenshot({ path: resolve(output, `queue-mobile-${width}.png`) });
@@ -116,6 +160,9 @@ export async function verifyOnlineBookingsUi(db: PrismaClient, databaseUrl: stri
     await firstAction.getByRole("button", { name: "Request cancellation review", exact: true }).click();
     await firstAction.getByRole("status").filter({ hasText: "Synthetic uncertain response" }).waitFor();
     assert.equal(submittedIds.length, 2); assert.equal(submittedIds[1], submittedIds[0], "Pending command idempotency key survives viewport resize");
+    await page.getByRole("button", { name: "Apply filters", exact: true }).click();
+    await page.waitForURL(url => url.pathname === "/online-bookings" && ["q", "product", "status"].every(key => url.searchParams.get(key) === ""));
+    assert.deepEqual(await references(), first, "Applying the cleared form remains unfiltered");
     await page.getByLabel("Search bookings", { exact: true }).fill("not-a-booking"); await page.getByRole("button", { name: "Apply filters" }).press("Enter"); await page.getByRole("heading", { name: "No matching online bookings" }).waitFor();
     await page.screenshot({ path: resolve(output, "empty-mobile.png") });
     await page.goto(origin + "/online-bookings?cursor=%25"); await page.getByRole("alert").filter({ hasText: "These filters" }).waitFor();

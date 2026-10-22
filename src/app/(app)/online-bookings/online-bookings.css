@@ -3,4 +3,9 @@
   main table.online-bookings-records { min-width:0; }
   main table.online-bookings-records tbody tr { height:auto; }
   main table.online-bookings-records td { overflow-wrap:anywhere; }
+  /* Status text must fit a half-width mobile cell rather than force its nowrap intrinsic width. */
+  main table.online-bookings-records .status { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+  main table.online-bookings-records .status-dot { flex-shrink:0; }
+  main table.online-bookings-records details :is(select,input,textarea,button) { min-width:0; max-width:100%; }
+  main table.online-bookings-records details button { white-space:normal; overflow-wrap:anywhere; }
 }
