@@ -858,3 +858,22 @@ main table tbody tr:hover { background:var(--brand-50); }
   .sales-record h2[tabindex] { font-size:1.375rem; }
 }
 @media(prefers-reduced-motion:reduce) { .sales-row { transition:none; } }
+
+/* Task-local sales orientation: no extra fixed overlay or draft state. */
+.sales-row-meta { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; gap:12px; }
+.sales-row-meta .pill { justify-self:start; }
+.sales-row-followup { display:grid; gap:3px; line-height:1.45; }
+.sales-row-followup strong { font-weight:550; color:var(--text-primary); }
+.sales-row-action { display:block; margin-top:12px; font-size:.875rem; font-weight:650; color:var(--brand-800); }
+.sales-quote-orientation { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px; padding:16px; margin:16px 0 22px; border:1px solid var(--brand-200); border-radius:12px; background:var(--accent-weak); }
+.sales-draft-total { display:block; font-size:1.5rem; line-height:1.4; font-variant-numeric:tabular-nums; }
+.sales-quote-route { display:grid; gap:8px; }
+.sales-quote-route .btn { justify-self:start; }
+@media(max-width:639px) {
+  .sales-workspace { gap:16px; }
+  .sales-header { gap:12px; }
+  .sales-header .sales-eyebrow { margin-bottom:2px; }
+  .sales-header > div > p:last-child { margin-top:6px; }
+  .sales-quote-orientation { padding:12px; margin:12px 0 18px; gap:10px; }
+  .sales-row-meta { grid-template-columns:minmax(0,1fr); gap:8px; }
+}

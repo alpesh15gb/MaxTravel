@@ -3,7 +3,7 @@ name: Sales draft recovery
 on:
   workflow_dispatch:
   push:
-    branches: [main, feat/crm-sales-draft-recovery]
+    branches: [main, feat/crm-sales-draft-recovery, feat/crm-workspace-polish]
   pull_request:
     branches: [main]
 permissions:

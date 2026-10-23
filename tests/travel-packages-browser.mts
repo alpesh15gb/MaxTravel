@@ -153,8 +153,11 @@ try {
   }
   writeFileSync(path.join(output,"editor-viewport-geometry.json"),JSON.stringify(viewportEvidence,null,2));
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "No horizontal mobile overflow");
+  const moreActions = page.locator("details").filter({ has: page.locator("summary", { hasText: /^More actions$/ }) });
+  if (!(await moreActions.evaluate(node => node.hasAttribute("open")))) await moreActions.locator("summary").click();
   page.once("dialog", dialog => dialog.accept()); await page.getByRole("button", { name: "Unpublish", exact: true }).click(); await page.getByText("No longer publicly available from the catalogue. Your draft is retained.").waitFor();
   assert.equal((await fetch(origin + "/api/public/travel-packages/kerala-discovery")).status, 404);
+  if (!(await moreActions.evaluate(node => node.hasAttribute("open")))) await moreActions.locator("summary").click();
   page.once("dialog", dialog => dialog.accept()); await page.getByRole("button", { name: "Archive", exact: true }).click(); await page.getByRole("button", { name: "Restore as draft", exact: true }).waitFor();
   page.once("dialog", dialog => dialog.accept()); await page.getByRole("button", { name: "Restore as draft", exact: true }).click(); await page.getByText("Restored as a private draft.").waitFor();
   await page.getByRole("button", { name: "Close editor", exact: true }).click();

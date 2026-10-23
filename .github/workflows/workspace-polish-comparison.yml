@@ -1,0 +1,78 @@
+# An additional visual gate, never a replacement for the complete CI/security/journey workflows.
+name: Workspace polish comparison
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/crm-workspace-polish]
+permissions:
+  contents: read
+concurrency:
+  group: workspace-polish-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  workspace:
+    name: Workspace ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [before, after]
+    defaults:
+      run:
+        working-directory: app
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: "file:./ci.db"
+      JWT_SECRET: "ci-only-research-fixture-not-a-real-secret-0123456789abcdef"
+      WA_PROVIDER: manual
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+          ref: ${{ matrix.version == 'before' && '24267f5872b8f22af75e0d0a34e1c9366b1da44d' || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx playwright install --with-deps chromium
+      - name: Build exact application revision before adding comparison harness
+        run: npm run build
+      - uses: actions/checkout@v4
+        with:
+          path: comparison-harness
+          ref: ${{ github.sha }}
+          sparse-checkout: |
+            tests/workspace-polish-browser.mjs
+            tests/visual-review-server.mjs
+            tests/fixture-lifecycle.mjs
+            tests/browser.mjs
+          sparse-checkout-cone-mode: false
+      - name: Use identical fixture definitions and observer on both revisions
+        run: |
+          cp ../comparison-harness/tests/workspace-polish-browser.mjs tests/
+          cp ../comparison-harness/tests/visual-review-server.mjs tests/
+          cp ../comparison-harness/tests/fixture-lifecycle.mjs tests/
+          cp ../comparison-harness/tests/browser.mjs tests/
+          sha256sum tests/workspace-polish-browser.mjs tests/visual-review-server.mjs
+      - name: Verify pure sales workspace lifecycle
+        if: matrix.version == 'after'
+        run: |
+          node --import tsx tests/sales-workspace.ts
+          node tests/dashboard-concurrency.mjs
+      - name: Compare real task surfaces without real customer/provider access
+        timeout-minutes: 9
+        env:
+          WORKSPACE_COMPARISON: ${{ matrix.version }}
+        run: node --import tsx tests/workspace-polish-browser.mjs
+      - name: Retain baseline, candidate geometry, screenshots and original failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-polish-${{ matrix.version }}
+          path: app/test-artifacts/workspace-polish/
+          if-no-files-found: warn
+          retention-days: 14

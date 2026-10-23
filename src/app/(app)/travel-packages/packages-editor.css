@@ -1,0 +1,44 @@
+/* Route-local authoring polish. Never alter the measured sticky action bar. */
+.package-workspace-polish.package-studio select.control {
+  height:auto;
+  min-height:max(44px, 2.75em);
+  min-width:0;
+  max-width:100%;
+  padding-block:.6em;
+  padding-inline:.5em 1em;
+  line-height:1.4;
+}
+.package-workspace-polish .package-editor-identity {
+  display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+}
+.package-workspace-polish .package-editor-identity h2 { overflow-wrap:anywhere; }
+.package-workspace-polish .package-editor-identity > button { flex-shrink:0; }
+.package-workspace-polish .package-editor-purpose { margin-top:4px; font-size:.875rem; color:var(--text-secondary); }
+.package-workspace-polish .package-version-context {
+  margin-top:14px; border:1px solid var(--studio-border); border-radius:10px;
+  background:var(--paper-1); font-size:.875rem; line-height:1.6;
+}
+.package-workspace-polish .package-draft-state { padding:10px 12px; }
+.package-workspace-polish .package-draft-state > span:first-child { display:block; color:var(--text-secondary); }
+.package-workspace-polish .package-publication { margin:0; border-left:0; border-top:1px solid var(--studio-border); padding:0 12px; background:transparent; }
+.package-workspace-polish .package-publication summary { padding-block:.65em; min-height:44px; }
+.package-workspace-polish .package-publication p { margin-top:0; padding-bottom:12px; }
+.package-workspace-polish .package-secondary-actions { padding:0 20px 14px; font-size:.875rem; }
+.package-workspace-polish .package-secondary-actions summary { min-height:44px; padding-block:.7em; cursor:pointer; font-weight:600; color:var(--text-secondary); }
+.package-workspace-polish .package-secondary-actions p { margin:0 0 10px; line-height:1.6; color:var(--text-secondary); }
+.package-workspace-polish .package-secondary-actions > div { display:flex; flex-wrap:wrap; gap:8px; }
+@media (max-width:639px) {
+  .package-workspace-polish[data-editing=true] > .page-header { margin-bottom:16px; }
+  .package-workspace-polish[data-editing=true] > .page-header h1 { font-size:1.5rem; }
+  .package-workspace-polish[data-editing=true] > .page-header .eyebrow,
+  .package-workspace-polish[data-editing=true] > .page-header p { display:none; }
+  .package-workspace-polish .package-editor-heading { padding:16px; }
+  .package-workspace-polish .package-editor-identity { flex-wrap:wrap; gap:4px 12px; }
+  .package-workspace-polish .package-editor-identity h2 { font-size:1.125rem; }
+  .package-workspace-polish .package-editor-identity > .min-w-0 { flex:1 1 170px; }
+  .package-workspace-polish .package-version-context { margin-top:10px; }
+  .package-workspace-polish .package-draft-state > span:first-child { display:inline; margin-right:.5em; }
+  .package-workspace-polish .package-secondary-actions { padding-inline:16px; }
+}
+
+.package-workspace-polish .package-secondary-actions :is(summary,button) { scroll-margin-bottom:calc(var(--package-actions-height, 224px) + 16px); }

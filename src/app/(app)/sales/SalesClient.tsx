@@ -266,7 +266,9 @@ export default function SalesClient() {
           activeQuote.current = null; setDirty(false); setView("list");
           if (entry) await checkRecovery(entry);
         }
-        setError(result.error ?? "The request was not accepted. Check the fields and permissions.");
+        setError(quoteNonce && result.code === "QUOTE_REVISION_CONFLICT"
+          ? "The enquiry or quotation changed; this draft was not saved. Recheck your access and review the latest enquiry before continuing. A retained copy cannot overwrite a newer version."
+          : result.error ?? "The request was not accepted. Check the fields and permissions.");
         return null;
       }
       confirmed = true;
@@ -359,7 +361,7 @@ export default function SalesClient() {
     <header className="sales-header flex flex-wrap items-start justify-between gap-4">
       <div><p className="sales-eyebrow text-sm font-semibold">Sales workspace</p><h1 className="text-3xl font-semibold">Enquiries &amp; quotations</h1>
         <p className="mt-2 text-sm text-slate-600">Understand the request. Prepare a private proposal. Keep the next step clear.</p></div>
-      {canCreate && <button ref={newButton} className={view === "new" || view === "quote" ? "btn" : "btn btn-primary"} disabled={locked} onClick={() => open("new", null)}>New enquiry</button>}
+      {canCreate && <button ref={newButton} className={view === "new" || view === "quote" || recovery ? "btn" : "btn btn-primary"} disabled={locked} onClick={() => open("new", null)}>New enquiry</button>}
     </header>
 
     {error && <div ref={errorSummary} tabIndex={-1} role="alert" className="form-error space-y-3"><p>{error}</p>
@@ -371,7 +373,7 @@ export default function SalesClient() {
     {recovery && retainedDraft && recovery.nonce === retainedDraft.nonce && <section className="panel p-5 space-y-3" aria-label="Quotation recovery" data-recovery-state={recovery.kind}>
       <h2 ref={recoveryHeading} tabIndex={-1} className="text-lg font-semibold scroll-mt-24">{["pending", "unknown"].includes(recovery.kind) ? "Review an unresolved quotation save" : "Recover an unsaved quotation"}</h2>
       {recovery.kind === "checking" && <p role="status">Checking your current access and the latest enquiry…</p>}
-      {recovery.kind === "unavailable" && <><p role="alert">Access could not be rechecked. The copy stays hidden; retry before restoring it.</p><button className="btn" disabled={recoveryBusy} onClick={() => void checkRecovery(retainedDraft)}>Retry recovery check</button></>}
+      {recovery.kind === "unavailable" && <><p role="alert">Access could not be rechecked. The copy stays hidden; retry before restoring it.</p><button className="btn btn-primary" disabled={recoveryBusy} onClick={() => void checkRecovery(retainedDraft)}>Retry recovery check</button></>}
       {recovery.lead && <>
         <p className="font-semibold break-words">{recovery.lead.title}</p>
         {recovery.kind === "ready" && <p>The enquiry is unchanged. Restore your quotation to continue editing; saving remains a separate action.</p>}
@@ -380,7 +382,7 @@ export default function SalesClient() {
         {recovery.kind === "unknown" && <p role="alert">The previous save outcome is unknown. It may have completed. This copy cannot be restored or resubmitted; review the latest enquiry before discarding it.</p>}
         <div className="flex flex-wrap gap-3">
           {recovery.kind === "ready" && retainedDraft.fields && <button className="btn btn-primary" disabled={recoveryBusy} onClick={() => void restoreQuote()}>Restore quotation</button>}
-          <button className="btn" disabled={recoveryBusy} onClick={() => void reviewRetainedQuote()}>Review latest enquiry</button>
+          <button className={recovery.kind === "ready" ? "btn" : "btn btn-primary"} disabled={recoveryBusy} onClick={() => void reviewRetainedQuote()}>Review latest enquiry</button>
           <button className="btn" disabled={recoveryBusy || retainedDraft.phase === "submitting"} onClick={discardRetainedQuote}>Discard saved draft</button>
         </div>
         {retainedDraft.fields && recovery.kind !== "ready" && <details><summary className="cursor-pointer py-3 font-medium">Read retained text without applying it</summary><div className="space-y-3">
@@ -420,7 +422,7 @@ export default function SalesClient() {
             : !visible.length ? <div className="p-6 space-y-3"><h3 className="font-semibold">No matching enquiries</h3><p className="text-sm">Try a different customer, destination or stage. Your selected enquiry stays open.</p><button className="btn" onClick={() => { setQuery(""); setFilter("ALL"); searchInput.current?.focus(); }}>Clear filters</button></div>
               : <ul className="divide-y">{visible.map(lead => <li key={lead.id}><button id={`sales-open-${lead.id}`} className={`sales-row w-full p-4 text-left ${selectedId === lead.id && view !== "new" ? "is-selected" : ""}`} aria-label={`Open enquiry: ${lead.title}`} aria-current={selectedId === lead.id && view !== "new" ? "true" : undefined} onClick={() => open("lead", lead.id)}>
                 <span className="flex items-start justify-between gap-3 font-semibold"><span className="min-w-0 break-words">{lead.title}</span><span aria-hidden="true" className="shrink-0 text-brand-700">→</span></span><span className="block text-sm text-slate-600">{customerName(lead.customerId)} · {enumLabel(lead.product)}</span>
-                <span className="sales-row-meta mt-2 flex flex-wrap gap-2 text-sm"><span className="pill">{enumLabel(lead.stage)}</span><span>{lead.followUpAt ? `Follow-up ${dateTimeLabel(lead.followUpAt)}` : "No follow-up set"}</span></span>
+                <span className="sales-row-meta"><span className="pill">{enumLabel(lead.stage)}</span><span className="sales-row-followup"><span>{lead.followUpAt ? "Next follow-up" : "Follow-up not scheduled"}</span>{lead.followUpAt && <strong>{dateTimeLabel(lead.followUpAt)}</strong>}</span></span><span className="sales-row-action" aria-hidden="true">Open enquiry →</span>
               </button></li>)}</ul>}
         </section>
         <section className={`sales-record panel min-w-0 p-5 ${view === "quote" || view === "new" ? "sales-editor" : ""}`} aria-label="Selected enquiry">
@@ -478,7 +480,11 @@ export default function SalesClient() {
             </article>)}</div>
           </>}
           {selected && view === "quote" && <>
-            <h2 {...headingProps}>Quotation · {selected.title}</h2><p className="mt-2 mb-5 text-sm text-slate-600">Prepare a new draft version. Saving does not publish or send it. Describe the itinerary, inclusions and terms clearly.</p><p className="mb-4 text-sm text-slate-600">Enter the expiry in your device’s local time; saved expiry labels are shown in IST.</p>
+            <h2 {...headingProps}>Quotation · {selected.title}</h2><p className="mt-2 mb-4 text-sm text-slate-600">New private draft. Saving does not publish or send it.</p>
+            <section className="sales-quote-orientation" aria-label="Quotation overview">
+              <div><span className="text-sm">Draft total · {items.length} {items.length === 1 ? "item" : "items"}</span><strong className="sales-draft-total">{money(items.reduce((total, item) => total + item.quantity * item.priceMinor, 0))}</strong></div>
+              <div className="sales-quote-route"><p className="text-sm">1. Itinerary &amp; prices <span aria-hidden="true">→</span> 2. Validity &amp; terms <span aria-hidden="true">→</span> Save draft</p><button type="button" className="btn" disabled={locked} onClick={() => { const field = document.getElementById("sales-quote-expiry"); field?.focus({ preventScroll: true }); field?.scrollIntoView({ block: "center", behavior: "instant" }); }}>Continue to validity &amp; terms</button></div>
+            </section>
             <form onSubmit={async event => { event.preventDefault();
               const total = items.reduce((sum, item) => sum + item.quantity * item.priceMinor, 0);
               const cost = items.reduce((sum, item) => sum + item.quantity * item.costMinor, 0);
@@ -491,7 +497,7 @@ export default function SalesClient() {
                 {items.length > 1 && <button className="btn" type="button" aria-label={`Remove item ${index + 1}`} onClick={() => { changeQuote({ items: liveFields.current.items.filter((_, position) => position !== index) }); addItemButton.current?.focus(); }}>Remove item</button>}
               </fieldset>)}
                 <button ref={addItemButton} type="button" className="btn" disabled={items.length >= 100} onClick={() => { changeQuote({ items: [...liveFields.current.items, newItem()] }); }}>Add item</button>
-                <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-quote-expiry">Valid until</label><input id="sales-quote-expiry" className="control mt-1" type="datetime-local" required value={expiry} onChange={event => { changeQuote({ expiry: event.target.value }); }} /></div>
+                <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-quote-expiry">Valid until</label><p id="sales-quote-expiry-help" className="text-sm text-slate-600">Enter your device’s local time; saved expiry labels are shown in IST.</p><input id="sales-quote-expiry" aria-describedby="sales-quote-expiry-help" className="control mt-1" type="datetime-local" required value={expiry} onChange={event => { changeQuote({ expiry: event.target.value }); }} /></div>
                 <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-quote-terms">Terms and inclusions</label><textarea id="sales-quote-terms" className="control mt-1" required maxLength={10000} rows={6} value={terms} onChange={event => { changeQuote({ terms: event.target.value }); }} /></div>
                 <div className="sales-editor-footer space-y-3"><p className="font-semibold">Quotation total {money(items.reduce((total, item) => total + item.quantity * item.priceMinor, 0))}</p><div className="sales-actions flex flex-wrap gap-3"><button className="btn btn-primary">Save draft version</button><button type="button" className="btn" onClick={() => open("lead")}>Close quotation</button></div><p className="text-sm text-slate-600">{dirty ? "Unsaved changes — save or explicitly discard before leaving." : "New draft — not yet saved or shared."}</p><p className="text-sm text-slate-600">A temporary quotation copy supports Back/Forward recovery in this signed-in tab for up to 30 minutes. Reloading, closing the tab or signing out clears that copy.</p></div>
               </fieldset>
