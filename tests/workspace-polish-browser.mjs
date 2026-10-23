@@ -184,8 +184,17 @@ await withFixtureCleanup(async()=>{
       await editor.evaluate(root=>{const sizes=[root,...root.querySelectorAll('*')].filter(n=>n instanceof HTMLElement).map(node=>{const s=getComputedStyle(node);return {node,font:parseFloat(s.fontSize),line:parseFloat(s.lineHeight)};});for(const {node,font,line} of sizes){if(Number.isFinite(font))node.style.fontSize=`${font*2}px`;if(Number.isFinite(line))node.style.lineHeight=`${line*2}px`;}});
       await keyboardSlugAboveSaveBar(`${width}-keyboard-slug-text200`);
       const picker=sectionPicker();assert.equal(await picker.evaluate(node=>node.labels.length),1,'Section picker retains a real associated label');
-      const clearance=await picker.evaluate(node=>{const s=getComputedStyle(node),b=node.getBoundingClientRect();return {height:b.height,needed:parseFloat(s.lineHeight)+parseFloat(s.paddingTop)+parseFloat(s.paddingBottom)+parseFloat(s.borderTopWidth)+parseFloat(s.borderBottomWidth),font:s.fontSize,label:node.selectedOptions[0].textContent,available:b.width-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight)-parseFloat(s.borderLeftWidth)-parseFloat(s.borderRightWidth),labels:[...node.options].map(option=>{const context=document.createElement('canvas').getContext('2d');context.font=s.font;return {label:option.textContent,width:context.measureText(option.textContent).width};})};});
-      report.scenarios.push({name:`${width}-picker-text200-clearance`,...clearance});if(!before){assert(clearance.height>=clearance.needed-.5,'200% text select has complete vertical text clearance');assert(clearance.labels.every(label=>label.width<=clearance.available),'200% section labels fit native select content width');}persist();
+      const clearance=await picker.evaluate(node=>{
+        const s=getComputedStyle(node),b=node.getBoundingClientRect(),context=document.createElement('canvas').getContext('2d');
+        context.font=s.font;
+        const labels=[...node.options].map(option=>{const metrics=context.measureText(option.textContent);return {label:option.textContent,width:metrics.width,fontHeight:metrics.fontBoundingBoxAscent+metrics.fontBoundingBoxDescent};});
+        // Chromium native selects may expose line-height:normal even with author CSS.
+        // Measure the actual selected font box, never interpret normal as zero or skip the gate.
+        const computedLine=parseFloat(s.lineHeight),fontBox=Math.max(...labels.map(label=>label.fontHeight));
+        const textHeight=Number.isFinite(computedLine)?computedLine:fontBox;
+        return {height:b.height,needed:textHeight+parseFloat(s.paddingTop)+parseFloat(s.paddingBottom)+parseFloat(s.borderTopWidth)+parseFloat(s.borderBottomWidth),lineHeight:s.lineHeight,textHeight,font:s.fontSize,label:node.selectedOptions[0].textContent,nativeArrowReserve:24,available:b.width-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight)-parseFloat(s.borderLeftWidth)-parseFloat(s.borderRightWidth)-24,labels};
+      });
+      report.scenarios.push({name:`${width}-picker-text200-clearance`,...clearance});assert(Number.isFinite(clearance.needed)&&clearance.textHeight>0,'Native select measurement has a finite positive font box');if(!before){assert(clearance.height>=clearance.needed-.5,'200% text select has complete vertical text clearance');assert(clearance.labels.every(label=>label.width<=clearance.available),'200% section labels fit native select content width');}persist();
     }
     await within(context.close(),3000,'viewport context close');page=undefined;
   }
