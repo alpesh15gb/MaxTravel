@@ -7,6 +7,22 @@ import net from "node:net";
 import {chromium} from "./browser.mjs";
 import {PrismaClient} from "@prisma/client";
 const root=process.cwd();mkdirSync("test-artifacts/reporting",{recursive:true});
+// Capture real settled UI, not a responsive drawer transition or an autoscrolled sticky header.
+// No CSS injection, forced focus, hidden UI or suppressed application animation is used.
+async function settleShell(target) {
+ await target.evaluate(()=>document.fonts.ready);
+ await target.waitForFunction(()=>{const rail=document.querySelector("aside.app-sidebar");if(!rail)return false;const style=getComputedStyle(rail);const settled=rail.getAnimations().every(a=>!a.pending&&a.playState!=="running");return settled&&(window.innerWidth>=1024?style.visibility!=="hidden":rail.getAttribute("data-drawer")==="closed"&&style.visibility==="hidden");});
+ await target.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+}
+async function viewport(target,width,height) { await target.setViewportSize({width,height});await settleShell(target); }
+async function capture(target,name,fullPage=true) {
+ await settleShell(target);
+ await target.evaluate(()=>window.scrollTo({top:0,left:0,behavior:"instant"}));
+ await target.waitForFunction(()=>window.scrollY===0&&window.scrollX===0);
+ await target.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ await target.screenshot({path:`test-artifacts/reporting/${name}.png`,fullPage});
+}
+
 const port=await new Promise(resolve=>{const s=net.createServer().listen(0,"127.0.0.1",()=>{const port=s.address().port;s.close(()=>resolve(port));});});
 const base=`http://127.0.0.1:${port}`,log=createWriteStream("test-artifacts/reporting/browser-server.log");
 const server=spawn(process.execPath,["tests/visual-review-server.mjs"],{cwd:root,env:{...process.env,REVIEW_PORT:String(port)},stdio:["ignore","pipe","pipe"]});server.stdout.pipe(log);server.stderr.pipe(log);
@@ -31,19 +47,19 @@ try{
  assert.equal(await page.getByRole("button",{name:"Supplier statement",exact:true}).count(),1);
  await page.getByRole("searchbox",{name:"Search reports",exact:true}).fill("no-such-report");
  await page.getByRole("button",{name:"Clear search",exact:true}).click();
- await page.screenshot({path:"test-artifacts/reporting/catalogue-1440.png",fullPage:true});
+ await capture(page,"catalogue-1440");
  for(const width of [390,320]){
-  await page.setViewportSize({width,height:844});await page.evaluate(()=>window.scrollTo(0,0));
+  await viewport(page,width,844);await page.evaluate(()=>window.scrollTo(0,0));
   const bounds=await page.getByRole("button",{name:"Generate report",exact:true}).boundingBox();
   assert(bounds&&bounds.y>=64&&bounds.y+bounds.height<=844,`${width}px: initial Generate action is visible without autoscroll`);
-  await page.screenshot({path:`test-artifacts/reporting/catalogue-${width}-viewport.png`});
+  await capture(page,`catalogue-${width}-viewport`,false);
  }
- await page.setViewportSize({width:1440,height:1000});
+ await viewport(page,1440,1000);
 
  await page.getByRole("button",{name:"Generate report",exact:true}).click();
  await page.getByRole("table",{name:"Customer statement",exact:true}).waitFor();
  assert(await page.getByText("₹81,400",{exact:true}).count()>=1,"Customer closing balance should be 81400");
- await page.screenshot({path:"test-artifacts/reporting/statement-desktop.png",fullPage:true});
+ await capture(page,"statement-desktop");
  const pdfResponse=await context.request.get(base+`/api/reports/accounts?report=statement&customerId=${fixture.customerId}&format=pdf`);assert.equal(pdfResponse.status(),200);writeFileSync("test-artifacts/reporting/customer-statement.pdf",await pdfResponse.body());
  const downloadPromise=page.waitForEvent("download");await page.getByRole("link",{name:"Download XLSX",exact:true}).click();const download=await downloadPromise;await download.saveAs(path.join(root,"test-artifacts/reporting/customer-statement.xlsx"));
  await page.getByRole("button",{name:"Outstanding & ageing",exact:true}).click();await page.getByRole("button",{name:"Generate report",exact:true}).click();await page.getByRole("table",{name:"Customer outstanding and ageing",exact:true}).waitFor();
@@ -64,28 +80,44 @@ try{
  assert(filteredExport.includes("status=CONFIRMED")&&filteredExport.includes("ownerId="),"Export uses applied staff/status filters");
  const appliedSummary=page.getByRole("region",{name:"Applied report filters",exact:true});
  assert.match(await appliedSummary.innerText(),/Asha Verma/);assert.match(await appliedSummary.innerText(),/CONFIRMED/);
+ const selectedOwner=await page.getByRole("combobox",{name:"Staff / owner",exact:true}).inputValue();assert(!(await appliedSummary.innerText()).includes(selectedOwner),"Staff summary uses the human name, not the internal identifier");
  assert.equal(await page.getByRole("table",{name:"Sales and cost coverage",exact:true}).getByRole("cell",{name:"Hotel",exact:true}).count(),1,"Online hotel is not mislabeled Ticketing");
  const exported=await context.request.get(base+filteredExport);assert(exported.ok());const exportedCsv=await exported.text();
  assert(exportedCsv.includes('"Account","Meera Sharma · '));assert(exportedCsv.includes('"Current status / stage","CONFIRMED"'));assert(exportedCsv.includes('"Date basis","Booking date / visa creation date · current prices and status"'));
+ assert(exportedCsv.includes(selectedOwner),"Technical export metadata retains the exact applied owner identifier");
  writeFileSync("test-artifacts/reporting/filtered-sales.csv",exportedCsv);
- await page.screenshot({path:"test-artifacts/reporting/filtered-sales-1440.png",fullPage:true});
+ // Real text geometry, not only CSS declarations: adjacent cells must not visually touch.
+ const tableGeometry=await page.getByRole("table",{name:"Sales and cost coverage",exact:true}).evaluate(table=>{
+  const rows=[table.tHead.rows[0],table.tBodies[0].rows[0]];
+  const measurements=rows.map(row=>{const cells=[...row.cells];return{padding:cells.map(cell=>{const css=getComputedStyle(cell);return{left:parseFloat(css.paddingLeft),right:parseFloat(css.paddingRight)};}),gaps:cells.slice(0,-1).map((cell,index)=>{const left=document.createRange(),right=document.createRange();left.selectNodeContents(cell);right.selectNodeContents(cells[index+1]);return right.getBoundingClientRect().left-left.getBoundingClientRect().right;})};});
+  const region=table.closest(".report-table-scroll");return{measurements,overflow:region.scrollWidth>region.clientWidth,focusable:region.tabIndex===0};
+ });
+ assert(tableGeometry.measurements.every(row=>row.padding.every(p=>p.left>=12&&p.right>=12)),"Every report header/data cell needs horizontal breathing room");
+ assert(tableGeometry.measurements.every(row=>row.gaps.every(gap=>gap>=20)),"Adjacent rendered report values and headers must stay at least 20px apart");
+ assert(tableGeometry.overflow&&tableGeometry.focusable,"Wide register keeps a focusable horizontal scrolling region");
+ writeFileSync("test-artifacts/reporting/table-geometry.json",JSON.stringify(tableGeometry,null,2));
+ await capture(page,"filtered-sales-1440");
+ const reportScroller=page.getByRole("region",{name:"Sales and cost coverage details",exact:true});
+ const rightmost=await reportScroller.evaluate(region=>{region.scrollLeft=region.scrollWidth;return region.scrollLeft;});assert(rightmost>0,"Rightmost report columns remain reachable");
+ await capture(page,"filtered-sales-right-columns-1440");await reportScroller.evaluate(region=>{region.scrollLeft=0;});
+
  // Editing draft controls must not silently change the export of the displayed report.
  await page.getByRole("combobox",{name:"Current status / stage",exact:true}).selectOption("");
  assert.equal(await page.getByRole("link",{name:"Download CSV",exact:true}).getAttribute("href"),filteredExport);
  await page.getByText("Filter changes not applied.",{exact:false}).waitFor();
  assert.match(await appliedSummary.innerText(),/CONFIRMED/);
- await page.screenshot({path:"test-artifacts/reporting/dirty-filters-1440.png",fullPage:true});
+ await capture(page,"dirty-filters-1440");
  for(const width of [390,320]){
-  await page.setViewportSize({width,height:844});
+  await viewport(page,width,844);
   await page.getByRole("list",{name:"Report record cards",exact:true}).waitFor();
   assert(await page.getByRole("heading",{name:"Costed confirmed booking margin",exact:true}).isVisible());
   await page.getByRole("list",{name:"Report record cards",exact:true}).getByText("All record details",{exact:true}).click();
   assert(await page.getByRole("list",{name:"Report record cards",exact:true}).getByText("Supplier cost",{exact:true}).isVisible());
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),`${width}px: generated report must not overflow`);
-  await page.screenshot({path:`test-artifacts/reporting/filtered-dirty-sales-${width}.png`,fullPage:true});
+  await capture(page,`filtered-dirty-sales-${width}`);
   await page.getByRole("list",{name:"Report record cards",exact:true}).getByText("All record details",{exact:true}).click();
  }
- await page.setViewportSize({width:1440,height:1000});
+ await viewport(page,1440,1000);
  await page.getByRole("button",{name:"Restore applied filters",exact:true}).click();
  assert.equal(await page.getByRole("combobox",{name:"Current status / stage",exact:true}).inputValue(),"CONFIRMED");
  assert.equal(await page.getByText("Filter changes not applied.",{exact:false}).count(),0);
@@ -113,10 +145,10 @@ try{
  await page.getByRole("button",{name:"Supplier statement",exact:true}).click();await page.getByRole("combobox",{name:/Supplier/}).selectOption({label:"Aero consolidator"});
  await page.getByRole("button",{name:"Generate report",exact:true}).click();await page.getByRole("table",{name:"Supplier statement",exact:true}).waitFor();
  await page.getByRole("button",{name:"Customer statement",exact:true}).click();await page.getByRole("button",{name:"Generate report",exact:true}).click();await page.getByRole("table",{name:"Customer statement",exact:true}).waitFor();
- await page.setViewportSize({width:390,height:844});await page.locator("aside.app-sidebar[data-drawer='closed']").waitFor({state:"hidden"});await page.screenshot({path:"test-artifacts/reporting/statement-phone.png",fullPage:true});
+ await viewport(page,390,844);await page.locator("aside.app-sidebar[data-drawer='closed']").waitFor({state:"hidden"});await capture(page,"statement-phone");
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),"No phone page overflow outside report table");
  // Delayed JSON from an aborted report must never replace the report chosen later.
- await page.setViewportSize({width:1440,height:1000});
+ await viewport(page,1440,1000);
  await page.addInitScript(()=>{const original=window.fetch.bind(window);window.fetch=async(input,init)=>{const url=String(input);if(window.__holdNextReport&&url.startsWith("/api/reports/accounts?")&&!url.includes("options=1")){window.__holdNextReport=false;const response=await original(input,{...init,signal:undefined}),body=await response.json();return{ok:response.ok,status:response.status,json:()=>new Promise(resolve=>{window.__releaseReport=()=>resolve(body);})};}return original(input,init);};});
  await page.goto(base+`/reports?report=sales&customerId=${fixture.customerId}`);
  await page.waitForFunction(()=>{const button=Array.from(document.querySelectorAll("button")).find(b=>b.textContent==="Generate report");return button&&!button.disabled;});
@@ -145,7 +177,7 @@ try{
  await page.goto(base+`/reports?report=ageing&customerId=${fixture.customerId}`);
  await page.getByRole("button",{name:"Retry loading report accounts",exact:true}).waitFor();
  assert(await page.getByRole("button",{name:"Generate report",exact:true}).isDisabled());
- await page.screenshot({path:"test-artifacts/reporting/options-error-1440.png",fullPage:true});
+ await capture(page,"options-error-1440");
  await page.getByRole("button",{name:"Retry loading report accounts",exact:true}).click();
  await page.waitForFunction(()=>{const button=Array.from(document.querySelectorAll("button")).find(b=>b.textContent==="Generate report");return button&&!button.disabled;});
  let historicalRequests=0;
@@ -156,7 +188,7 @@ try{
  assert.equal(await page.getByRole("link",{name:"Download CSV",exact:true}).count(),0,"No stale download after a failed run");
  assert.equal(await page.getByRole("combobox",{name:"Customer",exact:true}).inputValue(),fixture.customerId);
  assert(await page.getByRole("button",{name:"Open customer statement",exact:true}).isVisible());
- for(const width of [1440,390,320]){await page.setViewportSize({width,height:844});await page.screenshot({path:`test-artifacts/reporting/history-error-${width}.png`,fullPage:true});}
+ for(const width of [1440,390,320]){await viewport(page,width,844);await capture(page,`history-error-${width}`);}
  await page.unroute("**/api/reports/accounts?*",historyFailure);await page.getByRole("button",{name:"Use today's balance",exact:true}).click();
  await page.getByRole("list",{name:"Report record cards",exact:true}).waitFor();
  assert.match(await page.getByRole("region",{name:"Applied report filters",exact:true}).innerText(),new RegExp(`As of ${new Date(Date.now()+330*60000).toISOString().slice(0,10)}`));
@@ -169,7 +201,7 @@ try{
  await readerPage.waitForFunction(()=>{const button=Array.from(document.querySelectorAll("button")).find(b=>b.textContent==="Generate report");return button&&!button.disabled;});
  await readerPage.getByRole("button",{name:"Generate report",exact:true}).click();await readerPage.getByRole("table",{name:"Customer statement",exact:true}).waitFor();
  assert.equal(await readerPage.getByRole("link",{name:/Download (CSV|XLSX|PDF)/}).count(),0);
- for(const width of [1440,390]){await readerPage.setViewportSize({width,height:844});await readerPage.screenshot({path:`test-artifacts/reporting/read-only-${width}.png`,fullPage:true});}
+ for(const width of [1440,390]){await viewport(readerPage,width,844);await capture(readerPage,`read-only-${width}`);}
  await readerContext.close();
  assert.deepEqual(errors,[]);console.log("PASS reporting browser: customer statements, 81400 closing balance, Excel download, PDF API, due-date editing, scoped staff/status filters, applied export filters, work and cash drill-downs, supplier statement, catalogue search, truthful CSV metadata, dirty filters, responsive full-detail cards at 1440/390/320, delayed-response protection, recoverable errors, read-only export denial, phone layout, no runtime errors.");
 }catch(e){if(page){writeFileSync("test-artifacts/reporting/browser-failure.html",await page.content());await page.screenshot({path:"test-artifacts/reporting/browser-failure.png",fullPage:true});}throw e;}finally{await db?.$disconnect();await browser?.close();if(fixture?.serverPid)try{process.kill(fixture.serverPid);}catch{}server.kill();log.end();}

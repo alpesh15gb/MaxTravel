@@ -48,6 +48,12 @@ Nine account reports plus overview already existed. Complete-account finance sco
 - Pending CI artifacts: catalogue and generated filtered/dirty reports at 1440/390/320; read-only/error screenshots; filtered CSV, XLSX and PDF. No live browser/auth claim is made.
 - The `tsx` CLI test command could not start its optional IPC listener in this sandbox (`EPERM`); the supported `node --import tsx` entry point ran the same test files without that listener. No browser or network permission workaround was attempted.
 
+### First CI evidence review and follow-up
+
+Run `40040827807` executed the reporting browser fixture successfully. The full test chain identified nine raw-color token violations in the new scoped CSS; those were corrected to existing semantic tokens without changing the gate. Source-resolved text contrast remains above 4.5:1 and focus-ring contrast above 3:1.
+
+Actual `filtered-sales-1440.png` review then showed insufficient horizontal cell spacing despite functional assertions passing. The follow-up adds scoped inline cell padding/minimum widths, an actual rendered-text spacing assertion (20px minimum between adjacent header/value text), geometry JSON and a rightmost-column screenshot. The existing horizontal scrolling region remains keyboard-focusable. Actual `history-error-320.png` showed a responsive sidebar transition captured mid-frame; deliberate captures now wait for real drawer visibility/animations and restore document scroll top, without hiding UI or forcing focus. The initial Generate-button viewport assertion still runs at the natural top position before any action can scroll to it. Staff names now have a human-readable display value from already scoped rows; technical exports retain the applied owner identifier. These follow-up geometry/capture assertions require a new CI run; their presence is not a browser-pass claim.
+
 ## Remaining priorities, not implemented here
 
 1. Persist verifiable allocation history across every receipt creation path before promising broad historical ageing availability. Do not fabricate missing past allocations.

@@ -177,7 +177,7 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
    result.columns=[field("reference","Reference"),field("customer","Customer"),field("service","Service"),field("status","Current stage/status"),field("owner","Owner"),field("travel","Travel date"),field("deadline","Decision / ticketing deadline")];result.summary=[{label:"Visa cases",value:cases.length},{label:"Bookings",value:bookings.length}];
   }
   if(["sales","operations"].includes(key))result.rows.sort((a,b)=>String(a.date??"").localeCompare(String(b.date??""))||String(a.reference).localeCompare(String(b.reference)));
-  if(ownerId){const name=[...new Set(result.rows.map(r=>r.staff||r.owner).filter(Boolean))].join(", ")||"Selected staff · no matching permitted work";metadata.filters.push({label:"Staff / owner",value:`${name} (${ownerId})`});warnings.push(`Staff filter: ${name} (${ownerId}).`);}
+  if(ownerId){const name=[...new Set(result.rows.map(r=>r.staff||r.owner).filter(Boolean))].join(", ")||"Selected staff · no matching permitted work";metadata.filters.push({label:"Staff / owner",value:`${name} (${ownerId})`,displayValue:name});warnings.push(`Staff filter: ${name} (${ownerId}).`);}
   if(status){metadata.filters.push({label:"Current status / stage",value:status});warnings.push(`Current status / stage filter: ${status}.`);}
   result.totalRows=result.rows.length;result.pages=Math.max(1,Math.ceil(result.totalRows/50));result.page=Math.min(requestedPage,result.pages);
   if(!exporting)result.rows=result.rows.slice((result.page-1)*50,result.page*50);

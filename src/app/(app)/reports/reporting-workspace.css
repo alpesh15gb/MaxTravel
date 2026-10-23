@@ -8,7 +8,10 @@
 .report-applied dd { overflow-wrap: anywhere; font-size: .875rem; font-weight: 500; }
 .report-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 225px), 1fr)); gap: .75rem; }
 .report-table-scroll { overflow-x: auto; }
+.report-table-scroll table { min-width: 56rem; }
+.report-table-scroll th, .report-table-scroll td { padding-inline: 1rem; min-width: 7rem; vertical-align: top; }
 .report-table-scroll th { white-space: nowrap; }
+.report-table-scroll td.text-right { min-width: 9rem; white-space: nowrap; }
 .report-mobile-values { display: grid; gap: .65rem; }
 .report-mobile-values > div { display: grid; grid-template-columns: minmax(95px, .7fr) minmax(0, 1fr); gap: .75rem; }
 .report-mobile-values dd { overflow-wrap: anywhere; font-size: .875rem; }

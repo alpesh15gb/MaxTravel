@@ -69,5 +69,5 @@ export type ReportMetadata = {
   currency: string;
   account: string;
   scope: string;
-  filters: { label: string; value: string }[];
+  filters: { label: string; value: string; displayValue?: string }[];
 };
