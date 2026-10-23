@@ -130,6 +130,10 @@ jobs:
         run: npm run build
       - name: Run the test chain
         run: npm test
+      - name: Verify report filters, metadata, permissions and responsive details
+        if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
+        timeout-minutes: 5
+        run: node tests/reporting-browser.mjs
       - name: Verify package editor and publication journeys
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         run: npm run test:travel-packages-browser

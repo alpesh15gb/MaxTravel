@@ -3,6 +3,7 @@ import {execFileSync} from "node:child_process";
 import {mkdirSync,copyFileSync,cpSync,writeFileSync} from "node:fs";
 import path from "node:path";
 import type {SessionUser} from "../src/lib/session";
+import {checkReceiptAllocationHistory} from "./receipt-allocation-history";
 
 async function run(){
  const root=process.cwd(),runtime=path.join(root,"tests/.runtime",`reporting-${Date.now()}`);
@@ -35,7 +36,7 @@ async function run(){
  const due=await prisma.supplierDue.findUniqueOrThrow({where:{id:legacyDue.id}});
  const {journalEntity}=await import("../src/lib/financial-journal");const {buildAccountReport}=await import("../src/lib/account-reports");
  const {accountCsv,accountWorkbook,accountPdf}=await import("../src/lib/report-export");
- let passed=0;function check(name:string,fn:()=>void){fn();passed++;console.log(`✓ ${name}`);}
+ let passed=checkReceiptAllocationHistory();function check(name:string,fn:()=>void){fn();passed++;console.log(`✓ ${name}`);}
  const today=new Date(Date.now()+330*60000).toISOString().slice(0,10);
  const yesterday=new Date(Date.now()+330*60000-86400000).toISOString().slice(0,10);
  await prisma.settings.update({where:{key:"financialJournal.cutover"},data:{value:`${yesterday}T00:00:00+05:30`}});
@@ -45,6 +46,10 @@ async function run(){
  const value=(r:Awaited<ReturnType<typeof report>>,name:string)=>r.summary.find(s=>s.label===name)!.value;
  let s=await statement();check("Migration preserves customer opening without invented historical rows",()=>{assert.equal(value(s,"Opening balance"),90);assert.equal(s.totalRows,0);});
  let sp=await report("supplier-statement",{supplierId:supplier.id});check("Migration preserves partial supplier settlement",()=>assert.equal(value(sp,"Opening balance"),80));
+ const supplierWithCustomer=await report("supplier-payables",{customerId:customer.id});
+ check("Supplier export metadata never claims an irrelevant customer filter",()=>{assert.equal(supplierWithCustomer.metadata.account,"All permitted suppliers");assert(!supplierWithCustomer.metadata.filters.some(f=>f.label==="Customer"));assert(accountCsv(supplierWithCustomer).includes('"Account","All permitted suppliers"'));});
+ const supplierStatementWithCustomer=await report("supplier-statement",{supplierId:supplier.id,customerId:customer.id});
+ check("Supplier statement metadata contains only its applied supplier",()=>{assert.equal(supplierStatementWithCustomer.metadata.account,supplier.name);assert.deepEqual(supplierStatementWithCustomer.metadata.filters,[{label:"Supplier",value:supplier.name}]);});
  const before=await prisma.financialEntry.count();await prisma.$transaction(tx=>journalEntity(tx,"Booking",booking.id,owner.id));const after=await prisma.financialEntry.count();check("Repeated journal sync is idempotent",()=>assert.equal(before,after));
  async function modify(){await prisma.$transaction(async tx=>{await tx.booking.update({where:{id:booking.id},data:{sellingPrice:150}});await journalEntity(tx,"Booking",booking.id,owner.id);});}
  // Use explicit assertions for async checks so failures cannot be skipped by a callback.
@@ -52,11 +57,12 @@ async function run(){
  const invoice=await prisma.$transaction(async tx=>{const i=await tx.invoice.create({data:{invoiceNo:"INV-LINK",customerId:customer.id,bookingId:booking.id,amount:150,dueDate:new Date("2026-01-01")}});await journalEntity(tx,"Invoice",i.id,owner.id);return i;});
  await prisma.$transaction(async tx=>{const p=await tx.payment.create({data:{receiptNo:"RCP-LINK",customerId:customer.id,bookingId:booking.id,invoiceId:invoice.id,amount:20}});await journalEntity(tx,"Payment",p.id,owner.id);});
  s=await statement();check("Linked invoice and receipt are counted once",()=>assert.equal(value(s,"Closing balance"),100));
- const asOf=await report("ageing",{from:yesterday,to:yesterday});check("Historical ageing excludes later receipts and price edits",()=>assert.equal(value(asOf,"Total open obligations"),90));
+ await assert.rejects(()=>report("ageing",{from:yesterday,to:yesterday}),(e:unknown)=>e instanceof Error&&"status" in e&&e.status===409&&/allocation history/.test(e.message));passed++;console.log("✓ Legacy linked receipt without allocation history refuses precise historical ageing");
+ const historicalStatement=await report("statement",{customerId:customer.id,from:yesterday,to:yesterday});check("Historical statement still excludes later receipts and price edits",()=>assert.equal(value(historicalStatement,"Closing balance"),90));
  const ageing=await report("ageing");check("No guessed overdue dates for booking charges",()=>{assert.equal(value(ageing,"No due date"),100);assert.equal(value(ageing,"Overdue 90+"),0);});
  await prisma.$transaction(async tx=>{await tx.booking.update({where:{id:booking.id},data:{paymentDueDate:new Date(`${yesterday}T00:00:00+05:30`)}});await journalEntity(tx,"Booking",booking.id,owner.id);});
  const terms=await report("ageing");check("Explicit work terms populate ageing without changing balance",()=>{assert.equal(value(terms,"Overdue 1–30"),100);assert.equal(value(terms,"No due date"),0);});
- const pastTerms=await report("ageing",{from:yesterday,to:yesterday});check("Changing terms preserves historical due-date state",()=>assert.equal(value(pastTerms,"No due date"),90));
+ await assert.rejects(()=>report("ageing",{from:yesterday,to:yesterday}),(e:unknown)=>e instanceof Error&&"status" in e&&e.status===409);passed++;console.log("✓ Terms edits do not pretend missing legacy allocation history is available");
  await prisma.$transaction(async tx=>{await tx.supplierDue.update({where:{id:due.id},data:{paidAmount:50}});await journalEntity(tx,"SupplierDue",due.id,owner.id);});
  sp=await report("supplier-statement",{supplierId:supplier.id});check("Partial supplier settlement creates dated movement",()=>{assert.equal(value(sp,"Closing balance"),50);assert.equal(sp.rows[0].credit,30);});
  await prisma.$transaction(async tx=>{await tx.supplierDue.update({where:{id:due.id},data:{paidAmount:0}});await journalEntity(tx,"SupplierDue",due.id,owner.id);});
@@ -106,7 +112,18 @@ async function run(){
  check("Quote rows never display earned margin",()=>{assert.equal(scopedSales.rows.find(r=>r.reference===quote.bookingNo)?.margin,null);assert.equal(value(scopedSales,"Costed confirmed booking margin"),80);});
  const filtered=await scopedReport("sales",{ownerId:analyst.id,status:"PNR_CREATED"});
  check("Staff and status filters apply before totals and pagination",()=>{assert.equal(filtered.totalRows,1);assert.equal(value(filtered,"Confirmed booking value"),200);assert.equal(value(filtered,"Quoted / enquiry value"),0);assert.equal(filtered.rows[0]._href,`/ticketing/${confirmed.id}`);});
- const noAccess=await scopedReport("operations",{ownerId:owner.id});check("Staff filter cannot expand record scope",()=>assert.equal(noAccess.totalRows,0));
+ check("Sales metadata preserves selected owner and status without broadening scope",()=>{assert.equal(filtered.metadata.dateBasis,"Booking date / visa creation date · current prices and status");assert(filtered.metadata.filters.some(f=>f.label==="Staff / owner"&&f.value.includes(analyst.name)));assert(filtered.metadata.filters.some(f=>f.label==="Current status / stage"&&f.value==="PNR_CREATED"));assert.equal(value(filtered,"Uncosted confirmed bookings"),0);});
+ const customerFiltered=await scopedReport("receipts",{customerId:account.id});
+ check("Filtered register CSV names its actual customer rather than all accounts",()=>{assert.equal(customerFiltered.metadata.account,`${account.name} · ${account.code}`);const csv=accountCsv(customerFiltered);assert(csv.includes(`"Account","${account.name} · ${account.code}"`));assert(csv.includes('"Date basis","Receipt received date / paid-refund date"'));assert(csv.includes('"Calendar","Asia/Kolkata (UTC+05:30); inclusive end day"'));assert(!csv.includes("All permitted accounts"));});
+ const customerWorkbook=new ExcelJS.Workbook();await customerWorkbook.xlsx.load(await accountWorkbook(customerFiltered) as never);
+ check("Filtered Excel metadata matches the report account and date basis",()=>{const details=customerWorkbook.getWorksheet("Report details")!;const cells:unknown[][]=[];details.eachRow(row=>cells.push([row.getCell(1).value,row.getCell(2).value]));assert(cells.some(([label,value])=>label==="Account"&&value===customerFiltered.metadata.account));assert(cells.some(([label,value])=>label==="Date basis"&&value===customerFiltered.metadata.dateBasis));});
+ await prisma.booking.update({where:{id:fx.id},data:{product:"HOTEL"}});
+ const allCurrencyWork=await scopedReport("operations");
+ check("Operations includes a non-INR hotel with truthful product and currency metadata",()=>{assert.equal(allCurrencyWork.rows.find(r=>r.reference===fx.bookingNo)?.service,"Hotel");assert.equal(allCurrencyWork.metadata.currency,"All currencies · no monetary totals");assert(accountCsv(allCurrencyWork).includes('"Currency","All currencies · no monetary totals"'));assert(!accountCsv(allCurrencyWork).includes('"Currency","INR"'));});
+ await prisma.booking.update({where:{id:confirmed.id},data:{product:"HOTEL"}});
+ const hotelSales=await scopedReport("sales",{status:"PNR_CREATED"});
+ check("Hotel sales label follows normalized booking product without changing totals",()=>{assert.equal(hotelSales.rows.find(r=>r.reference===confirmed.bookingNo)?.service,"Hotel");assert.equal(value(hotelSales,"Confirmed booking value"),200);assert.equal(value(hotelSales,"Costed confirmed booking margin"),80);});
+ const noAccess=await scopedReport("operations",{ownerId:owner.id});check("Staff filter cannot expand record scope",()=>{assert.equal(noAccess.totalRows,0);assert(noAccess.metadata.filters.some(f=>f.value.includes("no matching permitted work")));});
  const receiptRegister=await scopedReport("receipts");check("Receipt register reconciles overview and provides source links",()=>{assert.equal(value(receiptRegister,"Receipts"),overview.collected);assert(receiptRegister.rows.every(r=>r._href));});
  const scopedAgeing=await scopedReport("ageing");check("Ageing shows advance credit separately without netting other obligations",()=>{assert.equal(value(scopedAgeing,"Total open obligations"),260);assert.equal(value(scopedAgeing,"Credits / unapplied receipts"),15);});
  const scopedStatement=await scopedReport("statement",{customerId:account.id});check("Statement closing equals open obligations less disclosed credits",()=>assert.equal(value(scopedStatement,"Closing balance"),245));
@@ -137,8 +154,68 @@ async function run(){
  const futureDue=new Date(Date.now()+7*86400000);
  const futureInvoice=await prisma.$transaction(async tx=>{const i=await tx.invoice.create({data:{invoiceNo:"INV-FUTURE-TERMS",customerId:account.id,amount:2.5,dueDate:futureDue}});await journalEntity(tx,"Invoice",i.id,analyst.id);return i;});
  const futureAgeing=await scopedReport("ageing");check("Future invoice due date reconciles Not due row and summary, not overdue",()=>{const row=futureAgeing.rows.find(r=>r.reference===futureInvoice.invoiceNo)!;assert.equal(row.bucket,"Not due");assert.equal(row.age,"Not overdue");assert.equal(row._termsEditable,1);assert.equal(value(futureAgeing,"Not due"),2.5);assert.equal(value(futureAgeing,"Overdue 1–30"),0);assert.equal(value(futureAgeing,"No due date"),335);});
+ const uncostedBooking=await createBooking("BK-MISSING-COST","PNR_CREATED",3,0);
+ const withUncosted=await scopedReport("sales");check("Missing-cost coverage is counted and never invented as margin",()=>{assert.equal(value(withUncosted,"Uncosted confirmed bookings"),1);assert.equal(withUncosted.rows.find(r=>r.reference===uncostedBooking.bookingNo)?.margin,null);});
  await prisma.$transaction(async tx=>{const b=await tx.booking.create({data:{bookingNo:"BK-SHARED",customerId:account.id,ownerId:owner.id,branchId:branch.id,status:"PNR_CREATED",sellingPrice:500}});await journalEntity(tx,"Booking",b.id,owner.id);});
  const sharedOverview=await buildReport(scoped,new URLSearchParams({from:today,to:today}));check("Shared customer cannot expose another owner's work or cash",()=>{assert.equal(sharedOverview.collected,0);assert.equal(sharedOverview.sales,0);assert.equal(sharedOverview.receivables.total,0);});
+ // A separate account exercises real journal/audit/report code around later allocations.
+ // Fixture-only timestamps model receipts recorded before yesterday's report cutoff.
+ const historyCustomer=await prisma.customer.create({data:{name:"Allocation history fixture",code:"C-HISTORY",phone:"",city:"Pune",branchId:branch.id,assignedToId:owner.id}});
+ const past=new Date(new Date(`${yesterday}T00:00:00+05:30`).getTime()-86400000);
+ const historyBooking=await prisma.booking.create({data:{bookingNo:"BK-HISTORY",customerId:historyCustomer.id,ownerId:owner.id,branchId:branch.id,status:"PNR_CREATED",sellingPrice:100,bookingDate:past}});
+ const historyVisa=await prisma.visaCase.create({data:{caseNo:"VC-HISTORY",customerId:historyCustomer.id,ownerId:owner.id,branchId:branch.id,stageId:visaStage.id,visaType:"Tourist",destination:"France",sellingPrice:80,paymentDueDate:past}});
+ const historyInvoice=await prisma.invoice.create({data:{invoiceNo:"INV-HISTORY",customerId:historyCustomer.id,amount:60,dueDate:past}});
+ const bookingInvoice=await prisma.invoice.create({data:{invoiceNo:"INV-HISTORY-BOOKING",customerId:historyCustomer.id,bookingId:historyBooking.id,amount:100}});
+ const visaInvoice=await prisma.invoice.create({data:{invoiceNo:"INV-HISTORY-VISA",customerId:historyCustomer.id,visaCaseId:historyVisa.id,amount:80}});
+ const historyPayments:{id:string;receiptNo:string;amount:number}[]=[];
+ for(const [receiptNo,amount] of [["RCP-HISTORY-B",40],["RCP-HISTORY-V",20],["RCP-HISTORY-I",10]] as const)historyPayments.push(await prisma.payment.create({data:{receiptNo,customerId:historyCustomer.id,amount,createdAt:past,receivedOn:past}}));
+ await prisma.$transaction(async tx=>{for(const [type,id] of [["Booking",historyBooking.id],["VisaCase",historyVisa.id],["Invoice",historyInvoice.id],["Invoice",bookingInvoice.id],["Invoice",visaInvoice.id],...historyPayments.map(p=>["Payment",p.id])])await journalEntity(tx,type,id,owner.id);});
+ await prisma.financialEntry.updateMany({where:{partyId:historyCustomer.id},data:{effectiveAt:past,recordedAt:past}});
+ const historyReport=(report="ageing",to=yesterday)=>buildAccountReport(user,new URLSearchParams({report,customerId:historyCustomer.id,from:yesterday,to}));
+ const beforeAllocation=await historyReport(),statementBeforeAllocation=await historyReport("statement");
+ check("Historical unallocated advances remain separate from obligations",()=>{assert.equal(value(beforeAllocation,"Total open obligations"),240);assert.equal(value(beforeAllocation,"Credits / unapplied receipts"),70);assert.equal(value(statementBeforeAllocation,"Closing balance"),170);});
+ await prisma.$transaction(async tx=>{await tx.booking.update({where:{id:historyBooking.id},data:{paymentDueDate:past}});await journalEntity(tx,"Booking",historyBooking.id,owner.id);});
+ const pastHistoryTerms=await historyReport();check("Supported historical ageing preserves pre-edit due-date state",()=>assert.equal(value(pastHistoryTerms,"No due date"),100));
+ const beforeAllocationJournal=await prisma.financialEntry.findMany({where:{partyId:historyCustomer.id},orderBy:{id:"asc"}});
+ const {transactionAudit}=await import("../src/lib/transactions");
+ const allocations=[{bookingId:historyBooking.id,visaCaseId:null,invoiceId:bookingInvoice.id},{bookingId:null,visaCaseId:historyVisa.id,invoiceId:visaInvoice.id},{bookingId:null,visaCaseId:null,invoiceId:historyInvoice.id}];
+ await assert.rejects(()=>prisma.$transaction(async tx=>{const payment=historyPayments[0];await tx.payment.update({where:{id:payment.id},data:allocations[0]});await transactionAudit(tx,user,"ALLOCATE_ADVANCE","Payment",payment.id,JSON.stringify({receiptNo:payment.receiptNo,amount:payment.amount,...allocations[0]}));throw new Error("Synthetic rollback");}),/Synthetic rollback/);
+ const rolledBackReceipt=await prisma.payment.findUniqueOrThrow({where:{id:historyPayments[0].id}}),rolledBackAudits=await prisma.auditLog.count({where:{entity:"Payment",action:"ALLOCATE_ADVANCE",entityId:historyPayments[0].id}});
+ check("Failed allocation rolls back both source target and audit evidence",()=>{assert.equal(rolledBackReceipt.bookingId,null);assert.equal(rolledBackReceipt.invoiceId,null);assert.equal(rolledBackAudits,0);});
+ await prisma.$transaction(async tx=>{
+  for(const [index,payment] of historyPayments.entries()){
+   const target=allocations[index];const changed=await tx.payment.updateMany({where:{id:payment.id,bookingId:null,visaCaseId:null,invoiceId:null},data:target});assert.equal(changed.count,1);
+   await tx.invoice.update({where:{id:target.invoiceId},data:{amountPaid:payment.amount,status:"PARTIAL"}});
+   if(target.visaCaseId)await tx.visaCase.update({where:{id:target.visaCaseId},data:{amountReceived:payment.amount}});
+   await transactionAudit(tx,user,"ALLOCATE_ADVANCE","Payment",payment.id,JSON.stringify({receiptNo:payment.receiptNo,amount:payment.amount,...target}));
+  }
+ });
+ const afterAllocationJournal=await prisma.financialEntry.findMany({where:{partyId:historyCustomer.id},orderBy:{id:"asc"}});
+ check("Allocation creates no cash delta or financial journal revision",()=>assert.deepEqual(afterAllocationJournal,beforeAllocationJournal));
+ const afterAllocation=await historyReport(),currentAllocation=await historyReport("ageing",today),statementAfterAllocation=await historyReport("statement");
+ check("Later allocations cannot rewrite the same historical cutoff",()=>{assert.deepEqual(afterAllocation.rows,beforeAllocation.rows);assert.deepEqual(afterAllocation.summary,beforeAllocation.summary);assert.equal(value(statementAfterAllocation,"Closing balance"),170);});
+ check("Current booking/visa-linked invoices allocate once to their work",()=>{assert.equal(value(currentAllocation,"Total open obligations"),170);assert.equal(Math.abs(value(currentAllocation,"Credits / unapplied receipts")),0);assert.equal(currentAllocation.rows.find(r=>r.reference===historyBooking.bookingNo)?.outstanding,60);assert.equal(currentAllocation.rows.find(r=>r.reference===historyVisa.caseNo)?.outstanding,60);assert.equal(currentAllocation.rows.find(r=>r.reference===historyInvoice.invoiceNo)?.outstanding,50);assert(currentAllocation.warnings.some(w=>w.includes("currently recorded")));});
+ const allocationWhere={entity:"Payment",action:"ALLOCATE_ADVANCE",entityId:{in:historyPayments.map(p=>p.id)}};
+ await prisma.auditLog.updateMany({where:allocationWhere,data:{at:new Date(`${today}T00:00:00+05:30`)}});
+ const boundaryExcluded=await historyReport();check("Allocation at next IST midnight is outside historical end day",()=>{assert.equal(value(boundaryExcluded,"Total open obligations"),240);assert.equal(value(boundaryExcluded,"Credits / unapplied receipts"),70);});
+ await prisma.auditLog.updateMany({where:allocationWhere,data:{at:new Date(new Date(`${today}T00:00:00+05:30`).getTime()-1)}});
+ const boundaryIncluded=await historyReport();check("Allocation before IST midnight is included with old terms intact",()=>{assert.equal(value(boundaryIncluded,"Total open obligations"),170);assert.equal(Math.abs(value(boundaryIncluded,"Credits / unapplied receipts")),0);assert.equal(value(boundaryIncluded,"No due date"),60);});
+ // An unknown target with zero cash by cutoff must not block otherwise verified history.
+ const zeroReceipt=await prisma.payment.create({data:{receiptNo:"RCP-HISTORY-ZERO",customerId:historyCustomer.id,bookingId:historyBooking.id,amount:1}});
+ await prisma.financialEntry.create({data:{partyType:"CUSTOMER",partyId:historyCustomer.id,sourceType:"Payment",sourceId:zeroReceipt.id,revision:1,amountMinor:BigInt(0),reference:zeroReceipt.receiptNo,description:"Synthetic zero position",effectiveAt:past,recordedAt:past}});
+ await prisma.$transaction(tx=>journalEntity(tx,"Payment",zeroReceipt.id,owner.id));
+ const zeroIgnored=await historyReport();check("Zero positions and later payment deltas do not disable historical ageing",()=>assert.equal(value(zeroIgnored,"Total open obligations"),170));
+ await prisma.auditLog.deleteMany({where:{...allocationWhere,entityId:historyPayments[0].id}});
+ await assert.rejects(()=>historyReport(),(e:unknown)=>e instanceof Error&&"status" in e&&e.status===409&&/1 receipt\./.test(e.message)&&!e.message.includes(historyPayments[0].id));passed++;console.log("✓ Missing allocation evidence refuses complete historical totals without leaking IDs");
+ await assert.rejects(()=>buildAccountReport(user,new URLSearchParams({report:"ageing",customerId:historyCustomer.id,from:yesterday,to:yesterday}),true),(e:unknown)=>e instanceof Error&&"status" in e&&e.status===409);passed++;console.log("✓ Export also refuses unsupported historical totals");
+ const stillCurrent=await historyReport("ageing",today),stillStatement=await historyReport("statement");check("Incomplete historical allocation coverage preserves current ageing and statements",()=>{assert.equal(value(stillCurrent,"Total open obligations"),169);assert.equal(value(stillStatement,"Closing balance"),170);});
+ const datedCustomer=await prisma.customer.create({data:{name:"Dated positions fixture",code:"C-DATED",phone:"",city:"Pune",branchId:branch.id,assignedToId:owner.id}});
+ const datedBooking=await prisma.$transaction(async tx=>{const b=await tx.booking.create({data:{bookingNo:"BK-DATED",customerId:datedCustomer.id,ownerId:owner.id,branchId:branch.id,status:"PNR_CREATED",sellingPrice:100}});await journalEntity(tx,"Booking",b.id,owner.id);return b;});
+ await prisma.financialEntry.updateMany({where:{partyId:datedCustomer.id},data:{effectiveAt:past,recordedAt:past}});
+ await prisma.$transaction(async tx=>{await tx.booking.update({where:{id:datedBooking.id},data:{sellingPrice:150}});await journalEntity(tx,"Booking",datedBooking.id,owner.id);const p=await tx.payment.create({data:{receiptNo:"RCP-DATED",customerId:datedCustomer.id,bookingId:datedBooking.id,amount:20}});await journalEntity(tx,"Payment",p.id,owner.id);});
+ const oldDated=await buildAccountReport(user,new URLSearchParams({report:"ageing",customerId:datedCustomer.id,from:yesterday,to:yesterday}));
+ const currentDated=await buildAccountReport(user,new URLSearchParams({report:"ageing",customerId:datedCustomer.id,from:today,to:today}));
+ check("Supported historical ageing excludes later price edits and newly created linked receipts",()=>{assert.equal(value(oldDated,"Total open obligations"),100);assert.equal(value(currentDated,"Total open obligations"),130);});
  execFileSync(process.execPath,["scripts/reconcile-reporting.mjs"],{env:process.env,stdio:"pipe"});passed++;console.log("✓ All journal sources reconcile after mutations");
  console.log(`${passed} reporting checks passed. Artifacts: ${runtime}`);await prisma.$disconnect();
 }

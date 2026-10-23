@@ -5,13 +5,13 @@ const PDF_COLORS:Record<"ink"|"muted"|"surface"|"line",[number,number,number]>={
 const money=(v:number)=>`INR ${v.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 const csvCell=(value:unknown)=>{let text=String(value??"");if(typeof value==="string"&&/^\s*[=+\-@\t\r]/.test(text))text="'"+text;return '"'+text.replaceAll('"','""')+'"';};
 export function accountCsv(r:AccountReport){
- const rows:unknown[][]=[[r.agency,r.title],["Basis",r.description],["Period",r.period.from,r.period.to],["Account",r.party?.name??"All permitted accounts"],["Currency","INR"],["Generated",r.generatedAt],...[...r.summary].map(s=>[s.label,s.value]),[],r.columns.map(c=>c.label),...r.rows.map(row=>r.columns.map(c=>row[c.key])),[],["Definitions"],...r.warnings.map(w=>[w])];
+ const rows:unknown[][]=[[r.agency,r.title],["Basis",r.description],["Date basis",r.metadata.dateBasis],["Calendar","Asia/Kolkata (UTC+05:30); inclusive end day"],["Period",r.period.from,r.period.to],["Account",r.party?.name??r.metadata.account],["Currency",r.metadata.currency],["Scope",r.metadata.scope],...r.metadata.filters.map(f=>[f.label,f.value]),["Generated",r.generatedAt],...[...r.summary].map(s=>[s.label,s.value]),[],r.columns.map(c=>c.label),...r.rows.map(row=>r.columns.map(c=>row[c.key])),[],["Definitions"],...r.warnings.map(w=>[w])];
  return "\uFEFF"+rows.map(row=>row.map(csvCell).join(",")).join("\r\n");
 }
 export async function accountWorkbook(r:AccountReport){
  const {default:ExcelJS}=await import("exceljs");const book=new ExcelJS.Workbook();book.creator=r.agency;
  const summary=book.addWorksheet("Report details");
- summary.columns=[{width:38},{width:95}];summary.addRows([[r.agency,r.title],["Basis",r.description],["From",r.period.from],["Through",r.period.to],["Account",r.party?.name??"All permitted accounts"],["Currency","INR"],["Generated",r.generatedAt],...r.summary.map(s=>[s.label,s.value]),[],...r.warnings.map(w=>["Definition",w])]);
+ summary.columns=[{width:38},{width:95}];summary.addRows([[r.agency,r.title],["Basis",r.description],["Date basis",r.metadata.dateBasis],["Calendar","Asia/Kolkata (UTC+05:30); inclusive end day"],["From",r.period.from],["Through",r.period.to],["Account",r.party?.name??r.metadata.account],["Currency",r.metadata.currency],["Scope",r.metadata.scope],...r.metadata.filters.map(f=>[f.label,f.value]),["Generated",r.generatedAt],...r.summary.map(s=>[s.label,s.value]),[],...r.warnings.map(w=>["Definition",w])]);
  summary.eachRow(row=>{row.alignment={vertical:"top",wrapText:true};});
  const sheet=book.addWorksheet("Transactions",{views:[{state:"frozen",ySplit:1}]});
  sheet.columns=r.columns.map(c=>({header:c.label,key:c.key,width:c.money?22:c.key==="description"?65:28}));
@@ -32,7 +32,7 @@ export async function accountPdf(r:AccountReport):Promise<Buffer>{
  const left=38,right=557,width=519;let y=38;
  const text=(s:string,size=10,color:[number,number,number]=PDF_COLORS.ink)=>{doc.fillColor(color).fontSize(size);const h=doc.heightOfString(s,{width});if(y+h>770){doc.addPage();y=38;}doc.text(s,left,y,{width});y+=h+7;};
  text(r.agency,20);text(r.title,15);text(`${r.party?.name??""} · ${r.party?.code??""}`,11);if(r.party?.address)text(r.party.address);
- text(`${r.period.from} to ${r.period.to} · INR · India calendar`,9,PDF_COLORS.muted);text(r.description,9,PDF_COLORS.muted);
+ text(`${r.period.from} to ${r.period.to} · INR · India calendar`,9,PDF_COLORS.muted);text(r.metadata.dateBasis,9,PDF_COLORS.muted);text(r.description,9,PDF_COLORS.muted);
  for(const s of r.summary)text(`${s.label}: ${s.money?money(s.value):s.value}`,10);
  // Single-party statements always have six fixed columns, independent of registers.
  const widths=[55,85,160,73,73,73];const xs=widths.map((_,i)=>left+widths.slice(0,i).reduce((a,b)=>a+b,0));

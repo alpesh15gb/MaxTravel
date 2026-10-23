@@ -4,11 +4,13 @@ import { ApiError, scopeWhere } from "./guard";
 import type { SessionUser } from "./session";
 import { reportPeriod } from "./reports";
 import { bookingCharge, hasCancellationAllocation, isWithdrawnBooking } from "./receivables";
+import { historicalReceiptAllocation, type AllocationAudit, type ReceiptAllocation } from "./receipt-allocation-history";
+import { reportCurrency, reportDefinition, reportProductLabel, type ReportMetadata } from "./report-workspace";
 
 export const ACCOUNT_REPORTS = ["statement","ageing","receipts","supplier-statement","supplier-payables","refunds","cancellations","sales","operations"] as const;
 export type AccountReportKey = typeof ACCOUNT_REPORTS[number];
 export type ReportRow = Record<string,string|number|null>;
-export type AccountReport = {title:string;description:string;period:{from:string;to:string};generatedAt:string;columns:{key:string;label:string;money?:boolean}[];rows:ReportRow[];summary:{label:string;value:number;money?:boolean}[];warnings:string[];party?:{name:string;code:string;address:string|null};agency:string;cutover:string;totalRows:number;page:number;pages:number};
+export type AccountReport = {title:string;description:string;period:{from:string;to:string};generatedAt:string;metadata:ReportMetadata;columns:{key:string;label:string;money?:boolean}[];rows:ReportRow[];summary:{label:string;value:number;money?:boolean}[];warnings:string[];party?:{name:string;code:string;address:string|null};agency:string;cutover:string;totalRows:number;page:number;pages:number};
 const cents=(n:number)=>Math.round(n*100);
 const rupees=(n:number)=>n/100;
 const day=(d:Date)=>new Date(d.getTime()+330*60000).toISOString().slice(0,10);
@@ -51,12 +53,15 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
   const agency=(await tx.settings.findUnique({where:{key:"agency.name"}}))?.value||"Max Travel CRM";
   const warnings=[key==="operations"?"Operational records include all currencies; no monetary totals are presented.":"INR only. Other-currency bookings and their receipts/refunds are excluded."];
   if(user.accessMode!=="ALL")warnings.push("Only complete customer accounts wholly within your record scope are included.");
-  const result:AccountReport={title:"",description:"",period:{from:period.from,to:period.to},generatedAt:new Date().toISOString(),columns:[],rows:[],summary:[],warnings,agency,cutover:cutover.toISOString(),totalRows:0,page:1,pages:1};
+  const selectedCustomer=customerId&&!key.startsWith("supplier")?byCustomer.get(customerId):null;
+  const metadata:ReportMetadata={dateBasis:reportDefinition(key)!.basis,currency:reportCurrency(key),account:selectedCustomer?`${selectedCustomer.name} · ${selectedCustomer.code}`:key.startsWith("supplier")?"All permitted suppliers":"All permitted customer accounts",scope:user.accessMode==="ALL"?"Your permitted agency records":"Complete customer accounts wholly within your record scope",filters:[]};
+  if(selectedCustomer)metadata.filters.push({label:"Customer",value:`${selectedCustomer.name} · ${selectedCustomer.code}`});
+  const result:AccountReport={title:"",description:"",period:{from:period.from,to:period.to},generatedAt:new Date().toISOString(),metadata,columns:[],rows:[],summary:[],warnings,agency,cutover:cutover.toISOString(),totalRows:0,page:1,pages:1};
   const range={gte:period.start,lt:period.end};
   if(key==="statement"||key==="supplier-statement") {
    const supplier=key==="supplier-statement";
    let partyId=customerId;
-   if(supplier){partyId=params.get("supplierId");if(!partyId)throw new ApiError(400,"Choose a supplier.");const s=await tx.supplier.findUnique({where:{id:partyId}});if(!s)throw new ApiError(404,"Supplier not found.");result.party={name:s.name,code:"Supplier",address:null};}
+   if(supplier){partyId=params.get("supplierId");if(!partyId)throw new ApiError(400,"Choose a supplier.");const s=await tx.supplier.findUnique({where:{id:partyId}});if(!s)throw new ApiError(404,"Supplier not found.");result.party={name:s.name,code:"Supplier",address:null};metadata.account=s.name;metadata.filters.push({label:"Supplier",value:s.name});}
    else {if(!partyId)throw new ApiError(400,"Choose a customer.");result.party=byCustomer.get(partyId);}
    const entries=await tx.financialEntry.findMany({where:{partyType:supplier?"SUPPLIER":"CUSTOMER",partyId:partyId!,effectiveAt:{lt:period.end}},orderBy:[{effectiveAt:"asc"},{recordedAt:"asc"},{id:"asc"}]});
    // Cutover sources are a brought-forward position, not invented dated sales/receipts.
@@ -76,13 +81,25 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
    const names=new Map(suppliers.map(s=>[s.id,s.name]));
    const balances=new Map<string,{partyId:string;type:string;id:string;reference:string;amount:number;due:Date|null}>();
    for(const e of entries){const k=`${e.sourceType}:${e.sourceId}`;const prior=balances.get(k);balances.set(k,{partyId:e.partyId,type:e.sourceType,id:e.sourceId,reference:e.reference,amount:(prior?.amount||0)+Number(e.amountMinor),due:e.dueDate});}
-   // Receipt/refund allocations are immutable in this app; journal limits them by the cutoff.
+   // Journal positions limit cash by cutoff; an advance's current allocation may be later.
    const payments=!supplier?await tx.payment.findMany({where:{id:{in:[...balances.values()].filter(b=>b.type==="Payment").map(b=>b.id)}}}):[];
+   const historical=!supplier&&period.to<today;
+   const paymentAllocations=new Map<string,ReceiptAllocation>();
+   if(historical){
+    const relevant=payments.filter(p=>(balances.get(`Payment:${p.id}`)?.amount||0)!==0);
+    const audits=await tx.auditLog.findMany({where:{entity:"Payment",action:"ALLOCATE_ADVANCE",entityId:{in:relevant.map(p=>p.id)}},select:{entityId:true,at:true,detail:true}});
+    const byReceipt=new Map<string,AllocationAudit[]>();
+    for(const audit of audits){if(audit.entityId){const list=byReceipt.get(audit.entityId)||[];list.push(audit);byReceipt.set(audit.entityId,list);}}
+    let unsupported=0;const now=new Date();
+    for(const payment of relevant){const state=historicalReceiptAllocation(payment,byReceipt.get(payment.id)||[],period.end,now);if(state.supported)paymentAllocations.set(payment.id,state.allocation);else unsupported++;}
+    if(unsupported)throw new ApiError(409,`Historical ageing is unavailable for this selection: allocation history cannot be verified for ${unsupported} receipt${unsupported===1?"":"s"}. Use today's ageing or a customer statement for the historical account balance.`);
+    warnings.push("Receipt allocations use verified advance-allocation audit times. Missing allocation history is not inferred from receipt dates or current links.");
+   }else if(!supplier)warnings.push("Today's ageing uses allocations currently recorded. Earlier cutoffs require verifiable receipt-allocation history.");
    const refunds=!supplier?await tx.refund.findMany({where:{id:{in:[...balances.values()].filter(b=>b.type==="Refund").map(b=>b.id)}}}):[];
    const creditNotes=!supplier?await tx.invoiceCreditNote.findMany({where:{id:{in:[...balances.values()].filter(b=>b.type==="InvoiceCreditNote").map(b=>b.id)}},select:{id:true,invoiceId:true}}):[];
    for(const note of creditNotes){const invoice=balances.get(`Invoice:${note.invoiceId}`),credit=balances.get(`InvoiceCreditNote:${note.id}`);if(invoice&&credit)invoice.amount+=credit.amount;}
    let unallocated=0;
-   for(const p of payments){const value=balances.get(`Payment:${p.id}`)?.amount||0;const target=p.bookingId?`Booking:${p.bookingId}`:p.visaCaseId?`VisaCase:${p.visaCaseId}`:p.invoiceId?`Invoice:${p.invoiceId}`:null;const b=target?balances.get(target):undefined;if(b)b.amount+=value;else unallocated+=value;}
+   for(const p of payments){const value=balances.get(`Payment:${p.id}`)?.amount||0;const a=paymentAllocations.get(p.id)||p;const target=a.bookingId?`Booking:${a.bookingId}`:a.visaCaseId?`VisaCase:${a.visaCaseId}`:a.invoiceId?`Invoice:${a.invoiceId}`:null;const b=target?balances.get(target):undefined;if(b)b.amount+=value;else unallocated+=value;}
    for(const r of refunds){const value=balances.get(`Refund:${r.id}`)?.amount||0;const target=r.bookingId?`Booking:${r.bookingId}`:r.invoiceId?`Invoice:${r.invoiceId}`:null;const b=target?balances.get(target):undefined;if(b)b.amount+=value;else unallocated+=value;}
    if(supplier)for(const b of balances.values())if(b.type==="SupplierSettlement"){const target=balances.get(`SupplierDue:${b.id}`);if(target)target.amount+=b.amount;}
    // Editability reflects current source ownership, not historical journal state.
@@ -142,26 +159,26 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
    const work=scopeWhere(user,null,"ownerId") as Prisma.BookingWhereInput;
    const [bookings,cases]=await Promise.all([tx.booking.findMany({where:{AND:[work,{customerId:{in:selectedIds},currency:"INR",bookingDate:range,...bookingFilters}]},include:{supplier:true,owner:true}}),tx.visaCase.findMany({where:{AND:[scopeWhere(user,null,"ownerId"),{customerId:{in:selectedIds},createdAt:range,...visaFilters}]},include:{stage:true,owner:true}})]);
    result.title="Sales and cost coverage";result.description="Current status and prices of work created/booked in the period. This is operational sales value, not recognized accounting revenue or historical profit.";
-   let confirmed=0,pipeline=0,costed=0,margin=0,cancellationSales=0,cancellationMargin=0,unknownCancellations=0;
+   let confirmed=0,pipeline=0,costed=0,uncosted=0,margin=0,cancellationSales=0,cancellationMargin=0,unknownCancellations=0;
    result.rows=[...bookings.map(b=>{
     const withdrawn=isWithdrawnBooking(b.status),allocated=hasCancellationAllocation(b),quoted=["ENQUIRY","QUOTE_SENT"].includes(b.status);
     const charge=bookingCharge(b),known=withdrawn?allocated:b.supplierCost>0;
     if(withdrawn){if(allocated){cancellationSales+=cents(charge);cancellationMargin+=cents(b.cancellationAgencyFee!);}else unknownCancellations++;}
-    else if(quoted)pipeline+=cents(charge);else {confirmed+=cents(charge);if(known){costed++;margin+=cents(charge)-cents(b.supplierCost);}}
-    return{date:day(b.bookingDate),reference:b.bookingNo,customer:byCustomer.get(b.customerId)!.name,service:"Ticketing",status:b.status,staff:b.owner.name,supplier:b.supplier?.name||"Not recorded",sales:withdrawn&&!allocated?null:charge,cost:known?(withdrawn?b.cancellationSupplierCharge:b.supplierCost):null,margin:!quoted&&known?(withdrawn?b.cancellationAgencyFee:rupees(cents(charge)-cents(b.supplierCost))):null,_href:`/ticketing/${b.id}`,_customerHref:`/reports?report=statement&customerId=${b.customerId}`,coverage:withdrawn?(allocated?"Cancellation allocation recorded":"Legacy cancellation — allocation unknown"):quoted?"Pipeline":known?"Cost recorded":"Missing cost"};
+    else if(quoted)pipeline+=cents(charge);else {confirmed+=cents(charge);if(known){costed++;margin+=cents(charge)-cents(b.supplierCost);}else uncosted++;}
+    return{date:day(b.bookingDate),reference:b.bookingNo,customer:byCustomer.get(b.customerId)!.name,service:reportProductLabel(b.product),status:b.status,staff:b.owner.name,supplier:b.supplier?.name||"Not recorded",sales:withdrawn&&!allocated?null:charge,cost:known?(withdrawn?b.cancellationSupplierCharge:b.supplierCost):null,margin:!quoted&&known?(withdrawn?b.cancellationAgencyFee:rupees(cents(charge)-cents(b.supplierCost))):null,_href:`/ticketing/${b.id}`,_customerHref:`/reports?report=statement&customerId=${b.customerId}`,coverage:withdrawn?(allocated?"Cancellation allocation recorded":"Legacy cancellation — allocation unknown"):quoted?"Pipeline":known?"Cost recorded":"Missing cost"};
    }),...cases.map(c=>({date:day(c.createdAt),reference:c.caseNo,customer:byCustomer.get(c.customerId)!.name,service:"Visa",status:c.stage.name,staff:c.owner.name,supplier:"—",sales:c.sellingPrice,cost:null,margin:null,coverage:"Visa cost not recorded",_href:`/visa/${c.id}`,_customerHref:`/reports?report=statement&customerId=${c.customerId}`}))];
-   result.summary=[metric("Confirmed booking value",confirmed),metric("Quoted / enquiry value",pipeline),metric("Visa work value",cases.reduce((s,c)=>s+cents(c.sellingPrice),0)),metric("Cancellation charges",cancellationSales),metric("Costed confirmed booking margin",margin),metric("Cancellation agency fee margin",cancellationMargin),{label:"Costed confirmed bookings",value:costed},{label:"Unknown legacy cancellation allocations",value:unknownCancellations}];
+   result.summary=[metric("Confirmed booking value",confirmed),metric("Quoted / enquiry value",pipeline),metric("Visa work value",cases.reduce((s,c)=>s+cents(c.sellingPrice),0)),metric("Cancellation charges",cancellationSales),metric("Costed confirmed booking margin",margin),metric("Cancellation agency fee margin",cancellationMargin),{label:"Costed confirmed bookings",value:costed},{label:"Uncosted confirmed bookings",value:uncosted},{label:"Unknown legacy cancellation allocations",value:unknownCancellations}];
    result.columns=[field("date","Date"),field("reference","Reference"),field("customer","Customer"),field("service","Service"),field("status","Current status"),field("staff","Owner"),field("supplier","Supplier"),field("sales","Sales value",true),field("cost","Supplier cost",true),field("margin","Gross margin",true),field("coverage","Coverage")];
    warnings.push("Active-booking margin excludes enquiries, quotes, visa work, refunds, overheads and uncosted bookings. For explicitly allocated cancellations, sales are supplier penalty plus agency fee, cost is supplier penalty, and margin is agency fee. Legacy withdrawals with unknown allocations are shown as not recorded, never invented as profit. Cancellation figures describe the current booking-date cohort, not revenue recognized on cancellation date. Supplier liabilities and recovery settlements are separate and require explicit reconciliation. This is not net profit. Standalone invoices are shown in statements, not this work-sales register.");
   } else {
    const [cases,bookings]=await Promise.all([tx.visaCase.findMany({where:{AND:[scopeWhere(user,null,"ownerId"),{customerId:{in:selectedIds},createdAt:range,...visaFilters}]},include:{stage:true,owner:true}}),tx.booking.findMany({where:{AND:[scopeWhere(user,null,"ownerId"),{customerId:{in:selectedIds},bookingDate:range,...bookingFilters}]},include:{owner:true}})]);
    result.title="Work and travel register";result.description="Work opened/booked in the selected period; current stage, owner and travel/deadline dates. Not historical stage ageing.";
-   result.rows=[...cases.map(c=>({reference:c.caseNo,customer:byCustomer.get(c.customerId)!.name,service:"Visa",status:c.stage.name,owner:c.owner.name,travel:c.travelDate?day(c.travelDate):"Not set",deadline:c.expectedDecisionDate?day(c.expectedDecisionDate):"Not set",_href:`/visa/${c.id}`})),...bookings.map(b=>({reference:b.bookingNo,customer:byCustomer.get(b.customerId)!.name,service:"Ticketing",status:b.status,owner:b.owner.name,travel:b.travelDate?day(b.travelDate):"Not set",deadline:b.ticketingDeadline?day(b.ticketingDeadline):"Not set",_href:`/ticketing/${b.id}`}))];
+   result.rows=[...cases.map(c=>({reference:c.caseNo,customer:byCustomer.get(c.customerId)!.name,service:"Visa",status:c.stage.name,owner:c.owner.name,travel:c.travelDate?day(c.travelDate):"Not set",deadline:c.expectedDecisionDate?day(c.expectedDecisionDate):"Not set",_href:`/visa/${c.id}`})),...bookings.map(b=>({reference:b.bookingNo,customer:byCustomer.get(b.customerId)!.name,service:reportProductLabel(b.product),status:b.status,owner:b.owner.name,travel:b.travelDate?day(b.travelDate):"Not set",deadline:b.ticketingDeadline?day(b.ticketingDeadline):"Not set",_href:`/ticketing/${b.id}`}))];
    result.columns=[field("reference","Reference"),field("customer","Customer"),field("service","Service"),field("status","Current stage/status"),field("owner","Owner"),field("travel","Travel date"),field("deadline","Decision / ticketing deadline")];result.summary=[{label:"Visa cases",value:cases.length},{label:"Bookings",value:bookings.length}];
   }
   if(["sales","operations"].includes(key))result.rows.sort((a,b)=>String(a.date??"").localeCompare(String(b.date??""))||String(a.reference).localeCompare(String(b.reference)));
-  if(ownerId)warnings.push(`Staff filter: ${[...new Set(result.rows.map(r=>r.staff||r.owner).filter(Boolean))].join(", ")||"No matching permitted work"} (${ownerId}).`);
-  if(status)warnings.push(`Current status / stage filter: ${status}.`);
+  if(ownerId){const name=[...new Set(result.rows.map(r=>r.staff||r.owner).filter(Boolean))].join(", ")||"Selected staff · no matching permitted work";metadata.filters.push({label:"Staff / owner",value:`${name} (${ownerId})`});warnings.push(`Staff filter: ${name} (${ownerId}).`);}
+  if(status){metadata.filters.push({label:"Current status / stage",value:status});warnings.push(`Current status / stage filter: ${status}.`);}
   result.totalRows=result.rows.length;result.pages=Math.max(1,Math.ceil(result.totalRows/50));result.page=Math.min(requestedPage,result.pages);
   if(!exporting)result.rows=result.rows.slice((result.page-1)*50,result.page*50);
   return result;
