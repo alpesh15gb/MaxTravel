@@ -137,6 +137,7 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
    await page.getByRole('complementary',{name:'Private link guidance for quote v1',exact:true}).getByText(/Publishing it invalidates earlier published links; saving a draft does not/).waitFor();
    assert.equal(await page.getByLabel('Private proposal link',{exact:true}).count(),0,'Reload never retrieves a raw proposal token');
    assert.equal(s.writes.filter(action=>action==='publish').length,1,'Guidance/reload never republishes');
+   await page.getByRole('complementary',{name:'Private link guidance for quote v1',exact:true}).scrollIntoViewIfNeeded();
    await screenshot('private-link-after-reload-390');
 
   }catch(error){caseFailure=error;report.failure=String(error);persist();await within(page.screenshot({path:path.join(out,'late-publish-failure.png'),timeout:3000,mask:[page.locator('#sales-private-link')]}),3000,'late publish failure screenshot').catch(()=>{});throw error;
