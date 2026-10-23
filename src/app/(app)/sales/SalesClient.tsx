@@ -40,6 +40,7 @@ export default function SalesClient() {
   const recoveryCheck = useRef(0);
   const readGeneration = useRef(0);
   const activationGeneration = useRef(0);
+  const customerAccessGeneration = useRef(0);
   const [recovery, setRecovery] = useState<Recovery | null>(null);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [retentionError, setRetentionError] = useState("");
@@ -164,7 +165,7 @@ export default function SalesClient() {
 
   useLayoutEffect(() => {
     let active = true;
-    activationGeneration.current += 1;
+    const activation = ++activationGeneration.current;
     // Reset before paint: Activity may preserve old fields while hidden, but cannot authorize their reveal.
     // Activity/Back restoration is not authorization. Re-check before exposing any retained text.
     setLoading(true); setData(null); setRecovery(null); setView("list"); setDirty(false); activeQuote.current = null;
@@ -173,9 +174,9 @@ export default function SalesClient() {
     draftMemory.expire();
     load().then(async () => {
       const entry = draftMemory.getSnapshot();
-      if (active && entry) await checkRecovery(entry);
-    }).catch(error => { if (active) setError(error instanceof Error && error.message.startsWith("Staff session or access changed") ? error.message : "Enquiries could not be loaded. Retry to see the latest records."); })
-      .finally(() => { if (active) setLoading(false); });
+      if (active && activation === activationGeneration.current && entry) await checkRecovery(entry);
+    }).catch(error => { if (active && activation === activationGeneration.current) setError(error instanceof Error && error.message.startsWith("Staff session or access changed") ? error.message : "Enquiries could not be loaded. Retry to see the latest records."); })
+      .finally(() => { if (active && activation === activationGeneration.current) setLoading(false); });
     return () => { active = false; activationGeneration.current += 1; recoveryCheck.current += 1; readGeneration.current += 1; };
   }, [load, checkRecovery, draftMemory]);
 
@@ -263,35 +264,40 @@ export default function SalesClient() {
 
   async function reload() {
     if (mutationLock.current || customerMemory.getSnapshot()?.phase === "submitting" || draftMemory.getSnapshot()?.phase === "submitting" || (dirty && !window.confirm("Reload latest status and discard local edits? Copy anything you need first. A previous save may already have completed."))) return;
+    const activation = activationGeneration.current;
     mutationLock.current = true; setLoading(true); setError("");
     try {
       const latest = await load();
+      if (activation !== activationGeneration.current) return;
       reconcileShare(latest);
       if (activeQuote.current) draftMemory.clear(activeQuote.current.nonce);
       activeQuote.current = null;
       const retained = draftMemory.getSnapshot();
       if (retained) await checkRecovery(retained);
+      if (activation !== activationGeneration.current) return;
       setUncertain(false); setDirty(false);
       setView(selectedId && latest.leads.some(lead => lead.id === selectedId) ? "lead" : "list");
       setNotice("Latest records loaded. Review the enquiry and quote versions before making another change.");
       setFocusRequest(value => value + 1);
-    } catch { setError("Latest status could not be loaded. Keep your local notes and try loading again; do not repeat an uncertain save."); }
-    finally { mutationLock.current = false; setLoading(false); }
+    } catch { if (activation === activationGeneration.current) setError("Latest status could not be loaded. Keep your local notes and try loading again; do not repeat an uncertain save."); }
+    finally { mutationLock.current = false; if (activation === activationGeneration.current) setLoading(false); }
   }
 
   async function searchEnquiries(reset = false, more = false) {
     if (listReadLock.current || mutationLock.current || locked || dirty) return;
     const cursor = more ? data?.nextCursor : null;
     if (more && !cursor) return;
+    const activation = activationGeneration.current;
     listReadLock.current = true; setLoading(true); setError("");
     try {
       const latest = await load(more ? { cursor: cursor! } : { q: reset ? "" : query, stage: reset ? "ALL" : filter });
+      if (activation !== activationGeneration.current) return;
       if (reset) { setQuery(""); setFilter("ALL"); }
       if (!more) setView("list");
       setNotice(more ? "More matching enquiries loaded." : "Search updated across all enquiries in your permitted scope.");
       if (selectedId && !latest.leads.some(lead => lead.id === selectedId)) { setSelectedId(null); setView("list"); }
-    } catch (error) { setError(error instanceof Error ? error.message : "Search could not be loaded. Try again."); }
-    finally { listReadLock.current = false; setLoading(false); }
+    } catch (error) { if (activation === activationGeneration.current) setError(error instanceof Error ? error.message : "Search could not be loaded. Try again."); }
+    finally { listReadLock.current = false; if (activation === activationGeneration.current) setLoading(false); }
   }
 
   async function action(body: unknown): Promise<Record<string, unknown> | null> {
@@ -300,6 +306,7 @@ export default function SalesClient() {
     if (dirty && !["create", "quote", "stage"].includes(kind ?? "") &&
       !window.confirm("Discard unsaved stage or follow-up edits before continuing?")) return null;
     const actionActivation = activationGeneration.current;
+    const actionAccess = customerAccessGeneration.current;
     const quoteNonce = kind === "quote" ? activeQuote.current?.nonce : null;
     if (kind === "quote" && (!quoteNonce || !activeQuote.current || !draftMemory.retain(activeQuote.current, liveFields.current) || !draftMemory.beginSubmit(quoteNonce))) {
       setError("This quotation cannot be safely retained for submission. Review its size and reload latest status if needed."); return null;
@@ -310,6 +317,12 @@ export default function SalesClient() {
     try {
       const response = await fetch("/api/sales", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const result = await response.json();
+      if (actionAccess !== customerAccessGeneration.current) {
+        // Revoked access may settle metadata, never restart reads or reveal its result.
+        // Ordinary Activity hiding is different: its unknown outcomes must still lock the workspace.
+        if (quoteNonce) draftMemory.settle(quoteNonce, response.ok ? "acknowledged" : response.status >= 500 ? "uncertain" : "rejected");
+        return null;
+      }
       if (!response.ok) {
         if (response.status >= 500) throw new Error("uncertain");
         if (quoteNonce) draftMemory.settle(quoteNonce, "rejected");
@@ -322,6 +335,7 @@ export default function SalesClient() {
           const entry = draftMemory.getSnapshot();
           activeQuote.current = null; setDirty(false); setView("list");
           if (entry) await checkRecovery(entry);
+          if (actionAccess !== customerAccessGeneration.current) return null;
         }
         setError(quoteNonce && result.code === "QUOTE_REVISION_CONFLICT"
           ? "The enquiry or quotation changed; this draft was not saved. Recheck your access and review the latest enquiry before continuing. A retained copy cannot overwrite a newer version."
@@ -343,6 +357,7 @@ export default function SalesClient() {
         setShare(new URL(result.sharePath, window.location.origin).href);
       }
       const latest = await load({ focusId: typeof result.id === "string" ? result.id : request.leadId });
+      if (actionAccess !== customerAccessGeneration.current) return null;
       reconcileShare(latest, activeShareId);
       // A confirmed action may leave the persisted stage/follow-up unchanged (e.g. withdraw).
       // Remount uncontrolled fields before clearing dirty state, so discarded edits cannot survive.
@@ -352,6 +367,7 @@ export default function SalesClient() {
       return result;
     } catch {
       if (quoteNonce && !confirmed) draftMemory.settle(quoteNonce, "uncertain");
+      if (actionAccess !== customerAccessGeneration.current) return null;
       setUncertain(true); setError("");
       setUncertaintyReason(confirmed
         ? "The save was acknowledged, but the latest record could not be loaded. Do not save again. Reload latest status and review it first."
@@ -412,6 +428,12 @@ export default function SalesClient() {
     setFocusRequest(value => value + 1);
   }
   function customerAccessChanged() {
+    // Revoke every outstanding reader synchronously, before React batches the cleared UI.
+    // Otherwise an older permitted response could undo this newer access boundary.
+    readGeneration.current += 1; recoveryCheck.current += 1; activationGeneration.current += 1; customerAccessGeneration.current += 1;
+    listReadLock.current = false; dataRef.current = null; selectedIdRef.current = null;
+    setLoading(false); setRecoveryBusy(false); setRecovery(null); setNotice(""); setRetentionError("");
+    setUncertain(false); setUncertaintyReason(""); setListIds([]); setAppendedFocusId(null);
     customerMemory.reset();
     draftMemory.clear(); activeQuote.current = null;
     setContextChanged(true); setData(null); setView("list"); setSelectedId(null); setDirty(false);

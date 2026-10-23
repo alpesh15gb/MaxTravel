@@ -112,6 +112,33 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
   await page.getByRole('button',{name:'Save draft version',exact:true}).click();await within(committedPromise,15000,'server quote commit');await back();await forward(s.id);await recoveryState('pending');await page.getByText('The previous quotation save is still pending. Do not submit again. Wait for its outcome and review the latest enquiry.',{exact:true}).waitFor();assert(await page.getByRole('button',{name:'Discard saved draft',exact:true}).isDisabled(),'Pending request cannot be discarded to enable a duplicate save');assert.equal(s.writes.filter(action=>action==='quote').length,1);release();await recoveryState('unknown');await page.getByText('The previous save outcome is unknown. It may have completed. This copy cannot be restored or resubmitted; review the latest enquiry before discarding it.',{exact:true}).waitFor();
   assert.equal(await db.salesQuote.count({where:{leadId:s.id}}),1);assert.equal(s.writes.filter(action=>action==='quote').length,1,'Pending/unknown navigation never retries POST');assert.equal(await page.getByRole('button',{name:'Restore quotation',exact:true}).count(),0,'Uncertain save cannot restore an editable duplicate');await screenshot('unknown-outcome');await page.getByRole('button',{name:'Review latest enquiry',exact:true}).click();await page.getByRole('region',{name:'Selected enquiry',exact:true}).getByText('Staff-only draft. Not shared with the customer or published in the package catalogue.',{exact:true}).waitFor();assert.equal(s.writes.filter(action=>action==='quote').length,1,'Explicit reconciliation reads but never retries');await page.unroute('**/api/sales');await within(s.context.close(),3000,'unknown context close');
  }
+ // Non-quote saves keep their unknown-outcome lock across Activity, even without quotation metadata.
+ {
+  const s=await start('unknown-enquiry-create');
+  await confirmClick(page.getByRole('button',{name:'New enquiry',exact:true}),'Discard unsaved changes to this enquiry?');
+  const title='Synthetic hidden unknown enquiry create';
+  await page.getByLabel('Customer',{exact:true}).selectOption(fixture.customerId);
+  await page.getByLabel('Enquiry title',{exact:true}).fill(title);await page.getByLabel('Source',{exact:true}).fill('Synthetic lifecycle review');
+  let release,committed;const held=new Promise(resolve=>release=resolve),commit=new Promise(resolve=>committed=resolve);
+  await page.route('**/api/sales',async route=>{
+   if(route.request().method()!=='POST'||route.request().postDataJSON()?.action!=='create')return route.fallback();
+   const response=await route.fetch({timeout:15000});assert(response.ok());committed();await within(held,30000,'held unknown enquiry response');
+   return route.fulfill({status:503,contentType:'application/json',json:{error:'Synthetic lost acknowledgement'}});
+  });
+  try {
+   await page.getByRole('button',{name:'Save enquiry',exact:true}).click();await within(commit,15000,'unknown enquiry commit');await back();
+   const delivered=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/sales'&&response.request().method()==='POST');
+   release();await (await delivered).finished();await forward(s.id,false);
+   await page.getByText('The save outcome is unknown. It may have completed. Do not submit again; reload latest status and review the enquiry before continuing.',{exact:true}).waitFor();
+   assert(await page.getByRole('button',{name:'New enquiry',exact:true}).isDisabled(),'Hidden non-quote failure retains uncertainty barrier');
+   assert.equal(await db.salesLead.count({where:{title}}),1);assert.equal(s.writes.filter(action=>action==='create').length,1);
+   await page.getByRole('button',{name:'Reload latest status',exact:true}).click();
+   await page.getByText('Latest records loaded. Review the enquiry and quote versions before making another change.',{exact:true}).waitFor();
+   assert.equal(await page.getByRole('button',{name:'New enquiry',exact:true}).isDisabled(),false,'Only explicit reconciliation ends unknown barrier');
+   assert.equal(s.writes.filter(action=>action==='create').length,1,'Reconciliation never retries create');
+   report.scenarios.push({name:'non-quote-unknown-after-back-remains-locked',passed:true});
+  } finally { release();await page.unroute('**/api/sales');await within(s.context.close(),3000,'unknown enquiry context close'); }
+ }
  // A one-time private link delivered after leaving its activation must never reappear on return.
  {
   const s=await start('late-publish');await page.getByRole('button',{name:'Save draft version',exact:true}).click();await page.getByRole('region',{name:'Selected enquiry',exact:true}).getByText('Staff-only draft. Not shared with the customer or published in the package catalogue.',{exact:true}).waitFor();
@@ -213,6 +240,41 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
   await page.unroute('**/api/sales*');
   report.scenarios.push({name:'in-flow-customer-cancel-repeat-unknown-read-preserves-enquiry',passed:true});
   await within(s.context.close(),3000,'prerequisite context close');
+ }
+ // A newer picker access boundary must defeat an older, permitted parent Refresh response.
+ for(const boundary of ['denied','changed-context']) {
+  const s=await start(`customer-parent-read-${boundary}`,390);
+  await confirmClick(page.getByRole('button',{name:'New enquiry',exact:true}),'Discard unsaved changes to this enquiry?');
+  let releaseParent,releasePicker,parentCaptured,pickerCaptured;
+  const parentHeld=new Promise(resolve=>releaseParent=resolve),pickerHeld=new Promise(resolve=>releasePicker=resolve);
+  const capturedParent=new Promise(resolve=>parentCaptured=resolve),capturedPicker=new Promise(resolve=>pickerCaptured=resolve);
+  await page.route('**/api/sales*',async route=>{
+   const url=new URL(route.request().url());if(route.request().method()!=='GET')return route.fallback();
+   if(url.searchParams.has('customers')) {
+    const response=await route.fetch({timeout:15000});assert(response.ok());const body=await response.json();pickerCaptured();
+    await within(pickerHeld,30000,'held newer picker boundary');
+    return boundary==='denied'?route.fulfill({status:403,contentType:'application/json',json:{error:'Synthetic access boundary'}}):route.fulfill({response,json:{...body,recoveryContext:'0'.repeat(64)}});
+   }
+   const response=await route.fetch({timeout:15000});assert(response.ok());parentCaptured();
+   await within(parentHeld,30000,'held older permitted parent read');return route.fulfill({response});
+  });
+  try {
+   await page.getByLabel('Find a customer',{exact:true}).fill('Fixture');await page.getByRole('button',{name:'Search customers',exact:true}).click();
+   await within(capturedPicker,15000,'picker request captured');
+   await page.getByRole('button',{name:'Refresh records',exact:true}).click();await within(capturedParent,15000,'permitted parent response captured');
+   releasePicker();await page.getByRole('button',{name:'Reload workspace',exact:true}).waitFor();
+   const delivered=page.waitForResponse(response=>{const url=new URL(response.url());return url.pathname==='/api/sales'&&!url.searchParams.has('customers')&&response.request().method()==='GET';});
+   releaseParent();await (await delivered).finished();
+   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+   await page.getByRole('alert').getByText('Staff session or access changed. Reload this workspace before continuing.',{exact:true}).waitFor();
+   assert.equal(await page.getByRole('button',{name:'Reload workspace',exact:true}).count(),1);
+   assert.equal(await page.getByRole('button',{name:'New enquiry',exact:true}).count(),0,'Old parent result cannot re-authorize create');
+   assert.equal(await page.getByLabel('Search enquiries',{exact:true}).count(),0,'Old parent data remains cleared');
+   assert.equal(await page.getByRole('region',{name:'Quotation recovery',exact:true}).count(),0);
+   assert.equal(await page.getByText('Loading your enquiries…',{exact:true}).count(),0,'Boundary ends obsolete loading state');
+   await noCachedText(s.title);await noCachedText(s.secret);assert.equal(s.writes.length,0,'Concurrent reads never write');
+   report.scenarios.push({name:`newer-picker-${boundary}-defeats-held-parent-response`,passed:true});await screenshot(`picker-parent-boundary-${boundary}`);
+  } finally { releaseParent();releasePicker();await page.unroute('**/api/sales*');await within(s.context.close(),3000,'picker parent boundary context close'); }
  }
  // Discovery searches the complete permitted dataset, not only the first display page.
  {
