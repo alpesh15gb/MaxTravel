@@ -35,7 +35,8 @@
     "test:travel-packages": "node --import ./scripts/standalone-server.mjs --import tsx tests/travel-packages.mts",
     "test:travel-packages-browser": "node --import tsx tests/travel-packages-browser.mts",
     "test:travel-packages-http": "node --import tsx tests/travel-packages-browser.mts --http-only",
-    "test:package-media": "node --import ./scripts/standalone-server.mjs --import tsx tests/package-media.mts"
+    "test:package-media": "node --import ./scripts/standalone-server.mjs --import tsx tests/package-media.mts",
+    "test:two-app-packages": "node --import tsx tests/two-app-packages.mts"
   },
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",

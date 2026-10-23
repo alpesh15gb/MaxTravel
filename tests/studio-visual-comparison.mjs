@@ -11,7 +11,8 @@ const out = path.resolve("test-artifacts/studio", label), fixturePath = path.res
 fs.mkdirSync(out, { recursive: true }); fs.rmSync(fixturePath, { force: true });
 const server = spawn(process.execPath, ["tests/visual-review-server.mjs"], { cwd: root, env: { ...process.env, REVIEW_PORT: String(port) }, stdio: ["ignore", "pipe", "pipe"] });
 let logs = "", browser; server.stdout.on("data", d => logs += d); server.stderr.on("data", d => logs += d);
-const measurements = [], browserErrors = [];
+const measurements = [], browserErrors = [], responsiveGeometry = [];
+const persistResponsive = () => fs.writeFileSync(path.join(out, "responsive-controls-geometry.json"), JSON.stringify({ label, checks: responsiveGeometry }, null, 2));
 try {
   let fixture;
   for (let i = 0; i < 160; i++) { if (server.exitCode !== null) throw Error(logs); if (fs.existsSync(fixturePath) && logs.includes("VISUAL REVIEW READY")) { fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8")); break; } await new Promise(r => setTimeout(r, 500)); }
@@ -62,6 +63,57 @@ try {
       // Both the old and new nav must retain keyboard dismissal and focus restoration.
       await page.keyboard.press("Escape"); assert.equal(await page.getByRole("button", { name: "Open navigation", exact: true }).evaluate(el => document.activeElement === el), true);
     }
+  }
+  // Candidate-only regression gate; the baseline intentionally retains the observed defects.
+  if (label !== "before") for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
+    await page.goto(base + "/payments", { waitUntil: "networkidle" });
+    await page.getByRole("region", { name: "Payment overview", exact: true }).waitFor();
+    await page.evaluate(() => document.fonts.ready);
+    const value = page.locator(".payments-summary .stat-value").first();
+    const original = await value.innerText();
+    for (const sample of ["actual", "large-inr"]) {
+      if (sample === "large-inr") await value.evaluate(node => { node.textContent = "₹90,07,19,92,54,740.91"; }); // DOM-only layout stress: no finance writes/calculations.
+      const geometry = await page.locator(".payments-summary").evaluate(strip => {
+        const box = node => { const r = node.getBoundingClientRect(); return { left:r.left, right:r.right, top:r.top, bottom:r.bottom }; };
+        return { viewport:innerWidth, scrollWidth:document.documentElement.scrollWidth, cards:[...strip.querySelectorAll(".stat-card")].map(card => {
+          const style = getComputedStyle(card), value = card.querySelector(".stat-value"), range = document.createRange(); range.selectNodeContents(value);
+          return { card:box(card), padding:{left:parseFloat(style.paddingLeft),right:parseFloat(style.paddingRight),bottom:parseFloat(style.paddingBottom)}, text:value.textContent, textRects:[...range.getClientRects()].map(r=>({left:r.left,right:r.right,top:r.top,bottom:r.bottom})) };
+        }) };
+      });
+      responsiveGeometry.push({ name:`payment-kpi-${width}-${sample}`, ...geometry }); persistResponsive();
+      await page.screenshot({ path:path.join(out, `payment-kpi-${width}-${sample}.png`), animations:"disabled" });
+      assert.equal(geometry.cards.length, 3); assert(geometry.scrollWidth <= width + 1, "Payment KPI never overflows the viewport");
+      for (const item of geometry.cards) for (const text of item.textRects) {
+        assert(text.left >= item.card.left + item.padding.left - 1 && text.right <= item.card.right - item.padding.right + 1, "Complete KPI text stays inside its own padded card, away from adjacent values");
+        assert(text.bottom <= item.card.bottom - item.padding.bottom + 1, "Wrapped INR remains fully visible, not clipped");
+      }
+      if (width === 1440) assert(geometry.cards.every(item => Math.abs(item.card.top - geometry.cards[0].card.top) < 1), "Desktop keeps three KPI cards on one row");
+    }
+    await value.evaluate((node, text) => { node.textContent = text; }, original);
+    assert.equal(await value.innerText(), original, "Layout stress never changes the application total");
+    await page.goto(base + "/sales", { waitUntil: "networkidle" });
+    await page.getByLabel("Filter by stage", { exact:true }).waitFor(); await page.evaluate(() => document.fonts.ready);
+    const geometry = await page.locator(".sales-toolbar").evaluate(toolbar => {
+      const box = node => { const r = node.getBoundingClientRect(); return { left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height }; };
+      const select = toolbar.querySelector("select"), style = getComputedStyle(select), canvas = document.createElement("canvas"), context = canvas.getContext("2d");
+      context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      return { viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,select:box(select),selected:select.selectedOptions[0].textContent,
+        textWidth:Math.max(...[...select.options].map(option=>context.measureText(option.textContent).width)),
+        availableTextWidth:select.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-24,
+        controls:[...toolbar.querySelectorAll("input,select,button")].map(node=>({name:node.getAttribute("aria-label")||node.textContent||node.id,...box(node)})) };
+    });
+    responsiveGeometry.push({ name:`sales-toolbar-${width}`, ...geometry }); persistResponsive();
+    await page.screenshot({ path:path.join(out, `sales-toolbar-${width}.png`), animations:"disabled" });
+    assert.equal(geometry.selected, "All stages");
+    assert(geometry.textWidth <= geometry.availableTextWidth, "All stage option text fits alongside native select arrow");
+    assert(geometry.scrollWidth <= width + 1, "Sales toolbar never overflows the viewport");
+    for (const control of geometry.controls) {
+      assert(control.left >= 0 && control.right <= width && control.height >= 40, "Every labelled toolbar control stays usable inside viewport");
+      for (const other of geometry.controls) if (control !== other) assert(!(control.left < other.right-1 && control.right > other.left+1 && control.top < other.bottom-1 && control.bottom > other.top+1), "Toolbar controls wrap rather than overlap");
+    }
+    await page.getByRole("button", { name:"Search all enquiries", exact:true }).waitFor();
+    await page.getByRole("button", { name:"Refresh records", exact:true }).waitFor();
   }
   fs.writeFileSync(path.join(out, "measurements.json"), JSON.stringify({ label, measurements, browserErrors }, null, 2));
   assert.deepEqual(browserErrors, [], "No client runtime errors during visual route coverage");

@@ -850,7 +850,8 @@ main table tbody tr:hover { background:var(--brand-50); }
   .package-section-tabs { display:none; }
   .package-publication summary { min-height:44px; }
   .sales-toolbar { padding:12px; gap:12px; }
-  .sales-toolbar > .field { width:auto; min-width:0; flex:1; }
+  /* Keep the selected stage legible; actions wrap instead of squeezing the native select. */
+  .sales-toolbar > .field { width:auto; min-width:min(100%, 10rem); flex:1 1 10rem; }
   .sales-toolbar > .field:first-child { flex-basis:100%; }
   .sales-toolbar > button { flex-shrink:0; }
   .sales-record { padding:18px; }
@@ -877,3 +878,7 @@ main table tbody tr:hover { background:var(--brand-50); }
   .sales-quote-orientation { padding:12px; margin:12px 0 18px; gap:10px; }
   .sales-row-meta { grid-template-columns:minmax(0,1fr); gap:8px; }
 }
+
+/* Financial totals need a readable card width, not the generic two-up phone summary. */
+.summary-strip.payments-summary { grid-template-columns:repeat(auto-fit,minmax(min(100%, 16rem),1fr)); }
+.payments-summary .stat-value { min-width:0; overflow-wrap:anywhere; }
