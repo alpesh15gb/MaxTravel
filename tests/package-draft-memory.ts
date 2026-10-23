@@ -1,0 +1,93 @@
+import assert from "node:assert/strict";
+import { createPackageDraftMemory, packageRecoveryKind, projectPackageDraft, packageWriteAcknowledgement, PACKAGE_DRAFT_TTL, type PackageDraftFields } from "../src/lib/package-draft-memory";
+import { emptyPackage } from "../src/lib/travel-packages";
+
+let clock = 1000;
+const memory = createPackageDraftMemory("session-a-role-a", () => clock);
+const key = { nonce: "edit-a", packageId: "package-a", revision: 3 };
+const fields: PackageDraftFields = { slug: "synthetic-package", draft: { ...structuredClone(emptyPackage), title: "Synthetic unsaved package", internalNotes: "Private staff fixture notes", itinerary: [{ day: 1, title: "Unfinished", description: "" }] }, section: "Itinerary" };
+assert(memory.retain(key, fields)); fields.draft.title = "Changed caller object";
+assert.equal(memory.getSnapshot()!.fields!.draft.title, "Synthetic unsaved package", "Retained copy must not alias the editor");
+const entry = memory.getSnapshot()!;
+assert.equal(packageRecoveryKind(entry, memory.context, { id: "package-a", revision: 3, status: "DRAFT" }), "ready");
+assert.equal(packageRecoveryKind(entry, memory.context, { id: "package-a", revision: 4, status: "DRAFT" }), "stale");
+assert.equal(packageRecoveryKind(entry, memory.context, { id: "package-a", revision: 3, status: "ARCHIVED" }), "stale");
+assert.equal(packageRecoveryKind(entry, memory.context, null), "denied", "Deleted/missing records never authorize retained text");
+assert.equal(packageRecoveryKind(entry, memory.context, { id: "another-package", revision: 3, status: "DRAFT" }), "denied");
+for (const context of ["new-session-same-user", "new-user", "changed-permissions", "changed-branch", ""]) assert.equal(packageRecoveryKind(entry, context, { id: "package-a", revision: 3, status: "DRAFT" }), "denied");
+const otherTab = createPackageDraftMemory(memory.context); assert.equal(otherTab.getSnapshot(), null, "No sharing between tabs, even with equal authenticated context");
+const newer = { ...key, nonce: "newer-edit" };
+assert.equal(memory.retain(newer, fields), false, "One bounded draft slot cannot silently replace another copy");
+assert(memory.beginSubmit(key.nonce, "PUBLISH"));
+assert.equal(memory.retain(key, fields), false); assert.equal(memory.beginSubmit(key.nonce, "PUBLISH"), false);
+assert.equal(packageRecoveryKind(memory.getSnapshot()!, memory.context, { id: "package-a", revision: 4, status: "PUBLISHED" }), "pending");
+clock += PACKAGE_DRAFT_TTL + 1; memory.expire();
+assert.equal(memory.getSnapshot()!.fields, null); assert.equal(memory.getSnapshot()!.phase, "submitting", "Expiry cannot make a pending write retryable");
+memory.settle(key.nonce, "uncertain");
+assert.equal(packageRecoveryKind(memory.getSnapshot()!, memory.context, { id: "package-a", revision: 4, status: "PUBLISHED" }), "unknown");
+assert.equal(memory.beginSubmit(key.nonce, "SAVE"), false); memory.expire(); assert.equal(memory.getSnapshot()!.phase, "uncertain");
+memory.settle("wrong-nonce", "acknowledged"); assert(memory.getSnapshot());
+memory.settle(key.nonce, "acknowledged"); assert.equal(memory.getSnapshot(), null, "Late acknowledged result clears its own entry after navigation");
+assert(memory.retain(newer, fields)); memory.settle(key.nonce, "acknowledged"); assert.equal(memory.getSnapshot()!.nonce, newer.nonce, "Old completion cannot clear a newer draft");
+clock += PACKAGE_DRAFT_TTL; memory.expire(); assert.equal(memory.getSnapshot(), null);
+
+const newKey = { nonce: "new-package", packageId: null, revision: null };
+assert(memory.retain(newKey, fields));
+assert.equal(packageRecoveryKind(memory.getSnapshot()!, memory.context, null), "ready");
+assert.equal(packageRecoveryKind(memory.getSnapshot()!, memory.context, { id: "created-elsewhere", revision: 1, status: "DRAFT" }), "stale", "A newly saved matching slug cannot be overwritten by unsaved-new recovery");
+assert(memory.beginSubmit(newKey.nonce, "SAVE")); memory.settle(newKey.nonce, "rejected"); assert.equal(memory.getSnapshot()!.phase, "editing"); memory.clear();
+assert.equal(memory.retain({ ...newKey, revision: 1 }, fields), false);
+assert.equal(memory.retain({ ...key, revision: null }, fields), false);
+
+const links = structuredClone(fields) as PackageDraftFields & { previewUrl?: string };
+links.previewUrl = "/api/private?token=secret";
+Object.assign(links.draft, { previewUrl: "/api/private?token=secret", unknownPrivateData: "do-not-retain" });
+links.draft.coverImageUrl = "https://unsafe.example/image?token=private";
+links.draft.gallery = [{ url: "https://images.unsplash.com/photo-fixture?w=800", alt: "Safe public fixture" }, { url: "/api/travel-packages/a/media/b?token=private", alt: "Private rejected" }];
+const projected = projectPackageDraft(links)!;
+assert(projected.omittedImageUrls); assert.equal(projected.fields.draft.coverImageUrl, ""); assert.equal(projected.fields.draft.gallery[1].url, "");
+assert.equal(projected.fields.draft.gallery[0].url, links.draft.gallery[0].url); assert(!JSON.stringify(projected).includes("token=")); assert(!JSON.stringify(projected).includes("do-not-retain"));
+assert.equal(projectPackageDraft({ ...fields, draft: { ...fields.draft, title: "x".repeat(121) } }), null);
+assert.equal(projectPackageDraft({ ...fields, draft: { ...fields.draft, itinerary: Array.from({ length: 61 }, () => ({ day: 1, title: "", description: "" })) } }), null);
+const oversized = structuredClone(fields); oversized.draft.itinerary = Array.from({ length: 60 }, (_, i) => ({ day: i + 1, title: "界".repeat(160), description: "界".repeat(2000) }));
+assert.equal(projectPackageDraft(oversized), null, "UTF-8 byte cap applies before retention");
+assert(memory.retain(key, fields)); assert.equal(memory.retain(key, oversized), false); assert.equal(memory.getSnapshot()!.fields, null, "Oversized replacement must not leave a misleading older text copy"); memory.clear();
+assert.equal(createPackageDraftMemory("").retain(key, fields), false);
+// Omitted-link review is sticky across sanitized copies, unrelated changes and navigation.
+assert(memory.retain(key, links));
+const sanitized = structuredClone(memory.getSnapshot()!.fields!);
+sanitized.draft.title = "Unrelated edit";
+assert(memory.retain(key, sanitized)); assert(memory.getSnapshot()!.omittedImageUrls);
+assert.equal(memory.beginSubmit(key.nonce, "SAVE"), false); assert.equal(memory.beginSubmit(key.nonce, "PUBLISH"), false);
+assert.equal(memory.acknowledgeImages(key.nonce, links), false, "Invalid live links cannot be acknowledged");
+assert.equal(memory.retain(key, oversized), false); assert(memory.getSnapshot()!.omittedImageUrls, "Bounds failure must not erase image review requirement");
+assert(memory.retain(key, sanitized)); assert(memory.getSnapshot()!.omittedImageUrls);
+assert(memory.acknowledgeImages(key.nonce, sanitized)); assert.equal(memory.getSnapshot()!.omittedImageUrls, false);
+assert(memory.beginSubmit(key.nonce, "SAVE")); memory.clear();
+const stable = structuredClone(fields); stable.draft.coverImageUrl = "/api/public/package-media/12345678-1234-4234-8234-123456789abc";
+assert.equal(projectPackageDraft(stable)!.fields.draft.coverImageUrl, stable.draft.coverImageUrl);
+assert.equal(projectPackageDraft(stable)!.omittedImageUrls, false);
+// A successful HTTP status alone, wrong ID, old revision or wrong context cannot retire a write nonce.
+const saved = { id: key.packageId, revision: 4, slug: fields.slug, draft: fields.draft, title: fields.draft.title, status: "DRAFT", publishedAt: null, updatedAt: new Date().toISOString(), hasUnpublishedChanges: false };
+assert(packageWriteAcknowledgement({ package: saved, recoveryContext: memory.context }, memory.context, key, fields.slug));
+assert(packageWriteAcknowledgement({ package: saved, recoveryContext: memory.context }, memory.context, key, "ignored-lifecycle-slug"), "Existing lifecycle acknowledgements bind ID/revision, not ignored form fields");
+for (const body of [{}, { recoveryContext: memory.context }, { package: saved, recoveryContext: "session-b" }, { package: { ...saved, id: "wrong" }, recoveryContext: memory.context }, { package: { ...saved, revision: 3 }, recoveryContext: memory.context }, { package: { ...saved, draft: {} }, recoveryContext: memory.context }]) assert.equal(packageWriteAcknowledgement(body, memory.context, key, fields.slug), null);
+assert.equal(packageWriteAcknowledgement({ package: { ...saved, revision: 1, slug: "wrong-new-slug" }, recoveryContext: memory.context }, memory.context, newKey, fields.slug), null, "New-create acknowledgement must identify the submitted slug");
+assert(memory.retain(key, fields)); assert(memory.beginSubmit(key.nonce, "SAVE"));
+memory.settle(key.nonce, "unverified"); assert(memory.getSnapshot()!.acknowledged); assert.equal(memory.getSnapshot()!.phase, "uncertain");
+assert.equal(memory.beginSubmit(key.nonce, "SAVE"), false, "Acknowledged but unread latest state cannot be blindly resubmitted");
+memory.clear();
+// Cross-document BFCache keeps only unresolved action metadata, never form text.
+assert(memory.retain(key, fields)); memory.leaveDocument(true); assert.equal(memory.getSnapshot(), null);
+for (const phase of ["submitting", "uncertain"] as const) {
+  assert(memory.retain(key, fields)); assert(memory.beginSubmit(key.nonce, "PUBLISH"));
+  if (phase === "uncertain") memory.settle(key.nonce, "uncertain");
+  memory.leaveDocument(true);
+  assert.equal(memory.getSnapshot()!.fields, null); assert.equal(memory.getSnapshot()!.phase, phase);
+  assert.equal(memory.getSnapshot()!.nonce, key.nonce);
+  assert.equal(memory.beginSubmit(key.nonce, "PUBLISH"), false, "BFCache cannot release an unresolved write barrier");
+  assert(!JSON.stringify(memory.getSnapshot()).includes(fields.draft.title));
+  memory.settle("old-nonce", "acknowledged"); assert(memory.getSnapshot());
+  memory.leaveDocument(false); assert.equal(memory.getSnapshot(), null, "A destroyed document does not persist recovery state");
+}
+console.log("PASS package memory: tab/session isolation, explicit bounded projection, safe image URLs, TTL, revision/archive/missing checks, pending/unknown lock, late nonce settlement");

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { Browser } from "playwright";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,6 +9,7 @@ import bcrypt from "bcryptjs";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
 import { emptyPackage } from "../src/lib/travel-packages";
+import { packageDraftRecoveryBrowser } from "./package-draft-recovery-browser.mts";
 const { chromium } = await import("./browser.mjs");
 const dir = mkdtempSync(path.join(tmpdir(), "crm-package-browser-"));
 const databaseUrl = `file:${path.join(dir, "fixture.db")}`, origin = "http://127.0.0.1:3248";
@@ -23,7 +25,7 @@ await db.user.create({ data: { employeeCode: "PKG-BRANCH", name: "Branch fixture
 const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", "3248", "-H", "127.0.0.1"], { env, stdio: ["ignore", "pipe", "pipe"] });
 let logs = ""; server.stdout.on("data", s => logs += s); server.stderr.on("data", s => logs += s);
 const output = path.resolve("test-artifacts/travel-packages"); mkdirSync(output, { recursive: true });
-let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
+let browser: Browser | null = null;
 try {
   let ready = false; for (let i = 0; i < 80; i++) { try { if ((await fetch(origin + "/api/health")).ok) { ready = true; break; } } catch {} await new Promise(r => setTimeout(r, 500)); } assert(ready, logs);
   assert.equal((await fetch(origin + "/api/travel-packages")).status, 401);
@@ -39,6 +41,33 @@ try {
   assert.equal((await mutate(null, { slug: "http-fixture", draft: apiDraft }, ownerCookie, "https://cross-site.example")).response.status, 403);
   let api = await mutate(null, { slug: "http-fixture", draft: apiDraft }); assert.equal(api.response.status, 201, JSON.stringify(api.body)); let apiItem = api.body.package;
   assert.equal((await fetch(origin + `/api/travel-packages/${apiItem.id}`, { headers: { Cookie: branchCookie } })).status, 403);
+  // Recovery reads and writes remain scope-bound and cannot be cached. All records are isolated fixtures.
+  const listResponse = await fetch(origin + "/api/travel-packages", { headers: { Cookie: ownerCookie } });
+  const ownerContext = (await listResponse.json()).recoveryContext; assert.match(ownerContext, /^[a-f0-9]{64}$/); assert.match(listResponse.headers.get("cache-control") ?? "", /private, no-store/);
+  for (const suffix of [`/${apiItem.id}`, "?draftSlug=http-fixture"]) {
+    const response = await fetch(origin + "/api/travel-packages" + suffix, { headers: { Cookie: ownerCookie } });
+    const body = await response.json(); assert.equal(body.recoveryContext, ownerContext); assert.equal(body.package.id, apiItem.id); assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+    const denied = await fetch(origin + "/api/travel-packages" + suffix, { headers: { Cookie: branchCookie } }); assert.equal(denied.status, 403); assert.match(denied.headers.get("cache-control") ?? "", /no-store/);
+  }
+  const missing = await fetch(origin + "/api/travel-packages/missing-package", { headers: { Cookie: ownerCookie } }); assert.equal(missing.status, 404); assert.match(missing.headers.get("cache-control") ?? "", /no-store/);
+  const noSlug = await fetch(origin + "/api/travel-packages?draftSlug=unused-fixture", { headers: { Cookie: ownerCookie } }); assert.equal((await noSlug.json()).package, null);
+  const malformedSlug = await fetch(origin + "/api/travel-packages?draftSlug=bad%20slug", { headers: { Cookie: ownerCookie } }); assert.equal(malformedSlug.status, 400); assert.match(malformedSlug.headers.get("cache-control") ?? "", /no-store/);
+  const secondCookie = await login("owner@example.test");
+  const secondContext = (await (await fetch(origin + "/api/travel-packages", { headers: { Cookie: secondCookie } })).json()).recoveryContext;
+  assert.notEqual(secondContext, ownerContext, "Same user with a different session gets a separate recovery namespace");
+  const beforeRejected = await db.travelPackage.findUniqueOrThrow({ where: { id: apiItem.id } });
+  const beforeAudit = await db.auditLog.count({ where: { entity: "TravelPackage" } }), beforePackages = await db.travelPackage.count();
+  for (const expectedRecoveryContext of [ownerContext, null, 17, {}]) {
+    for (const id of [apiItem.id, null]) {
+      const denied = await mutate(id, { slug: id ? apiItem.slug : "context-must-not-create", draft: apiDraft, revision: apiItem.revision, expectedRecoveryContext }, secondCookie);
+      assert.equal(denied.response.status, 403); assert.match(denied.response.headers.get("cache-control") ?? "", /no-store/);
+    }
+  }
+  assert.deepEqual(await db.travelPackage.findUniqueOrThrow({ where: { id: apiItem.id } }), beforeRejected, "Origin-context mismatch never changes package/revision");
+  assert.equal(await db.auditLog.count({ where: { entity: "TravelPackage" } }), beforeAudit, "Origin-context mismatch creates no package audit mutation");
+  assert.equal(await db.travelPackage.count(), beforePackages, "Mismatched new-draft context cannot create a package");
+  api = await mutate(apiItem.id, { slug: apiItem.slug, draft: apiDraft, revision: apiItem.revision, expectedRecoveryContext: ownerContext }); assert.equal(api.response.status, 200); assert.equal(api.body.recoveryContext, ownerContext); apiItem = api.body.package;
+
   const imageBytes = await sharp({ create: { width: 640, height: 400, channels: 3, background: "#142d40" } }).png().toBuffer();
   const uploadImage = (cookie: string, requestOrigin = origin) => { const form = new FormData(); form.append("file", new File([new Uint8Array(imageBytes)], "synthetic.png", { type: "image/png" })); return fetch(origin + `/api/travel-packages/${apiItem.id}/media`, { method: "POST", headers: { Cookie: cookie, Origin: requestOrigin }, body: form }); };
   assert.equal((await uploadImage("")).status, 401); assert.equal((await uploadImage(branchCookie)).status, 403); assert.equal((await uploadImage(ownerCookie, "https://cross-site.example")).status, 403);
@@ -61,9 +90,11 @@ try {
   for (const action of ["UNPUBLISH", "ARCHIVE", "RESTORE"]) { api = await mutate(apiItem.id, { action, revision: apiItem.revision }); assert.equal(api.response.status, 200); apiItem = api.body.package; assert.equal((await fetch(origin + "/api/public/travel-packages/http-fixture")).status, 404); }
   assert.equal((await fetch(origin + asset.url)).status, 404);
   assert.equal(apiItem.status, "DRAFT"); await db.packageMedia.deleteMany({ where: { packageId: apiItem.id } }); await db.travelPackage.delete({ where: { id: apiItem.id } });
-  console.log("Package HTTP: media upload/auth/branch/CSRF denial, private preview, published WebP and revocation, draft create, metadata-only listing, publish, summary projection, stale409, draft isolation, unpublish404 and archive/restore passed.");
+  const deleted = await fetch(origin + `/api/travel-packages/${apiItem.id}`, { headers: { Cookie: ownerCookie } }); assert.equal(deleted.status, 404); assert.match(deleted.headers.get("cache-control") ?? "", /no-store/);
+  assert.equal((await (await fetch(origin + "/api/travel-packages?draftSlug=http-fixture", { headers: { Cookie: ownerCookie } })).json()).package, null);
+  console.log("Package HTTP: scope/session-bound recovery context, no-store reads/errors, mismatched/malformed-origin no-write/no-audit, missing/deleted lookup, media upload/auth/branch/CSRF denial, private preview, published WebP and revocation, draft create, metadata-only listing, publish, summary projection, stale409, draft isolation, unpublish404 and archive/restore passed.");
   if (!process.argv.includes("--http-only")) {
-  browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+  browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] }) as Browser;
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   await context.addCookies([{ name: "tos_session", value: ownerCookie.split("=")[1], url: origin }]);
   const page = await context.newPage(); const errors: string[] = []; page.on("pageerror", (e: Error) => errors.push(e.message));
@@ -164,6 +195,7 @@ try {
   await page.route("**/api/travel-packages", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Fixture catalogue failure" }) }));
   await page.reload(); await page.getByRole("heading", { name: "Catalogue unavailable", exact: true }).waitFor(); assert.equal(await page.getByText("Your next great trip starts here").count(), 0);
   await page.unroute("**/api/travel-packages"); await page.getByRole("button", { name: "Retry loading", exact: true }).click(); await page.getByRole("button", { name: /Kerala new draft/ }).waitFor();
+  await packageDraftRecoveryBrowser({ browser, db, origin, ownerCookie, login });
   assert.deepEqual(errors, []); row = await db.travelPackage.findUniqueOrThrow({ where: { id: row.id } }); assert.equal(row.status, "DRAFT");
   console.log("Package browser: anonymous/branch denial, private create, publish, draft isolation, dirty cancel/navigation, mobile no-overflow, unpublish/archive/restore and honest load failure passed.");
   }

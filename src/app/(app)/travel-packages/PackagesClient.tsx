@@ -1,33 +1,111 @@
 "use client";
 import PackageMediaLibrary from "./PackageMediaLibrary";
 import "./packages-editor.css";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { EmptyState, Field, PageHeader, Status } from "@/components/ui";
-import { emptyPackage, PACKAGE_IMAGE_HELP, validatePackage, type PackageDraft } from "@/lib/travel-packages";
+import { emptyPackage, PACKAGE_IMAGE_HELP, validatePackage, slugSchema, type PackageDraft } from "@/lib/travel-packages";
+import { usePackageDraftEntry, usePackageDraftMemory } from "@/components/PackageDraftProvider";
+import { PACKAGE_EDITOR_SECTIONS, packageRecoveryKind, packageWriteAcknowledgement, readPackageEditorItem, type PackageEditorItem, type PackageDraftEntry, type PackageDraftFields, type PackageDraftKey } from "@/lib/package-draft-memory";
 
-type Item = { id: string; slug: string; title: string; status: string; revision: number; publishedAt: string | null; updatedAt: string; draft: PackageDraft; hasUnpublishedChanges: boolean };
+type Item = PackageEditorItem;
 type CatalogueItem = Omit<Item, "draft"> & { destination: string; durationDays: number };
 const catalogueItem = ({ draft, ...meta }: Item): CatalogueItem => ({ ...meta, destination: draft.destination, durationDays: draft.durationDays });
-const sections = ["Overview", "Itinerary", "Pricing & dates", "Terms & contact", "Images", "Preview"] as const;
+const sections = PACKAGE_EDITOR_SECTIONS;
 type Section = typeof sections[number];
+type Recovery = { nonce: string; kind: "checking" | "ready" | "stale" | "pending" | "unknown" | "unavailable"; item?: Item | null };
 export default function PackagesClient() {
+  const memory = usePackageDraftMemory(); const retained = usePackageDraftEntry();
+  const activeDraft = useRef<PackageDraftKey | null>(null);
+  const live = useRef<PackageDraftFields>({ slug: "", draft: structuredClone(emptyPackage), section: "Overview" });
+  const activation = useRef(0), catalogueRead = useRef(0), recoveryRead = useRef(0);
+  const [authorized, setAuthorized] = useState(false), [recovery, setRecovery] = useState<Recovery | null>(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false), [retentionError, setRetentionError] = useState("");
+  const recoveryHeading = useRef<HTMLHeadingElement>(null);
   const [items, setItems] = useState<CatalogueItem[]>([]); const [loading, setLoading] = useState(true); const [loadFailed, setLoadFailed] = useState(false);
   const [selected, setSelected] = useState<Item | null>(null); const [editing, setEditing] = useState(false);
   const [editorFocusRequest, setEditorFocusRequest] = useState(0);
   const [draft, setDraft] = useState<PackageDraft>(structuredClone(emptyPackage)); const [slug, setSlug] = useState("");
   const [section, setSection] = useState<Section>("Overview"); const [dirty, setDirty] = useState(false);
-  const [busy, setBusy] = useState(false); const [uncertain, setUncertain] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [search, setSearch] = useState(""); const [truncated, setTruncated] = useState(false);
   const mutationLock = useRef(false);
   const editorElement = useRef<HTMLElement>(null); const actionBar = useRef<HTMLDivElement>(null);
   const heading = useRef<HTMLHeadingElement>(null); const errorSummary = useRef<HTMLDivElement>(null); const createButton = useRef<HTMLButtonElement>(null);
-  async function load() {
+  const revoke = useCallback((message: string) => {
+    activation.current += 1; catalogueRead.current += 1; recoveryRead.current += 1;
+    memory.clear(); activeDraft.current = null; setAuthorized(false); setRecovery(null); setItems([]); setSelected(null); setEditing(false); setDirty(false);
+    setLoading(false); setLoadFailed(true); setBusy(false); setRecoveryBusy(false);
+    setDraft(structuredClone(emptyPackage)); setSlug(""); live.current = { slug: "", draft: structuredClone(emptyPackage), section: "Overview" }; setError(message);
+  }, [memory]);
+  const checkRecovery = useCallback(async (entry: PackageDraftEntry): Promise<Recovery | null> => {
+    const generation = activation.current, read = ++recoveryRead.current;
+    setRecovery({ nonce: entry.nonce, kind: "checking" });
+    try {
+      const suffix = entry.packageId ? `/${encodeURIComponent(entry.packageId)}` : entry.fields && slugSchema.safeParse(entry.fields.slug).success ? `?draftSlug=${encodeURIComponent(entry.fields.slug)}` : "";
+      const response = await fetch(`/api/travel-packages${suffix}`, { cache: "no-store" }); const body = await response.json();
+      if (generation !== activation.current || read !== recoveryRead.current || memory.getSnapshot()?.nonce !== entry.nonce) return null;
+      if ([401, 403, 404].includes(response.status)) {
+        memory.clear(entry.nonce); setRecovery(null);
+        if (response.status !== 404) revoke("Staff session or package access changed. Reload this workspace before continuing.");
+        else setError("The retained copy was cleared because this package is no longer available.");
+        return null;
+      }
+      if (!response.ok) throw Error();
+      if (body.recoveryContext !== memory.context) { revoke("Staff session or access changed. The retained package copy was cleared. Reload this workspace before continuing."); return null; }
+      memory.expire(); const current = memory.getSnapshot(); if (!current || current.nonce !== entry.nonce) { setRecovery(null); return null; }
+      const item = body.package == null ? null : readPackageEditorItem(body.package);
+      if (body.package != null && !item) throw Error();
+      const kind = packageRecoveryKind(current, body.recoveryContext, item);
+      if (kind === "denied" || kind === "expired") { memory.clear(entry.nonce); setRecovery(null); return null; }
+      const checked = { nonce: entry.nonce, kind, item }; setRecovery(checked); return checked;
+    } catch {
+      if (generation === activation.current && read === recoveryRead.current && memory.getSnapshot()?.nonce === entry.nonce) setRecovery({ nonce: entry.nonce, kind: "unavailable" });
+      return null;
+    }
+  }, [memory, revoke]);
+  const load = useCallback(async () => {
+    const generation = activation.current, read = ++catalogueRead.current;
     setLoading(true); setLoadFailed(false); setError("");
-    try { const r = await fetch("/api/travel-packages", { cache: "no-store" }); const b = await r.json(); if (!r.ok) throw new Error(b.error || "Could not load packages."); setItems(b.packages); setTruncated(b.truncated); setUncertain(false); }
-    catch (e) { setLoadFailed(true); setError(e instanceof Error ? e.message : "Could not load packages."); }
-    finally { setLoading(false); }
-  }
-  useEffect(() => { void load(); }, []);
+    try {
+      const r = await fetch("/api/travel-packages", { cache: "no-store" }); const b = await r.json();
+      if (generation !== activation.current || read !== catalogueRead.current) return;
+      if ([401, 403].includes(r.status) || (r.ok && b.recoveryContext !== memory.context)) { revoke("Staff session or package access changed. Reload this workspace before continuing."); setLoadFailed(true); return; }
+      if (!r.ok) throw new Error(b.error || "Could not load packages.");
+      setAuthorized(true); setItems(b.packages); setTruncated(b.truncated);
+      const entry = memory.getSnapshot(); if (entry && activeDraft.current?.nonce !== entry.nonce) await checkRecovery(entry);
+    }
+    catch (e) { if (generation === activation.current && read === catalogueRead.current) { setLoadFailed(true); setError(e instanceof Error ? e.message : "Could not load packages."); } }
+    finally { if (generation === activation.current && read === catalogueRead.current) setLoading(false); }
+  }, [memory, revoke, checkRecovery]);
+  const resetWorkspace = useCallback(() => {
+    activation.current += 1; catalogueRead.current += 1; recoveryRead.current += 1;
+    setAuthorized(false); setItems([]); setEditing(false); setSelected(null); setDirty(false); setRecovery(null); setBusy(false); setRecoveryBusy(false); setRetentionError("");
+    setError(""); setNotice(""); setSearch(""); setTruncated(false); setLoading(true);
+    activeDraft.current = null; live.current = { slug: "", draft: structuredClone(emptyPackage), section: "Overview" }; setDraft(live.current.draft); setSlug(""); setSection("Overview");
+  }, []);
+  useLayoutEffect(() => {
+    resetWorkspace(); memory.expire(); void load();
+    // A cross-document BFCache return does not remount React/Activity. Remove
+    // private fields before its snapshot, then require fresh access on pageshow.
+    const hide = () => { flushSync(resetWorkspace); };
+    const show = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      flushSync(() => { memory.leaveDocument(true); resetWorkspace(); });
+      memory.expire(); void load();
+    };
+    window.addEventListener("pagehide", hide); window.addEventListener("pageshow", show);
+    return () => { window.removeEventListener("pagehide", hide); window.removeEventListener("pageshow", show); activation.current += 1; catalogueRead.current += 1; recoveryRead.current += 1; };
+  }, [load, memory, resetWorkspace]);
+  useEffect(() => {
+    if (!recovery) return;
+    if (!retained) { setRecovery(null); void load(); return; }
+    if (retained.nonce !== recovery.nonce) return;
+    if (retained.phase === "submitting" && recovery.kind !== "pending" && !["checking", "unavailable"].includes(recovery.kind)) void checkRecovery(retained);
+    if (retained.phase === "uncertain" && recovery.kind !== "unknown" && !["checking", "unavailable"].includes(recovery.kind)) void checkRecovery(retained);
+    if (retained.phase === "editing" && ["pending", "unknown"].includes(recovery.kind)) void checkRecovery(retained);
+  }, [retained, recovery, load, checkRecovery]);
+  useEffect(() => { if (recovery && recovery.kind !== "checking") recoveryHeading.current?.focus(); }, [recovery]);
   useEffect(() => { if (error) errorSummary.current?.focus(); }, [error]);
   useEffect(() => {
     const editor = editorElement.current; const actions = actionBar.current;
@@ -49,33 +127,74 @@ export default function PackagesClient() {
   useEffect(() => {
     const confirmNavigation = (event: MouseEvent) => {
       const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
-      if (!dirty || !(anchor instanceof HTMLAnchorElement) || anchor.target === "_blank" || anchor.hasAttribute("download") || anchor.href === window.location.href || anchor.getAttribute("href")?.startsWith("#")) return;
-      if (!window.confirm("Discard unsaved package edits and leave this page?")) { event.preventDefault(); event.stopPropagation(); }
+      if ((!dirty && !busy) || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !(anchor instanceof HTMLAnchorElement) || anchor.target === "_blank" || anchor.hasAttribute("download") || anchor.href === window.location.href || anchor.getAttribute("href")?.startsWith("#")) return;
+      if (busy || !window.confirm("Discard unsaved package edits and leave this page?")) { event.preventDefault(); event.stopPropagation(); }
+      else if (activeDraft.current) { memory.clear(activeDraft.current.nonce); activeDraft.current = null; setDirty(false); }
     };
     document.addEventListener("click", confirmNavigation, true);
     return () => document.removeEventListener("click", confirmNavigation, true);
-  }, [dirty]);
+  }, [dirty, busy, memory]);
   useEffect(() => {
-    const prevent = (e: BeforeUnloadEvent) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } };
+    const prevent = (e: BeforeUnloadEvent) => { if (dirty || busy) { e.preventDefault(); e.returnValue = ""; } };
     window.addEventListener("beforeunload", prevent); return () => window.removeEventListener("beforeunload", prevent);
-  }, [dirty]);
+  }, [dirty, busy]);
+  const unresolved = Boolean(retained && (retained.phase !== "editing" || activeDraft.current?.nonce !== retained.nonce));
+  const locked = !authorized || busy || recoveryBusy || unresolved;
+  function beginEditor(item: Item | null, fields?: PackageDraftFields, key?: PackageDraftKey) {
+    const next = fields ?? { slug: item?.slug ?? "", draft: structuredClone(item?.draft ?? emptyPackage), section: "Overview" as const };
+    activeDraft.current = key ?? { nonce: globalThis.crypto?.randomUUID?.() ?? `draft-${Date.now()}-${Math.random()}`, packageId: item?.id ?? null, revision: item?.revision ?? null };
+    live.current = structuredClone(next); setSelected(item); setDraft(next.draft); setSlug(next.slug); setSection(next.section); setEditing(true); setDirty(Boolean(fields)); setRetentionError("");
+    setEditorFocusRequest(request => request + 1);
+  }
+  function retainFields(next: PackageDraftFields) {
+    live.current = next;
+    if (activeDraft.current && !memory.retain(activeDraft.current, next)) setRetentionError("This temporary copy exceeds the recovery limit. Keep this page open and save or copy your edits before leaving.");
+    else setRetentionError("");
+  }
+  function closeEditor() {
+    if (mutationLock.current || retained?.phase === "submitting" || (dirty && !window.confirm("Discard your unsaved edits?"))) return;
+    if (activeDraft.current) memory.clear(activeDraft.current.nonce);
+    activeDraft.current = null; setEditing(false); setDirty(false); setSelected(null); setDraft(structuredClone(emptyPackage)); setSlug(""); setRetentionError("");
+    createButton.current?.focus();
+  }
+  async function restoreDraft() {
+    const entry = memory.getSnapshot(); if (!entry || recoveryBusy) return;
+    const generation = activation.current; setRecoveryBusy(true);
+    try {
+      const checked = await checkRecovery(entry), latest = memory.getSnapshot();
+      if (generation !== activation.current || checked?.kind !== "ready" || latest?.nonce !== entry.nonce || !latest.fields || latest.phase !== "editing") return;
+      beginEditor(checked.item ?? null, latest.fields, { nonce: latest.nonce, packageId: latest.packageId, revision: latest.revision }); setRecovery(null);
+      setNotice("Unsaved package edits restored. Review and save the draft when ready. Nothing has been saved or published automatically.");
+    } finally { if (generation === activation.current) setRecoveryBusy(false); }
+  }
+  async function discardRecovery() {
+    const entry = memory.getSnapshot(); if (!entry || entry.phase === "submitting" || recoveryBusy) return;
+    if (!window.confirm(entry.phase === "uncertain" ? "Discard this retained copy? The previous action may have completed. Review the latest package or matching slug in the catalogue before creating or changing anything." : "Discard the retained unsaved package copy?")) return;
+    memory.clear(entry.nonce); setRecovery(null); setDirty(false); activeDraft.current = null; void load();
+  }
   async function open(meta: CatalogueItem | null) {
-    if (busy || uncertain || (dirty && !window.confirm("Discard your unsaved edits?"))) return;
+    if (locked || loading || (dirty && !window.confirm("Discard your unsaved edits?"))) return;
+    const generation = activation.current;
     setBusy(true); setError("");
     try {
       let item: Item | null = null;
       if (meta) {
         const response = await fetch(`/api/travel-packages/${meta.id}`, { cache: "no-store" }); const body = await response.json();
-        if (!response.ok) throw new Error(body.error || "Could not open this package."); item = body.package;
+        if (generation !== activation.current) return;
+        if ([401, 403].includes(response.status) || (response.ok && body.recoveryContext !== memory.context)) { revoke("Staff session or package access changed. Reload this workspace before continuing."); return; }
+        if (!response.ok) throw new Error(body.error || "Could not open this package."); item = readPackageEditorItem(body.package); if (!item) throw new Error("Could not verify this package. Please reload.");
       }
-      setSelected(item); setDraft(structuredClone(item?.draft ?? emptyPackage)); setSlug(item?.slug ?? ""); setEditing(true); setSection("Overview"); setDirty(false); setNotice("");
-      setEditorFocusRequest(request => request + 1);
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not open this package. Please retry."); }
-    finally { setBusy(false); }
+      if (generation !== activation.current) return;
+      if (activeDraft.current) memory.clear(activeDraft.current.nonce);
+      beginEditor(item); setNotice("");
+    } catch (e) { if (generation === activation.current) setError(e instanceof Error ? e.message : "Could not open this package. Please retry."); }
+    finally { if (generation === activation.current) setBusy(false); }
   }
-  function update<K extends keyof PackageDraft>(key: K, value: PackageDraft[K]) { setDraft(d => ({ ...d, [key]: value })); setDirty(true); setNotice(""); }
+  function update<K extends keyof PackageDraft>(key: K, value: PackageDraft[K]) { const next = { ...live.current, draft: { ...live.current.draft, [key]: value } }; retainFields(next); setDraft(next.draft); setDirty(true); setNotice(""); }
+  function changeSection(next: Section) { if (locked) return; live.current = { ...live.current, section: next }; if (dirty) retainFields(live.current); setSection(next); }
   async function save(action: string) {
-    if (busy || uncertain || mutationLock.current) return;
+    if (locked || mutationLock.current || !activeDraft.current) return;
+    if (["SAVE", "PUBLISH"].includes(action) && memory.getSnapshot()?.omittedImageUrls) { setError("Review the omitted image fields in Images and acknowledge your choices before saving or publishing."); changeSection("Images"); return; }
     const normalized = { ...draft, inclusions: draft.inclusions.map(s => s.trim()).filter(Boolean), exclusions: draft.exclusions.map(s => s.trim()).filter(Boolean) };
     if (["SAVE", "PUBLISH"].includes(action)) {
       const checked = validatePackage(normalized, action === "PUBLISH");
@@ -88,48 +207,104 @@ export default function PackagesClient() {
       RESTORE: "Restore this package as a private draft? It will not be published automatically.",
     };
     if (confirm[action] && !window.confirm(confirm[action])) return;
+    const key = activeDraft.current, generation = activation.current;
+    if (!memory.retain(key, live.current) || !memory.beginSubmit(key.nonce, action)) { setRetentionError("This action cannot be safely tracked. Keep a copy of your edits and reload the latest package before continuing."); return; }
     mutationLock.current = true; setBusy(true); setError(""); setNotice("");
+    let acknowledged = false;
     try {
-      const r = await fetch(`/api/travel-packages${selected ? `/${selected.id}` : ""}`, { method: selected ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, slug, draft: normalized, revision: selected?.revision }) });
+      const r = await fetch(`/api/travel-packages${selected ? `/${selected.id}` : ""}`, { method: selected ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, slug, draft: normalized, revision: selected?.revision, expectedRecoveryContext: memory.context }) });
       const b = await r.json();
-      if (!r.ok) { if (r.status >= 500 || r.status === 409) setUncertain(true); throw new Error(b.error || "Could not complete the action."); }
-      const item: Item = b.package; setItems(all => [catalogueItem(item), ...all.filter(i => i.id !== item.id)]); setSelected(item); setDraft(item.draft); setSlug(item.slug); setDirty(false);
+      if (!r.ok) {
+        if (r.status >= 500) throw new Error("unknown");
+        memory.settle(key.nonce, "rejected");
+        if ([401, 403, 404].includes(r.status)) {
+          memory.clear(key.nonce);
+          if (generation === activation.current) revoke("Staff session or permitted package changed. The local copy was cleared. Reload this workspace before continuing.");
+        } else if (generation === activation.current) {
+          setError(b.error || "The action was not applied. Check the fields and latest version.");
+          if (r.status === 409) { activeDraft.current = null; setEditing(false); setDirty(false); const entry = memory.getSnapshot(); if (entry) await checkRecovery(entry); }
+        }
+        return;
+      }
+      const saved = packageWriteAcknowledgement(b, memory.context, key, slug);
+      if (!saved) throw new Error("Malformed acknowledgement");
+      acknowledged = true;
+      // A held write response can belong to the previous cookie/session. Never
+      // reveal it directly: verify current access and context with a fresh read.
+      const latestResponse = await fetch(`/api/travel-packages/${encodeURIComponent(saved.id)}`, { cache: "no-store" });
+      const latest = await latestResponse.json();
+      if ([401, 403, 404].includes(latestResponse.status) || (latestResponse.ok && latest.recoveryContext !== memory.context)) {
+        memory.clear(key.nonce);
+        if (generation === activation.current) revoke("Staff session or access changed. Reload the workspace to review the completed action.");
+        return;
+      }
+      const item = readPackageEditorItem(latest.package);
+      if (!latestResponse.ok || !item || item.id !== saved.id || item.revision < saved.revision) throw new Error("Acknowledged action needs verification");
+      memory.settle(key.nonce, "acknowledged");
+      if (generation !== activation.current) return;
+      setRecovery(null); setItems(all => [catalogueItem(item), ...all.filter(i => i.id !== item.id)]);
+      beginEditor(item); setDirty(false);
       setNotice(action === "PUBLISH" ? "Published version is available to the website. Open the customer page to verify it." : action === "SAVE" ? "Draft saved. Any published version is unchanged." : action === "RESTORE" ? "Restored as a private draft." : "No longer publicly available from the catalogue. Your draft is retained.");
     } catch (e) {
-      if (e instanceof TypeError || e instanceof SyntaxError) { setUncertain(true); setError("The response was interrupted. The action may have completed. Reload the catalogue and reopen this package before trying again."); }
-      else setError(e instanceof Error ? e.message : "Could not complete the action. Reload to check its status before retrying.");
-    } finally { mutationLock.current = false; setBusy(false); }
+      void e;
+      memory.settle(key.nonce, acknowledged ? "unverified" : "uncertain");
+      if (generation === activation.current) {
+        activeDraft.current = null; setEditing(false); setDirty(false); setError(acknowledged ? "The action was acknowledged, but its latest state could not be verified. Do not repeat it. Review the latest package before continuing." : "The action outcome is unknown. It may have completed. Review the latest package before doing anything again; this copy cannot be resubmitted.");
+        const entry = memory.getSnapshot(); if (entry) await checkRecovery(entry);
+      }
+    } finally { mutationLock.current = false; if (generation === activation.current) setBusy(false); }
   }
   const filtered = items.filter(i => `${i.title} ${i.destination} ${i.status}`.toLowerCase().includes(search.toLowerCase()));
   const field = (key: keyof PackageDraft, label: string, opts: { area?: boolean; type?: string; hint?: string; max?: number } = {}) => <Field label={label} hint={opts.hint}>{opts.area ? <textarea className="control min-h-28" maxLength={opts.max ?? 8000} value={String(draft[key])} onChange={e => update(key, e.target.value as never)} /> : <input className="control" type={opts.type ?? "text"} maxLength={opts.max ?? 1500} value={String(draft[key])} onChange={e => update(key, e.target.value as never)} />}</Field>;
   const publicationErrors = validatePackage({ ...draft, inclusions: draft.inclusions.filter(s => s.trim()), exclusions: draft.exclusions.filter(s => s.trim()) }, true).errors;
   return <div className="workspace-page package-studio package-workspace-polish" data-editing={editing}>
-    <PageHeader eyebrow="Public catalogue" title="Travel packages" description="Build the draft here. Choose when customers see the published version." actions={<button ref={createButton} className={editing ? "btn-secondary" : "btn-primary"} disabled={busy || uncertain || loading || loadFailed} onClick={() => open(null)}>+ Create package</button>} />
+    <PageHeader eyebrow="Public catalogue" title="Travel packages" description="Build the draft here. Choose when customers see the published version." actions={<button ref={createButton} className={editing ? "btn-secondary" : "btn-primary"} disabled={locked || loading || loadFailed} onClick={() => open(null)}>+ Create package</button>} />
     {!editing && <div className="package-catalogue-summary" aria-label="Catalogue status">{[["Published", items.filter(i => i.status === "PUBLISHED").length], ["Private drafts", items.filter(i => i.status === "DRAFT").length], ["Archived", items.filter(i => i.status === "ARCHIVED").length]].map(([label, count]) => <div key={label} className="package-summary-item"><p>{label}</p><p className="package-summary-value">{loading || loadFailed ? "—" : count}</p></div>)}</div>}
     {error && <div ref={errorSummary} tabIndex={-1} role="alert" className="mb-4 whitespace-pre-line rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">{error}</div>}
     {notice && <div role="status" className="mb-4 rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">{notice}</div>}
-    {uncertain && <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm">Keep a copy of any unsaved edits, then reload and reopen the package to reconcile its latest version. <button className="btn-secondary mt-2" onClick={() => { if (!dirty || window.confirm("Reload latest state and discard local edits?")) { setEditing(false); setDirty(false); void load(); } }}>Reload catalogue</button></div>}
+    {retentionError && <p role="alert" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm">{retentionError}</p>}
+    {authorized && retained && recovery?.nonce === retained.nonce && <section aria-label="Retained package draft" data-recovery-state={recovery.kind} className="mb-5 space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-5">
+      <h2 ref={recoveryHeading} tabIndex={-1} className="text-lg font-semibold">Review your retained package copy</h2>
+      {recovery.kind === "checking" ? <p role="status">Checking the current staff session, package access and saved revision…</p> : recovery.kind === "unavailable" ? <><p>The latest package could not be checked. Retained text stays hidden until access is confirmed.</p><button className="btn-secondary" disabled={recoveryBusy} onClick={() => void checkRecovery(retained)}>Retry package recovery check</button></> : <>
+        {recovery.kind === "ready" && <p>Unsaved edits are available in this signed-in tab. Restore them only if you want to continue; nothing is saved or published automatically.</p>}
+        {recovery.kind === "stale" && <p role="alert">The saved package changed, was archived, or this slug now belongs to a saved package. This old copy is read-only and cannot overwrite the latest version.</p>}
+        {recovery.kind === "pending" && <p role="alert">The previous {retained.action?.toLowerCase()} action is still pending. Do not submit again. Wait for its result, then review the latest package.</p>}
+        {recovery.kind === "unknown" && <p role="alert">{retained.acknowledged ? "The previous action was acknowledged, but its latest state has not been verified." : `The previous ${retained.action?.toLowerCase()} outcome is unknown and may have completed.`} This copy cannot be restored or resubmitted. Review the latest package or matching catalogue slug before discarding it.</p>}
+        {recovery.item && <p className="font-medium">Latest saved package: {recovery.item.title} · revision {recovery.item.revision} · {recovery.item.status}</p>}
+        {retained.omittedImageUrls && <p role="alert">Invalid or private image links were excluded from this temporary copy. Re-select those images after restoring; private preview links are never retained.</p>}
+        <div className="flex flex-wrap gap-3">
+          {recovery.kind === "ready" && retained.fields && <button className="btn-primary" disabled={recoveryBusy} onClick={() => void restoreDraft()}>Restore package edits</button>}
+          <button className="btn-secondary" disabled={recoveryBusy} onClick={() => void checkRecovery(retained)}>Review latest package</button>
+          <button className="btn-secondary" disabled={recoveryBusy || retained.phase === "submitting"} onClick={() => void discardRecovery()}>Discard retained package copy</button>
+        </div>
+        {retained.fields && recovery.kind !== "ready" && <details><summary className="cursor-pointer py-2 font-medium">Read retained text without applying it</summary><pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words text-sm">{JSON.stringify(retained.fields, null, 2)}</pre></details>}
+        {!retained.fields && <p>The temporary text is no longer retained. The unresolved action still needs review.</p>}
+      </>}
+      <p className="text-sm text-slate-600">One copy stays only in this signed-in tab for 30 minutes after the last edit. Leaving or reloading this document clears the temporary text; unresolved actions still need review if this page returns from browser memory. Back and Forward do not save or publish anything.</p>
+    </section>}
     <div className={`package-workspace grid gap-6 ${editing ? "xl:grid-cols-[280px_minmax(0,1fr)]" : ""}`}>
       <section aria-label="Package catalogue" className="package-catalogue min-w-0">
         <label className="field mb-4"><span className="field-label">Find a package</span><input className="control" type="search" placeholder="Title, destination or status" value={search} onChange={e => setSearch(e.target.value)} /></label>
         {truncated && <p className="mb-3 text-sm text-amber-800">Showing the 250 most recently updated packages.</p>}
-        {loading ? <p role="status" className="p-6 text-slate-500">Loading your catalogue…</p> : loadFailed ? <EmptyState title="Catalogue unavailable" description="We could not load your packages. Retry before creating or editing content." action="Retry loading" onAction={() => void load()} /> : !items.length ? <EmptyState title="Your next great trip starts here" description="Create a private draft. Add itinerary, honest pricing and enquiry details before publishing." action="Create your first package" onAction={() => open(null)} /> : !filtered.length ? <EmptyState title="No matching packages" description="Try a different title, destination or status." /> : <div className={`grid gap-3 ${editing ? "" : "md:grid-cols-2 xl:grid-cols-3"}`}>{filtered.map(i => <button key={i.id} aria-current={selected?.id === i.id ? "true" : undefined} disabled={busy || uncertain} onClick={() => open(i)} className={`package-catalogue-card rounded-2xl border bg-white p-5 text-left transition hover:border-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600 ${selected?.id === i.id ? "border-teal-600 ring-1 ring-teal-600" : "border-slate-200"}`}><Status tone={i.status === "PUBLISHED" ? "success" : "neutral"}>{i.status === "PUBLISHED" ? "Published" : i.status === "ARCHIVED" ? "Archived" : "Private draft"}</Status><h2 className="mt-3 break-words font-semibold text-slate-900">{i.title}</h2><p className="mt-1 text-sm text-slate-500">{i.destination || "Destination to add"} · {i.durationDays} days</p>{i.hasUnpublishedChanges && <p className="mt-3 text-xs font-medium text-amber-800">Unpublished changes</p>}<p className="mt-3 text-xs text-slate-500">/{i.slug}</p></button>)}</div>}
+        {loading ? <p role="status" className="p-6 text-slate-500">Loading your catalogue…</p> : loadFailed ? <EmptyState title="Catalogue unavailable" description="We could not load your packages. Retry before creating or editing content." action="Retry loading" onAction={() => void load()} /> : !items.length ? <EmptyState title="Your next great trip starts here" description="Create a private draft. Add itinerary, honest pricing and enquiry details before publishing." action="Create your first package" onAction={() => open(null)} /> : !filtered.length ? <EmptyState title="No matching packages" description="Try a different title, destination or status." /> : <div className={`grid gap-3 ${editing ? "" : "md:grid-cols-2 xl:grid-cols-3"}`}>{filtered.map(i => <button key={i.id} aria-current={selected?.id === i.id ? "true" : undefined} disabled={locked} onClick={() => open(i)} className={`package-catalogue-card rounded-2xl border bg-white p-5 text-left transition hover:border-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600 ${selected?.id === i.id ? "border-teal-600 ring-1 ring-teal-600" : "border-slate-200"}`}><Status tone={i.status === "PUBLISHED" ? "success" : "neutral"}>{i.status === "PUBLISHED" ? "Published" : i.status === "ARCHIVED" ? "Archived" : "Private draft"}</Status><h2 className="mt-3 break-words font-semibold text-slate-900">{i.title}</h2><p className="mt-1 text-sm text-slate-500">{i.destination || "Destination to add"} · {i.durationDays} days</p>{i.hasUnpublishedChanges && <p className="mt-3 text-xs font-medium text-amber-800">Unpublished changes</p>}<p className="mt-3 text-xs text-slate-500">/{i.slug}</p></button>)}</div>}
         {!loading && !loadFailed && error && !editing && <button className="btn-secondary mt-3" onClick={() => void load()}>Retry loading</button>}
       </section>
-      {editing && <section ref={editorElement} className="package-editor min-w-0 rounded-2xl border border-slate-200 bg-white" aria-label="Package editor">
+      {authorized && editing && <section ref={editorElement} className="package-editor min-w-0 rounded-2xl border border-slate-200 bg-white" aria-label="Package editor">
         <div className="package-editor-heading border-b border-slate-200 p-5">
-          <div className="package-editor-identity"><div className="min-w-0"><h2 ref={heading} tabIndex={-1} className="scroll-mt-24 text-xl font-semibold">{selected ? selected.title : "New package"}</h2><p className="package-editor-purpose">Enquiry only · No instant booking</p></div><button className="btn-ghost" disabled={busy} onClick={() => { if (!dirty || window.confirm("Discard your unsaved edits?")) { setEditing(false); setDirty(false); window.setTimeout(() => createButton.current?.focus(), 0); } }}>Close editor</button></div>
+          <div className="package-editor-identity"><div className="min-w-0"><h2 ref={heading} tabIndex={-1} className="scroll-mt-24 text-xl font-semibold">{selected ? selected.title : "New package"}</h2><p className="package-editor-purpose">Enquiry only · No instant booking</p></div><button className="btn-ghost" disabled={busy} onClick={closeEditor}>Close editor</button></div>
+          {dirty && <p className="mt-3 text-sm text-slate-600">Unsaved edits: a temporary copy can be recovered after Back/Forward within this workspace, subject to a fresh access and version check. Leaving this document, reloading or signing out clears the text.</p>}
+          {retained?.nonce === activeDraft.current?.nonce && retained?.omittedImageUrls && <p role="alert" className="mt-3 text-sm text-amber-800">Some image links were omitted from temporary recovery. Review the Images section before saving or publishing. <button className="underline font-medium" onClick={() => changeSection("Images")}>Review image fields</button></p>}
           <div className="package-version-context" role="group" aria-label="Package version status">
             <p className="package-draft-state"><span>Private draft</span>{" "}<strong>{dirty ? "Unsaved edits" : selected?.status === "ARCHIVED" ? "Archived" : selected ? "Saved" : "Not saved yet"}</strong>{selected && <span> · {dirty ? "Last saved revision" : "Revision"} {selected.revision}</span>}</p>
             <details className="package-publication"><summary>Website: {selected?.status === "PUBLISHED" ? "Published snapshot" : "Not published"}{selected?.status === "PUBLISHED" && (dirty || selected.hasUnpublishedChanges) ? " · Draft changes pending" : ""}</summary><p>{selected?.status === "PUBLISHED" ? "The website uses a separate approved snapshot, not the private draft revision above. Saving this draft leaves that snapshot unchanged. Republish when the updated content is ready for customers." : "Only an explicit publication makes this package public. Saving or restoring a draft does not publish it. A package enquiry is never an instant booking confirmation."}</p></details>
           </div>
-          <div className="package-section-picker field"><label className="field-label" htmlFor="package-edit-section">Edit section</label><select id="package-edit-section" className="control" value={section} onChange={e => setSection(e.target.value as Section)}>{sections.map(s => <option key={s} value={s}>{s === "Pricing & dates" ? "Pricing" : s === "Terms & contact" ? "Terms" : s}</option>)}</select></div>
-          <div role="group" aria-label="Editor sections" className="package-section-tabs mt-5 flex flex-wrap gap-2">{sections.map(s => <button key={s} className={section === s ? "btn-primary" : "btn-secondary"} aria-pressed={section === s} onClick={() => setSection(s)}>{s}</button>)}</div>
+          <div className="package-section-picker field"><label className="field-label" htmlFor="package-edit-section">Edit section</label><select id="package-edit-section" className="control" value={section} disabled={locked} onChange={e => changeSection(e.target.value as Section)}>{sections.map(s => <option key={s} value={s}>{s === "Pricing & dates" ? "Pricing" : s === "Terms & contact" ? "Terms" : s}</option>)}</select></div>
+          <div role="group" aria-label="Editor sections" className="package-section-tabs mt-5 flex flex-wrap gap-2">{sections.map(s => <button key={s} className={section === s ? "btn-primary" : "btn-secondary"} aria-pressed={section === s} disabled={locked} onClick={() => changeSection(s)}>{s}</button>)}</div>
         </div>
-        <fieldset disabled={busy || uncertain || selected?.status === "ARCHIVED"} className="min-w-0 space-y-5 p-5 sm:p-6"><legend className="sr-only">{section}</legend>
+        <fieldset disabled={locked || selected?.status === "ARCHIVED"} className="min-w-0 space-y-5 p-5 sm:p-6"><legend className="sr-only">{section}</legend>
           {section === "Overview" && <>
             <div className="grid gap-4 md:grid-cols-2">{field("title", "Package title", { max: 120 })}{field("destination", "Destination / region", { max: 120 })}</div>
-            <Field label="Public URL slug" hint={selected?.publishedAt ? "Locked after first publication so customer links remain stable." : "Lowercase words and hyphens, e.g. kerala-backwaters-5-days."}><input className="control" value={slug} disabled={!!selected?.publishedAt} maxLength={100} onChange={e => { setSlug(e.target.value); setDirty(true); }} /></Field>
+            <Field label="Public URL slug" hint={selected?.publishedAt ? "Locked after first publication so customer links remain stable." : "Lowercase words and hyphens, e.g. kerala-backwaters-5-days."}><input className="control" value={slug} disabled={!!selected?.publishedAt} maxLength={100} onChange={e => { retainFields({ ...live.current, slug: e.target.value }); setSlug(e.target.value); setDirty(true); }} /></Field>
             {field("summary", "Short introduction", { area: true, max: 280, hint: "Up to 280 characters for the catalogue card." })}{field("description", "The experience", { area: true, hint: "Plain text only. Describe what makes this trip special without promising unconfirmed arrangements." })}
             <div className="grid gap-4 sm:grid-cols-2">{(["durationDays", "durationNights"] as const).map(k => <Field key={k} label={k === "durationDays" ? "Days" : "Nights"}><input className="control" type="number" min={k === "durationDays" ? 1 : 0} max={60} value={draft[k]} onChange={e => update(k, Number(e.target.value))} /></Field>)}</div>
             {field("internalNotes", "Internal notes — never published", { area: true, max: 6000, hint: "Private staff planning notes. Do not place private details in other fields." })}
@@ -152,8 +327,9 @@ export default function PackagesClient() {
             <div className="grid gap-4 md:grid-cols-2">{field("contactEmail", "Enquiry email", { type: "email", max: 160 })}{field("contactPhone", "Phone", { type: "tel", hint: "International format: +919876543210", max: 24 })}{field("contactWhatsapp", "WhatsApp", { type: "tel", hint: "International format, with country code", max: 24 })}</div>
           </>}
           {section === "Images" && <>
+            {retained?.nonce === activeDraft.current?.nonce && retained?.omittedImageUrls && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4"><p>Private or unsupported image links are not retained. Re-select the intended cover and gallery images, or consciously leave them empty to remove them. Saving and publishing stay blocked until you review these fields.</p><button className="btn-secondary mt-3" onClick={() => { if (activeDraft.current && memory.acknowledgeImages(activeDraft.current.nonce, live.current)) setError(""); else setError("Replace or remove unsupported image links before acknowledging the review."); }}>I reviewed the image fields</button></div>}
             <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">Use approved public image URLs you have permission to use, not private CRM documents or signed links. Images are optional; the website uses a neutral visual when absent. {PACKAGE_IMAGE_HELP} Remote URLs are never fetched by the CRM server.</p>
-            <PackageMediaLibrary key={selected?.id ?? "new"} packageId={selected?.id} disabled={busy || uncertain || selected?.status === "ARCHIVED"} selectedCover={draft.coverImageUrl} galleryFull={draft.gallery.length >= 12} onCover={url => { update("coverImageUrl", url); update("coverImageAlt", ""); }} onGallery={url => update("gallery", [...draft.gallery, { url, alt: "" }])} />
+            <PackageMediaLibrary key={selected?.id ?? "new"} packageId={selected?.id} disabled={locked || selected?.status === "ARCHIVED"} selectedCover={draft.coverImageUrl} galleryFull={draft.gallery.length >= 12} onCover={url => { update("coverImageUrl", url); update("coverImageAlt", ""); }} onGallery={url => update("gallery", [...draft.gallery, { url, alt: "" }])} />
             {field("coverImageUrl", "Cover image URL")}{field("coverImageAlt", "Cover image description", { max: 180, hint: "Describe the scene for customers using screen readers." })}
             {draft.gallery.map((img, i) => <div className="space-y-3 rounded-xl border border-slate-200 p-4" key={i}><Field label={`Gallery image ${i + 1} URL`}><input className="control" type="text" value={img.url} onChange={e => update("gallery", draft.gallery.map((v, n) => n === i ? { ...v, url: e.target.value } : v))} /></Field><Field label="Image description"><input className="control" maxLength={180} value={img.alt} onChange={e => update("gallery", draft.gallery.map((v, n) => n === i ? { ...v, alt: e.target.value } : v))} /></Field><button className="btn-ghost" onClick={() => { update("gallery", draft.gallery.filter((_, n) => n !== i)); window.setTimeout(() => document.getElementById("add-gallery-image")?.focus(), 0); }}>Remove image {i + 1}</button></div>)}<button id="add-gallery-image" className="btn-secondary" disabled={draft.gallery.length >= 12} onClick={() => update("gallery", [...draft.gallery, { url: "", alt: "" }])}>+ Add gallery image</button>
           </>}
@@ -172,10 +348,10 @@ export default function PackagesClient() {
         {selected && selected.status !== "ARCHIVED" && <details className="package-secondary-actions">
           <summary>More actions</summary>
           <p>Hide this package from customers without deleting the draft.{dirty ? " Save or discard your unsaved edits first." : " Each action asks for confirmation."}</p>
-          <div>{selected.status === "PUBLISHED" && <button className="btn-secondary" disabled={busy || uncertain || dirty} title={dirty ? "Save or discard edits first" : undefined} onClick={() => void save("UNPUBLISH")}>Unpublish</button>}<button className="btn-secondary" disabled={busy || uncertain || dirty} title={dirty ? "Save or discard edits first" : undefined} onClick={() => void save("ARCHIVE")}>Archive</button></div>
+          <div>{selected.status === "PUBLISHED" && <button className="btn-secondary" disabled={locked || dirty} title={dirty ? "Save or discard edits first" : undefined} onClick={() => void save("UNPUBLISH")}>Unpublish</button>}<button className="btn-secondary" disabled={locked || dirty} title={dirty ? "Save or discard edits first" : undefined} onClick={() => void save("ARCHIVE")}>Archive</button></div>
         </details>}
         <div ref={actionBar} className="flex flex-wrap items-center gap-2 rounded-b-2xl border-t border-slate-200 bg-slate-50 p-5">
-          {selected?.status !== "ARCHIVED" ? <><button className="btn-primary" disabled={busy || uncertain} onClick={() => void save("SAVE")}>{busy ? "Working…" : "Save draft"}</button><button className="btn-secondary" disabled={busy || uncertain || !selected} onClick={() => void save("PUBLISH")}>{selected?.status === "PUBLISHED" ? "Republish changes" : "Publish to website"}</button>{!selected && <span className="text-xs text-slate-500">Save once before publishing.</span>}</> : <><p className="mr-auto text-sm text-slate-500">Archived and hidden from customers. Restore to edit.</p><button className="btn-primary" disabled={busy || uncertain} onClick={() => void save("RESTORE")}>Restore as draft</button></>}
+          {selected?.status !== "ARCHIVED" ? <><button className="btn-primary" disabled={locked} onClick={() => void save("SAVE")}>{busy ? "Working…" : "Save draft"}</button><button className="btn-secondary" disabled={locked || !selected} onClick={() => void save("PUBLISH")}>{selected?.status === "PUBLISHED" ? "Republish changes" : "Publish to website"}</button>{!selected && <span className="text-xs text-slate-500">Save once before publishing.</span>}</> : <><p className="mr-auto text-sm text-slate-500">Archived and hidden from customers. Restore to edit.</p><button className="btn-primary" disabled={locked} onClick={() => void save("RESTORE")}>Restore as draft</button></>}
         </div>
       </section>}
     </div>

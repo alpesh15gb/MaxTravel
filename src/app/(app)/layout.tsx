@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getServerSession } from "@/lib/session";
 import Shell from "@/components/Shell";
 import { SalesDraftProvider } from "@/components/SalesDraftProvider";
+import { PackageDraftProvider } from "@/components/PackageDraftProvider";
 import { salesRecoveryContext } from "@/lib/sales-recovery-context";
 import { prisma } from "@/lib/db";
 
@@ -12,5 +13,5 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if(process.env.CRM_REQUIRE_MFA==="true" && !session.mfaEnabled && (await headers()).get("x-crm-route")!=="/account-security")redirect("/account-security");
   const agency = await prisma.settings.findUnique({ where: { key: "agency.name" } });
   const recoveryContext = salesRecoveryContext(session);
-  return <SalesDraftProvider key={recoveryContext} context={recoveryContext}><Shell user={session} agencyName={agency?.value ?? "Agency workspace"}>{children}</Shell></SalesDraftProvider>;
+  return <PackageDraftProvider key={recoveryContext} context={recoveryContext}><SalesDraftProvider key={recoveryContext} context={recoveryContext}><Shell user={session} agencyName={agency?.value ?? "Agency workspace"}>{children}</Shell></SalesDraftProvider></PackageDraftProvider>;
 }

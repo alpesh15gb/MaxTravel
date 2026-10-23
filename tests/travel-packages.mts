@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import "./package-draft-memory";
 import { mkdtempSync, cpSync, readdirSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSalesDraftEntry, useSalesDraftMemory, useCustomerCreateEntry, useCustomerCreateMemory } from "@/components/SalesDraftProvider";
+import { useSalesDraftEntry, useSalesDraftMemory, useCustomerCreateEntry, useCustomerCreateMemory, useSalesActionMemory, useSalesActionEntry } from "@/components/SalesDraftProvider";
+import { isSalesActionAcknowledgement } from "@/lib/sales-action-memory";
 import type { QuoteDraftEntry, QuoteDraftFields } from "@/lib/sales-draft-memory";
 import { dateLabel, dateTimeLabel } from "@/lib/dates";
 import { enumLabel } from "@/lib/labels";
@@ -34,6 +35,9 @@ export default function SalesClient() {
   const customerMemory = useCustomerCreateMemory();
   const customerWrite = useCustomerCreateEntry();
   const customerPending = customerWrite?.phase === "submitting";
+  const actionMemory = useSalesActionMemory();
+  const actionWrite = useSalesActionEntry();
+  const actionPending = actionWrite?.phase === "submitting";
   const retainedDraft = useSalesDraftEntry();
   const activeQuote = useRef<ActiveQuote | null>(null);
   const liveFields = useRef<QuoteDraftFields>({ items: [newItem()], terms: "", expiry: "" });
@@ -50,9 +54,16 @@ export default function SalesClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [uncertain, setUncertain] = useState(false);
-  const [uncertaintyReason, setUncertaintyReason] = useState("");
+  const [localBusy, setBusy] = useState(false);
+  const busy = localBusy || actionPending;
+  const [localUncertain, setUncertain] = useState(false);
+  const uncertain = localUncertain || Boolean(actionWrite && !actionPending);
+  const [localUncertaintyReason, setUncertaintyReason] = useState("");
+  const uncertaintyReason = actionWrite?.phase === "uncertain"
+    ? "The save outcome is unknown. It may have completed. Do not submit again; reload latest status and review the enquiry before continuing."
+    : actionWrite?.phase === "acknowledged"
+      ? "The save was acknowledged, but the latest record needs review. Do not save again. Reload latest status and review it first."
+      : localUncertaintyReason;
   const [filter, setFilter] = useState("ALL");
   const [query, setQuery] = useState("");
   const [listIds, setListIds] = useState<string[]>([]);
@@ -236,7 +247,7 @@ export default function SalesClient() {
   }, [dirty, busy, customerPending, draftMemory]);
 
   function leaveAllowed() {
-    return !mutationLock.current && customerMemory.getSnapshot()?.phase !== "submitting" && (!dirty || window.confirm("Discard unsaved changes to this enquiry?"));
+    return !mutationLock.current && actionMemory.getSnapshot()?.phase !== "submitting" && customerMemory.getSnapshot()?.phase !== "submitting" && (!dirty || window.confirm("Discard unsaved changes to this enquiry?"));
   }
   function open(viewNext: View, id: string | null = selectedId) {
     if (!leaveAllowed()) return;
@@ -263,11 +274,14 @@ export default function SalesClient() {
   }
 
   async function reload() {
-    if (mutationLock.current || customerMemory.getSnapshot()?.phase === "submitting" || draftMemory.getSnapshot()?.phase === "submitting" || (dirty && !window.confirm("Reload latest status and discard local edits? Copy anything you need first. A previous save may already have completed."))) return;
+    if (mutationLock.current || actionMemory.getSnapshot()?.phase === "submitting" || customerMemory.getSnapshot()?.phase === "submitting" || draftMemory.getSnapshot()?.phase === "submitting" || (dirty && !window.confirm("Reload latest status and discard local edits? Copy anything you need first. A previous save may already have completed."))) return;
     const activation = activationGeneration.current;
+    const pendingReview = actionMemory.getSnapshot();
+    const reviewEpoch = actionMemory.getReviewEpoch();
+    const reviewUnknownCreate = pendingReview?.kind === "create" && pendingReview.phase === "uncertain";
     mutationLock.current = true; setLoading(true); setError("");
     try {
-      const latest = await load();
+      const latest = await load({ focusId: pendingReview?.leadId, ...(reviewUnknownCreate ? { q: "", stage: "ALL" } : {}) });
       if (activation !== activationGeneration.current) return;
       reconcileShare(latest);
       if (activeQuote.current) draftMemory.clear(activeQuote.current.nonce);
@@ -275,6 +289,10 @@ export default function SalesClient() {
       const retained = draftMemory.getSnapshot();
       if (retained) await checkRecovery(retained);
       if (activation !== activationGeneration.current) return;
+      if (pendingReview && !actionMemory.clearAfterReview(pendingReview.nonce, reviewEpoch)) {
+        setError("This review was interrupted. Reload latest status again before making another change."); return;
+      }
+      if (reviewUnknownCreate) { setQuery(""); setFilter("ALL"); }
       setUncertain(false); setDirty(false);
       setView(selectedId && latest.leads.some(lead => lead.id === selectedId) ? "lead" : "list");
       setNotice("Latest records loaded. Review the enquiry and quote versions before making another change.");
@@ -301,7 +319,7 @@ export default function SalesClient() {
   }
 
   async function action(body: unknown): Promise<Record<string, unknown> | null> {
-    if (mutationLock.current || customerMemory.getSnapshot()?.phase === "submitting" || uncertain || (draftMemory.getSnapshot() && draftMemory.getSnapshot()?.phase !== "editing")) return null;
+    if (mutationLock.current || actionMemory.getSnapshot() || customerMemory.getSnapshot()?.phase === "submitting" || uncertain || (draftMemory.getSnapshot() && draftMemory.getSnapshot()?.phase !== "editing")) return null;
     const kind = (body as { action?: string }).action;
     if (dirty && !["create", "quote", "stage"].includes(kind ?? "") &&
       !window.confirm("Discard unsaved stage or follow-up edits before continuing?")) return null;
@@ -311,12 +329,16 @@ export default function SalesClient() {
     if (kind === "quote" && (!quoteNonce || !activeQuote.current || !draftMemory.retain(activeQuote.current, liveFields.current) || !draftMemory.beginSubmit(quoteNonce))) {
       setError("This quotation cannot be safely retained for submission. Review its size and reload latest status if needed."); return null;
     }
+    const actionNonce = kind === "quote" ? null : crypto.randomUUID();
+    if (actionNonce && !actionMemory.begin(actionNonce, kind, (body as { leadId?: string }).leadId)) return null;
     mutationLock.current = true; setBusy(true); setError(""); setNotice("");
     let confirmed = false;
     let activeShareId = shareQuoteId;
     try {
       const response = await fetch("/api/sales", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const result = await response.json();
+      if (response.ok && !isSalesActionAcknowledgement(kind, result)) throw new Error("uncertain");
+      if (actionNonce) actionMemory.settle(actionNonce, response.ok ? "acknowledged" : response.status >= 500 ? "uncertain" : "rejected", typeof result.id === "string" ? result.id : undefined);
       if (actionAccess !== customerAccessGeneration.current) {
         // Revoked access may settle metadata, never restart reads or reveal its result.
         // Ordinary Activity hiding is different: its unknown outcomes must still lock the workspace.
@@ -344,6 +366,8 @@ export default function SalesClient() {
       }
       confirmed = true;
       if (quoteNonce) draftMemory.settle(quoteNonce, "acknowledged");
+      // A replaced/hidden page cannot own review. Its provider keeps only the acknowledged outcome.
+      if (actionNonce && (actionActivation !== activationGeneration.current || actionMemory.getSnapshot()?.requiresReview)) return null;
       const request = body as { leadId?: string; quoteId?: string };
       if (kind === "withdraw" && request.quoteId === activeShareId) {
         setShare(""); setShareQuoteId(null); setShareContext(""); activeShareId = null;
@@ -357,7 +381,8 @@ export default function SalesClient() {
         setShare(new URL(result.sharePath, window.location.origin).href);
       }
       const latest = await load({ focusId: typeof result.id === "string" ? result.id : request.leadId });
-      if (actionAccess !== customerAccessGeneration.current) return null;
+      if (actionAccess !== customerAccessGeneration.current || (actionNonce && (actionActivation !== activationGeneration.current || actionMemory.getSnapshot()?.requiresReview))) return null;
+      if (actionNonce) actionMemory.clearAfterReview(actionNonce);
       reconcileShare(latest, activeShareId);
       // A confirmed action may leave the persisted stage/follow-up unchanged (e.g. withdraw).
       // Remount uncontrolled fields before clearing dirty state, so discarded edits cannot survive.
@@ -366,6 +391,7 @@ export default function SalesClient() {
       setDirty(false); setNotice("Saved. The latest enquiry record is shown below.");
       return result;
     } catch {
+      if (actionNonce && !confirmed) actionMemory.settle(actionNonce, "uncertain");
       if (quoteNonce && !confirmed) draftMemory.settle(quoteNonce, "uncertain");
       if (actionAccess !== customerAccessGeneration.current) return null;
       setUncertain(true); setError("");
@@ -434,7 +460,7 @@ export default function SalesClient() {
     listReadLock.current = false; dataRef.current = null; selectedIdRef.current = null;
     setLoading(false); setRecoveryBusy(false); setRecovery(null); setNotice(""); setRetentionError("");
     setUncertain(false); setUncertaintyReason(""); setListIds([]); setAppendedFocusId(null);
-    customerMemory.reset();
+    customerMemory.reset(); actionMemory.reset();
     draftMemory.clear(); activeQuote.current = null;
     setContextChanged(true); setData(null); setView("list"); setSelectedId(null); setDirty(false);
     setItems([newItem()]); setTerms(""); setExpiry(""); setShare(""); setShareContext(""); setShareQuoteId(null);
@@ -453,7 +479,8 @@ export default function SalesClient() {
     {error && <div ref={errorSummary} tabIndex={-1} role="alert" className="form-error space-y-3"><p>{error}</p>
       {contextChanged && <button className="btn" onClick={() => window.location.reload()}>Reload workspace</button>}
       {!contextChanged && !uncertain && !data && <button className="btn" disabled={loading || busy} onClick={() => void reload()}>{loading ? "Loading…" : "Reload latest status"}</button>}</div>}
-    {uncertain && <div ref={uncertaintySummary} tabIndex={-1} role="alert" className="form-error space-y-3"><p>{uncertaintyReason}</p><p>Changes remain locked across this workspace until the latest status is loaded.</p><button className="btn" disabled={loading || busy} onClick={() => void reload()}>{loading ? "Loading…" : "Reload latest status"}</button></div>}
+    {!contextChanged && actionPending && <p role="status" className="panel p-5" data-sales-action-state="submitting">The previous save is still pending. Do not submit again. Wait for its outcome before continuing.</p>}
+    {!contextChanged && uncertain && <div data-sales-action-state={actionWrite?.phase} ref={uncertaintySummary} tabIndex={-1} role="alert" className="form-error space-y-3"><p>{uncertaintyReason}</p><p>Changes remain locked across this workspace until the latest status is loaded.</p><button className="btn" disabled={loading || busy} onClick={() => void reload()}>{loading ? "Loading…" : "Reload latest status"}</button></div>}
     {notice && <p role="status" className="form-success">{notice}</p>}
     {data && view !== "new" && customerWrite && <section className="panel p-5 space-y-3" aria-label="Customer save review" data-customer-save-state={customerWrite.phase}>
       <h2 className="text-lg font-semibold">Review the customer save</h2>

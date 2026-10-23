@@ -36,6 +36,7 @@ jobs:
           node --import tsx tests/sales-workspace.ts
           node --import tsx tests/enquiry-customer.ts
           node --import tsx tests/customer-create-memory.ts
+          node --import tsx tests/sales-action-memory.ts
       - run: npm run build
       - name: Verify customer creation is bound to the originating staff session
         env:

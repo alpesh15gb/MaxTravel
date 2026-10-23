@@ -112,23 +112,31 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
   await page.getByRole('button',{name:'Save draft version',exact:true}).click();await within(committedPromise,15000,'server quote commit');await back();await forward(s.id);await recoveryState('pending');await page.getByText('The previous quotation save is still pending. Do not submit again. Wait for its outcome and review the latest enquiry.',{exact:true}).waitFor();assert(await page.getByRole('button',{name:'Discard saved draft',exact:true}).isDisabled(),'Pending request cannot be discarded to enable a duplicate save');assert.equal(s.writes.filter(action=>action==='quote').length,1);release();await recoveryState('unknown');await page.getByText('The previous save outcome is unknown. It may have completed. This copy cannot be restored or resubmitted; review the latest enquiry before discarding it.',{exact:true}).waitFor();
   assert.equal(await db.salesQuote.count({where:{leadId:s.id}}),1);assert.equal(s.writes.filter(action=>action==='quote').length,1,'Pending/unknown navigation never retries POST');assert.equal(await page.getByRole('button',{name:'Restore quotation',exact:true}).count(),0,'Uncertain save cannot restore an editable duplicate');await screenshot('unknown-outcome');await page.getByRole('button',{name:'Review latest enquiry',exact:true}).click();await page.getByRole('region',{name:'Selected enquiry',exact:true}).getByText('Staff-only draft. Not shared with the customer or published in the package catalogue.',{exact:true}).waitFor();assert.equal(s.writes.filter(action=>action==='quote').length,1,'Explicit reconciliation reads but never retries');await page.unroute('**/api/sales');await within(s.context.close(),3000,'unknown context close');
  }
- // Non-quote saves keep their unknown-outcome lock across Activity, even without quotation metadata.
- {
-  const s=await start('unknown-enquiry-create');
+ // Non-quote saves keep their provider-owned unknown-outcome lock across Activity/remounts.
+ for(const timing of ['while-away','after-forward','malformed-while-away']) {
+  const s=await start(`unknown-enquiry-create-${timing}`);
   await confirmClick(page.getByRole('button',{name:'New enquiry',exact:true}),'Discard unsaved changes to this enquiry?');
-  const title='Synthetic hidden unknown enquiry create';
+  const title=`Synthetic hidden unknown enquiry create ${timing}`;
+  if(timing==='after-forward') {
+   await page.getByLabel('Search enquiries',{exact:true}).fill('Unrelated old search');await page.getByRole('button',{name:'Search all enquiries',exact:true}).click();
+   await page.getByText('Search updated across all enquiries in your permitted scope.',{exact:true}).waitFor();await page.getByRole('button',{name:'New enquiry',exact:true}).click();
+  }
   await page.getByLabel('Customer',{exact:true}).selectOption(fixture.customerId);
   await page.getByLabel('Enquiry title',{exact:true}).fill(title);await page.getByLabel('Source',{exact:true}).fill('Synthetic lifecycle review');
   let release,committed;const held=new Promise(resolve=>release=resolve),commit=new Promise(resolve=>committed=resolve);
   await page.route('**/api/sales',async route=>{
    if(route.request().method()!=='POST'||route.request().postDataJSON()?.action!=='create')return route.fallback();
    const response=await route.fetch({timeout:15000});assert(response.ok());committed();await within(held,30000,'held unknown enquiry response');
-   return route.fulfill({status:503,contentType:'application/json',json:{error:'Synthetic lost acknowledgement'}});
+   return timing==='malformed-while-away'?route.fulfill({status:200,contentType:'application/json',json:{}}):route.fulfill({status:503,contentType:'application/json',json:{error:'Synthetic lost acknowledgement'}});
   });
   try {
    await page.getByRole('button',{name:'Save enquiry',exact:true}).click();await within(commit,15000,'unknown enquiry commit');await back();
+   if(timing==='after-forward') {
+    await forward(s.id,false);await page.locator('[data-sales-action-state="submitting"]').waitFor();
+    assert(await page.getByRole('button',{name:'New enquiry',exact:true}).isDisabled(),'Pending non-quote writes remain locked after returning');
+   }
    const delivered=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/sales'&&response.request().method()==='POST');
-   release();await (await delivered).finished();await forward(s.id,false);
+   release();await (await delivered).finished();if(timing!=='after-forward')await forward(s.id,false);
    await page.getByText('The save outcome is unknown. It may have completed. Do not submit again; reload latest status and review the enquiry before continuing.',{exact:true}).waitFor();
    assert(await page.getByRole('button',{name:'New enquiry',exact:true}).isDisabled(),'Hidden non-quote failure retains uncertainty barrier');
    assert.equal(await db.salesLead.count({where:{title}}),1);assert.equal(s.writes.filter(action=>action==='create').length,1);
@@ -136,7 +144,12 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
    await page.getByText('Latest records loaded. Review the enquiry and quote versions before making another change.',{exact:true}).waitFor();
    assert.equal(await page.getByRole('button',{name:'New enquiry',exact:true}).isDisabled(),false,'Only explicit reconciliation ends unknown barrier');
    assert.equal(s.writes.filter(action=>action==='create').length,1,'Reconciliation never retries create');
-   report.scenarios.push({name:'non-quote-unknown-after-back-remains-locked',passed:true});
+   assert.equal(await page.getByLabel('Search enquiries',{exact:true}).inputValue(),'','Unknown-create reconciliation clears old filters');
+   await page.getByRole('button',{name:`Open enquiry: ${title}`,exact:true}).waitFor();
+   report.scenarios.push({name:`non-quote-unknown-${timing}-remains-locked`,passed:true});
+  } catch(error) {
+   report.failure=String(error);report.nonQuoteState=await page.evaluate(()=>({url:location.pathname,states:[...document.querySelectorAll('[data-sales-action-state]')].map(node=>node.getAttribute('data-sales-action-state')),alerts:[...document.querySelectorAll('[role="alert"]')].map(node=>node.textContent),newEnquiry:[...document.querySelectorAll('button')].filter(node=>node.textContent?.trim()==='New enquiry').map(node=>({disabled:node.disabled}))})).catch(()=>null);persist();
+   await within(page.screenshot({path:path.join(out,`non-quote-${timing}-failure.png`),timeout:3000,mask:[page.locator('#sales-private-link')]}),3500,'non-quote failure screenshot').catch(()=>{});throw error;
   } finally { release();await page.unroute('**/api/sales');await within(s.context.close(),3000,'unknown enquiry context close'); }
  }
  // A one-time private link delivered after leaving its activation must never reappear on return.
@@ -149,10 +162,14 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
    await confirmClick(page.getByRole('button',{name:'Publish private proposal',exact:true}),'Publish this private proposal? Any earlier published proposal link will stop working.');await within(commit,15000,'server publish commit');await back();await forward(s.id,false);await page.getByRole('button',{name:`Open enquiry: ${s.title}`,exact:true}).waitFor();
    assert.equal(await page.getByRole('region',{name:'Private proposal link',exact:true}).count(),0);
    const delivered=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/sales'&&response.request().method()==='POST'&&response.request().postDataJSON()?.action==='publish',{timeout:15000});
-   const refreshed=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/sales'&&response.request().method()==='GET',{timeout:15000});release();
-   const [publishResponse,currentRead]=await Promise.all([delivered,refreshed]);assert.equal(publishResponse.status(),200);assert.equal(await within(publishResponse.finished(),15000,'delivered publish response'),null);
-   assert.equal(currentRead.status(),200);assert.equal(await within(currentRead.finished(),15000,'resumed record read'),null);
-   // A departed activation's toast is not a contract. Verify the current, freshly read record instead.
+   release();const publishResponse=await delivered;assert.equal(publishResponse.status(),200);assert.equal(await within(publishResponse.finished(),15000,'delivered publish response'),null);
+   await page.locator('[data-sales-action-state="acknowledged"]').waitFor();
+   assert(await page.getByRole('button',{name:'New enquiry',exact:true}).isDisabled(),'Departed acknowledged write remains locked until explicit review');
+   assert.equal(await page.getByRole('region',{name:'Private proposal link',exact:true}).count(),0);
+   const refreshed=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/sales'&&response.request().method()==='GET',{timeout:15000});
+   await page.getByRole('button',{name:'Reload latest status',exact:true}).click();const currentRead=await refreshed;
+   assert.equal(currentRead.status(),200);assert.equal(await within(currentRead.finished(),15000,'explicit record read'),null);
+   // The departed action retains no private capability and never retries. Explicitly review its record.
    await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(node=>node.textContent?.trim()==='New enquiry'&&!node.disabled),undefined,{timeout:15000});
    await page.getByRole('button',{name:`Open enquiry: ${s.title}`,exact:true}).click();
    const selected=page.getByRole('region',{name:'Selected enquiry',exact:true});
