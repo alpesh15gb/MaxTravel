@@ -56,6 +56,10 @@ async function handoff(heading, field, name) {
   report.scenarios.push({name,...geometry});
   if(!before) {assert(geometry.focused,`${name}: application focuses editor heading`);for(const b of [geometry.heading,geometry.field])assert(b&&b.top>=64&&b.bottom<=geometry.height,`${name}: heading/firstfield visible without test scrolling`);}
 }
+function sectionPicker() {
+  // The pinned baseline uses an implicit label containing all option text.
+  return before ? page.locator('label.package-section-picker select') : page.getByLabel('Edit section',{exact:true});
+}
 async function keyboardSlugAboveSaveBar(name) {
   const field=page.getByLabel('Public URL slug',{exact:false});
   // Start from the app-focused editor heading. No locator focus/click/scroll may
@@ -162,7 +166,7 @@ await withFixtureCleanup(async()=>{
       const status=page.locator('.package-version-context');await status.getByText('Private draft',{exact:true}).waitFor();await status.getByText('Saved',{exact:true}).waitFor();
       let writes=0;const observe=request=>{if(new URL(request.url()).pathname.startsWith('/api/travel-packages')&&!['GET','HEAD'].includes(request.method()))writes++;};page.on('request',observe);
       try{
-        if(width<768){await page.getByLabel('Edit section',{exact:true}).selectOption('Preview');await editor.getByRole('heading',{name:'Kerala discovery',exact:true,level:3}).waitFor();await editor.getByText(/Text-only draft preview — not the published website/).waitFor();await page.getByLabel('Edit section',{exact:true}).selectOption('Overview');}
+        if(width<768){await sectionPicker().selectOption('Preview');await editor.getByRole('heading',{name:'Kerala discovery',exact:true,level:3}).waitFor();await editor.getByText(/Text-only draft preview — not the published website/).waitFor();await sectionPicker().selectOption('Overview');}
         await page.getByText('More actions',{exact:true}).click();await page.getByRole('button',{name:'Unpublish',exact:true}).waitFor();assert.equal(writes,0,'Opening sections or actions never writes');
         const confirmations=[];const dismiss=async dialog=>{confirmations.push(dialog.message());await dialog.dismiss();};page.on('dialog',dismiss);try{await page.getByRole('button',{name:'Unpublish',exact:true}).click();await page.getByRole('button',{name:'Archive',exact:true}).click();}finally{page.off('dialog',dismiss);}
         assert.deepEqual(confirmations,['Remove this package from the customer website? The editable draft will be retained.','Archive this package and remove it from the customer website? You can restore it later.']);assert.equal(writes,0,'Dismissing consequential confirmations performs no write');
@@ -179,7 +183,7 @@ await withFixtureCleanup(async()=>{
       // Deliberately doubles existing computed text sizes, not browser chrome zoom.
       await editor.evaluate(root=>{const sizes=[root,...root.querySelectorAll('*')].filter(n=>n instanceof HTMLElement).map(node=>{const s=getComputedStyle(node);return {node,font:parseFloat(s.fontSize),line:parseFloat(s.lineHeight)};});for(const {node,font,line} of sizes){if(Number.isFinite(font))node.style.fontSize=`${font*2}px`;if(Number.isFinite(line))node.style.lineHeight=`${line*2}px`;}});
       await keyboardSlugAboveSaveBar(`${width}-keyboard-slug-text200`);
-      const picker=page.getByLabel('Edit section',{exact:true});
+      const picker=sectionPicker();assert.equal(await picker.evaluate(node=>node.labels.length),1,'Section picker retains a real associated label');
       const clearance=await picker.evaluate(node=>{const s=getComputedStyle(node),b=node.getBoundingClientRect();return {height:b.height,needed:parseFloat(s.lineHeight)+parseFloat(s.paddingTop)+parseFloat(s.paddingBottom)+parseFloat(s.borderTopWidth)+parseFloat(s.borderBottomWidth),font:s.fontSize,label:node.selectedOptions[0].textContent,available:b.width-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight)-parseFloat(s.borderLeftWidth)-parseFloat(s.borderRightWidth),labels:[...node.options].map(option=>{const context=document.createElement('canvas').getContext('2d');context.font=s.font;return {label:option.textContent,width:context.measureText(option.textContent).width};})};});
       report.scenarios.push({name:`${width}-picker-text200-clearance`,...clearance});if(!before){assert(clearance.height>=clearance.needed-.5,'200% text select has complete vertical text clearance');assert(clearance.labels.every(label=>label.width<=clearance.available),'200% section labels fit native select content width');}persist();
     }
