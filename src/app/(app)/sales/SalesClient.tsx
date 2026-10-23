@@ -7,7 +7,7 @@ import type { QuoteDraftEntry, QuoteDraftFields } from "@/lib/sales-draft-memory
 import { dateLabel, dateTimeLabel } from "@/lib/dates";
 import { enumLabel } from "@/lib/labels";
 import {
-  SALES_STAGES, matchingEnquiries, quoteExplanation, canPublishQuote, canStartQuote, hasPublishedShare,
+  SALES_STAGES, matchingEnquiries, quoteExplanation, canPublishQuote, canStartQuote, hasPublishedShare, privateLinkGuidance, customerPrerequisite,
   type SalesLead, type SalesCustomer,
 } from "./sales-workspace";
 
@@ -396,7 +396,7 @@ export default function SalesClient() {
     </section>}
     {share && <section className="sales-private-link panel p-5 space-y-3" aria-label="Private proposal link">
       <h2 ref={shareHeading} tabIndex={-1} className="text-lg font-semibold scroll-mt-24">Private proposal link — copy before leaving</h2><p className="font-semibold break-words">For enquiry: {shareContext}</p>
-      <p className="text-sm">This link is shown only once. Anyone with it can view the proposal. Send it only to the intended customer; it is not a public package listing.</p>
+      <p className="text-sm">This link is shown only once and cannot be retrieved after reloading or hiding it. Losing this displayed link does not withdraw the proposal. Anyone with it can view the proposal. Send it only to the intended customer; it is not a public package listing.</p>
       {uncertain && <p className="text-sm">Link status is unverified. Reload latest status before sharing.</p>}
       <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-private-link">Private proposal link</label><input id="sales-private-link" ref={shareInput} className="control mt-2" readOnly disabled={uncertain} value={share} onFocus={event => event.target.select()} /></div>
       <div className="sales-actions flex flex-wrap gap-2"><button className="btn" disabled={uncertain || busy} onClick={async () => {
@@ -430,6 +430,12 @@ export default function SalesClient() {
           {view !== "list" && <button className="btn mb-4" disabled={busy || loading} onClick={() => open("list")}>Back to enquiries</button>}
           {view === "new" && <>
             <h2 {...headingProps}>New enquiry</h2><p className="mt-2 mb-5 text-sm text-slate-600">Choose an existing customer and record the request. This does not create a booking.</p><p className="mb-4 text-sm text-slate-600">Date/time fields use your device’s local time. Saved follow-up and expiry labels are shown in IST.</p>
+            {!data.customers.length && <section className="mb-5 rounded-xl border p-4 space-y-3" aria-label="Customer needed before enquiry">
+              <h3 className="font-semibold">A customer is needed before saving</h3>
+              <p className="text-sm">No customer is available in this picker. {customerPrerequisite(data.canCreate).explanation}</p>
+              <p className="text-sm text-slate-600">This enquiry has not been saved. Leaving for Customers discards any unsaved enquiry fields; cancel the leave prompt to keep editing. New-enquiry fields are not included in quotation draft recovery.</p>
+              {locked ? <button type="button" className="btn" disabled>{customerPrerequisite(data.canCreate).action}</button> : <Link className="btn btn-primary" href="/customers">{customerPrerequisite(data.canCreate).action}</Link>}
+            </section>}
             <form key={`new-${focusRequest}`} onChange={() => setDirty(true)} onSubmit={async event => {
               event.preventDefault(); const form = new FormData(event.currentTarget); const follow = String(form.get("follow") ?? ""); const travel = String(form.get("date") ?? "");
               const result = await action({ action: "create", data: { customerId: form.get("customer"), title: form.get("title"), source: form.get("source"), product: form.get("product"), budgetMinor: Math.round(Number(form.get("budget") ?? 0) * 100), destination: form.get("destination"), notes: form.get("notes"), followUpAt: follow ? new Date(follow).toISOString() : null, travelDate: travel ? new Date(travel).toISOString() : null } });
@@ -445,7 +451,6 @@ export default function SalesClient() {
                 <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-follow-up">Follow-up deadline</label><input id="sales-follow-up" className="control mt-1" name="follow" type="datetime-local" /></div>
                 {canQuote && <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-budget">Budget (INR)</label><input id="sales-budget" className="control mt-1" name="budget" type="number" min={0} max={20000000} step="0.01" /></div>}
               </div><div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-notes">Notes</label><textarea id="sales-notes" className="control mt-1" name="notes" maxLength={4000} rows={4} /></div>
-                {!data.customers.length && <p className="text-sm">No customer is available in this picker. Add an eligible customer first from Customers.</p>}
                 <div className="sales-editor-footer sales-actions flex flex-wrap items-center gap-3"><button className="btn btn-primary" disabled={!data.customers.length}>Save enquiry</button><button type="button" className="btn" onClick={() => open("list")}>Close enquiry</button><span className="text-sm">{dirty ? "Unsaved changes — keep this page open until saved." : "Not saved yet"}</span></div>
               </fieldset>
             </form>
@@ -467,6 +472,9 @@ export default function SalesClient() {
               <div className="flex flex-wrap justify-between gap-2"><h4 className="font-semibold">Quote v{quote.version} · {enumLabel(quote.state)}</h4><span className="font-semibold tabular-nums">{money(quote.totalMinor)}</span></div>
               <p className="text-sm">{quoteExplanation(quote)}</p><p className="text-sm text-slate-600">Valid until {dateTimeLabel(quote.expiresAt)}{new Date(quote.expiresAt).getTime() <= Date.now() ? " · Expired" : ""}</p>
               {canQuote && <p className="text-sm text-slate-600">Cost {money(quote.costMinor)} · Margin {money(quote.totalMinor !== null && quote.costMinor !== null ? quote.totalMinor - quote.costMinor : null)}</p>}
+              {(!share || shareQuoteId !== quote.id) && privateLinkGuidance(selected, quote, canQuote) && <aside className="rounded-lg bg-slate-50 p-3 space-y-2" aria-label={`Private link guidance for quote v${quote.version}`}>
+                <h5 className="font-semibold">Need the private proposal link?</h5><p className="text-sm">{privateLinkGuidance(selected, quote, canQuote)}</p>
+              </aside>}
               <details className="text-sm"><summary className="cursor-pointer font-medium">View quotation details</summary><div className="mt-3 space-y-3">{quote.items?.length ? <ol className="space-y-3">{quote.items.map((item, position) => <li key={position}><p className="whitespace-pre-wrap break-words">{item.description}</p><p className="text-slate-600">{item.quantity} × {money(item.priceMinor)}{canQuote ? ` · Cost per unit ${money(item.costMinor)}` : ""}</p></li>)}</ol> : <p>Line-item amounts are not available in this view.</p>}<h5 className="font-semibold">Terms and inclusions</h5><p className="whitespace-pre-wrap break-words">{quote.terms}</p></div></details>
               <div className="sales-actions flex flex-wrap gap-2">{canQuote && quote.state === "DRAFT" && <button className="btn btn-primary" disabled={locked || !canPublishQuote(selected, quote)} onClick={() => {
                 if (window.confirm("Publish this private proposal? Any earlier published proposal link will stop working.")) void action({ action: "publish", leadId: selected.id, quoteId: quote.id });

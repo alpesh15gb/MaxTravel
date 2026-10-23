@@ -45,3 +45,18 @@ export function canStartQuote(lead: SalesLead) {
 export function hasPublishedShare(leads: SalesLead[], quoteId: string | null) {
   return Boolean(quoteId && leads.some(lead => lead.quotes.some(quote => quote.id === quoteId && quote.state === "PUBLISHED")));
 }
+
+/** Guidance only: never reconstruct or persist a proposal capability token. */
+export function privateLinkGuidance(lead: SalesLead, quote: SalesQuote, canQuote: boolean) {
+  if (quote.state !== "PUBLISHED" || quote.bookingId) return null;
+  const explanation = "An earlier private link cannot be retrieved here. Reloading or hiding the link does not withdraw the proposal.";
+  if (!canQuote) return `${explanation} Ask a colleague with quotation and finance permissions to review the next step.`;
+  if (!canStartQuote(lead)) return `${explanation} Review the enquiry stage and any accepted quotation before preparing another version. Do not withdraw an accepted proposal just to recover a link.`;
+  return `${explanation} To issue a replacement, review the latest draft or choose New quote version, then save and publish the latest unexpired draft. Publishing it invalidates earlier published links; saving a draft does not. Use Withdraw quote only if the existing proposal should stop being available immediately.`;
+}
+
+export function customerPrerequisite(canCreateCustomer: boolean) {
+  return canCreateCustomer
+    ? { action: "Open Customers to add a customer", explanation: "Open Customers, choose New customer, then return to Enquiries & quotes to start a new enquiry. The customer must be available in your permitted scope." }
+    : { action: "Review permitted customers", explanation: "Ask an administrator to add or assign an eligible customer within your scope. You do not have permission to create a customer." };
+}

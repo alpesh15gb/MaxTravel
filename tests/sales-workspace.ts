@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {
-  matchingEnquiries, canPublishQuote, canStartQuote, quoteExplanation, hasPublishedShare,
+  matchingEnquiries, canPublishQuote, canStartQuote, quoteExplanation, hasPublishedShare, privateLinkGuidance, customerPrerequisite,
   type SalesLead, type SalesQuote,
 } from "../src/app/(app)/sales/sales-workspace";
 
@@ -43,3 +43,27 @@ assert.equal(hasPublishedShare([{ ...lead, quotes: [{ ...quote, id: "different-q
 assert.equal(hasPublishedShare([], quote.id), false, "Missing/out-of-scope records fail closed");
 assert.equal(hasPublishedShare([lead], null), false);
 console.log("Sales workspace presentation tests passed: scoped search, state eligibility, private-versus-booking lifecycle.");
+
+const published = { ...quote, state: "PUBLISHED" };
+const publishedLead = { ...lead, quotes: [published] };
+const replacement = privateLinkGuidance(publishedLead, published, true)!;
+assert.match(replacement, /cannot be retrieved/);
+assert.match(replacement, /does not withdraw/);
+assert.match(replacement, /latest unexpired draft/);
+assert.match(replacement, /saving a draft does not/);
+assert.match(replacement, /Withdraw quote only if/);
+assert.doesNotMatch(privateLinkGuidance(publishedLead, published, false)!, /choose New quote version/);
+assert.match(privateLinkGuidance(publishedLead, published, false)!, /colleague with quotation and finance permissions/);
+for (const stage of ["WON", "LOST"]) {
+  assert.match(privateLinkGuidance({ ...publishedLead, stage }, published, true)!, /Review the enquiry stage/);
+}
+assert.match(privateLinkGuidance({ ...publishedLead, quotes: [{ ...quote, state: "ACCEPTED" }, published] }, published, true)!, /Do not withdraw an accepted proposal just to recover a link/);
+for (const state of ["DRAFT", "ACCEPTED", "WITHDRAWN", "SUPERSEDED"]) {
+  assert.equal(privateLinkGuidance(lead, { ...quote, state }, true), null);
+}
+assert.equal(privateLinkGuidance(publishedLead, { ...published, bookingId: "booking-1" }, true), null);
+assert.equal(customerPrerequisite(true).action, "Open Customers to add a customer");
+assert.match(customerPrerequisite(true).explanation, /permitted scope/);
+assert.equal(customerPrerequisite(false).action, "Review permitted customers");
+assert.match(customerPrerequisite(false).explanation, /do not have permission/);
+console.log("Flow clarity guidance passed: no raw-link retrieval, permission-aware replacement and customer prerequisite.");

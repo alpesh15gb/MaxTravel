@@ -131,9 +131,47 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
    const selected=page.getByRole('region',{name:'Selected enquiry',exact:true});
    await selected.getByRole('heading',{name:'Quote v1 · Published',exact:true}).waitFor();
    await selected.getByText('Private customer proposal. Accessible through its private link, not the public package catalogue.',{exact:true}).waitFor();
+   await selected.getByRole('complementary',{name:'Private link guidance for quote v1',exact:true}).getByText(/An earlier private link cannot be retrieved here/).waitFor();
    assert.equal(await page.getByRole('region',{name:'Private proposal link',exact:true}).count(),0,'Late private link is not revealed in another activation');assert.equal(await page.getByLabel('Private proposal link',{exact:true}).count(),0);assert.equal(await db.salesQuote.count({where:{leadId:s.id,state:'PUBLISHED'}}),1);assert.equal(s.writes.filter(action=>action==='publish').length,1,'Navigation never republishes');report.scenarios.push({name:'late-publish-link-withheld',passed:true});await screenshot('late-publish-withheld');
+   await page.reload({waitUntil:'domcontentloaded'});await page.getByRole('button',{name:`Open enquiry: ${s.title}`,exact:true}).click();
+   await page.getByRole('complementary',{name:'Private link guidance for quote v1',exact:true}).getByText(/Publishing it invalidates earlier published links; saving a draft does not/).waitFor();
+   assert.equal(await page.getByLabel('Private proposal link',{exact:true}).count(),0,'Reload never retrieves a raw proposal token');
+   assert.equal(s.writes.filter(action=>action==='publish').length,1,'Guidance/reload never republishes');
+   await screenshot('private-link-after-reload-390');
+
   }catch(error){caseFailure=error;report.failure=String(error);persist();await within(page.screenshot({path:path.join(out,'late-publish-failure.png'),timeout:3000,mask:[page.locator('#sales-private-link')]}),3000,'late publish failure screenshot').catch(()=>{});throw error;
   }finally{release();try{await within(page.unroute('**/api/sales'),3000,'publish route cleanup');await within(s.context.close(),3000,'publish context close');}catch(error){if(caseFailure){report.cleanupFailure=String(error);persist();}else throw error;}}
+ }
+ // Empty customer picker offers a permitted prerequisite route with honest dirty-navigation recovery.
+ {
+  const s=await start('customer-prerequisite',320);
+  await page.getByRole('button',{name:'Save draft version',exact:true}).click();
+  await page.getByRole('region',{name:'Selected enquiry',exact:true}).getByText('Staff-only draft. Not shared with the customer or published in the package catalogue.',{exact:true}).waitFor();
+  await page.route('**/api/sales',async route=>{if(route.request().method()==='GET'){const response=await route.fetch({timeout:15000});const data=await response.json();await route.fulfill({response,json:{...data,customers:[]}});}else await route.fallback();});
+  await page.getByRole('button',{name:'Refresh records',exact:true}).click();await page.getByRole('button',{name:'New enquiry',exact:true}).click();
+  const prerequisite=page.getByRole('region',{name:'Customer needed before enquiry',exact:true});await prerequisite.waitFor();
+  const action=prerequisite.getByRole('link',{name:'Open Customers to add a customer',exact:true});assert.equal(await action.getAttribute('href'),'/customers');
+  assert(await page.getByRole('button',{name:'Save enquiry',exact:true}).isDisabled());
+  await page.getByLabel('Enquiry title',{exact:true}).fill('Unsaved prerequisite fixture');
+  let dialogMessage='';page.once('dialog',dialog=>{dialogMessage=dialog.message();void dialog.dismiss();});await action.click();
+  assert.equal(dialogMessage,'Leave this enquiry? Unsaved changes will be lost.');assert(new URL(page.url()).pathname==='/sales');
+  assert.equal(await page.getByLabel('Enquiry title',{exact:true}).inputValue(),'Unsaved prerequisite fixture');
+  await prerequisite.scrollIntoViewIfNeeded();await screenshot('customer-prerequisite-320');
+  await confirmClick(action,'Leave this enquiry? Unsaved changes will be lost.');await page.waitForURL('**/customers');await page.getByRole('button',{name:'New customer',exact:true}).waitFor();
+  assert.equal(s.writes.filter(action=>action==='create').length,0,'Prerequisite route never creates an enquiry');
+  await page.unroute('**/api/sales');
+  await page.getByRole('button',{name:'New customer',exact:true}).click();
+  const customerDialog=page.getByRole('dialog');await customerDialog.getByLabel('Full name *',{exact:true}).fill('Flow prerequisite fixture customer');await customerDialog.getByLabel('Phone *',{exact:true}).fill('9000000137');
+  await customerDialog.getByRole('button',{name:'Create customer',exact:true}).click();await page.waitForURL(/\/customers\/[^/?]+$/);
+  const menu=page.getByRole('button',{name:'Open navigation',exact:true});if(await menu.isVisible())await menu.click();
+  await page.locator('#workspace-navigation').getByRole('link',{name:'Enquiries & quotes',exact:true}).click();await page.waitForURL('**/sales');
+  await page.getByRole('button',{name:'New enquiry',exact:true}).click();
+  assert.equal(await page.getByLabel('Enquiry title',{exact:true}).inputValue(),'','Prior new-enquiry fields are not silently restored');
+  const picker=page.getByLabel('Customer',{exact:true});await picker.getByRole('option',{name:/Flow prerequisite fixture customer/}).waitFor({state:'attached'});
+  assert.equal(await page.getByRole('region',{name:'Customer needed before enquiry',exact:true}).count(),0);
+  assert.equal(await page.getByRole('button',{name:'Save enquiry',exact:true}).isDisabled(),false);
+  report.scenarios.push({name:'empty-customer-prerequisite-dirty-cancel-create-return',passed:true});
+  await within(s.context.close(),3000,'prerequisite context close');
  }
  // Full document replacement intentionally ends memory-only recovery.
  {
