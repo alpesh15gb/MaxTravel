@@ -131,48 +131,156 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
    const selected=page.getByRole('region',{name:'Selected enquiry',exact:true});
    await selected.getByRole('heading',{name:'Quote v1 · Published',exact:true}).waitFor();
    await selected.getByText('Private customer proposal. Accessible through its private link, not the public package catalogue.',{exact:true}).waitFor();
-   await selected.getByRole('complementary',{name:'Private link guidance for quote v1',exact:true}).getByText(/An earlier private link cannot be retrieved here/).waitFor();
+   await selected.getByRole('complementary',{name:'Private link guidance for quote v1',exact:true}).getByText('Earlier links cannot be retrieved. Losing a link does not withdraw the proposal.',{exact:true}).waitFor();
    assert.equal(await page.getByRole('region',{name:'Private proposal link',exact:true}).count(),0,'Late private link is not revealed in another activation');assert.equal(await page.getByLabel('Private proposal link',{exact:true}).count(),0);assert.equal(await db.salesQuote.count({where:{leadId:s.id,state:'PUBLISHED'}}),1);assert.equal(s.writes.filter(action=>action==='publish').length,1,'Navigation never republishes');report.scenarios.push({name:'late-publish-link-withheld',passed:true});await screenshot('late-publish-withheld');
    await page.reload({waitUntil:'domcontentloaded'});await page.getByRole('button',{name:`Open enquiry: ${s.title}`,exact:true}).click();
-   await page.getByRole('complementary',{name:'Private link guidance for quote v1',exact:true}).getByText(/Publishing it invalidates earlier published links; saving a draft does not/).waitFor();
+   const guidance=page.getByRole('complementary',{name:'Private link guidance for quote v1',exact:true});
+   await guidance.getByText('Earlier links cannot be retrieved. Losing a link does not withdraw the proposal.',{exact:true}).waitFor();
+   assert.equal(await guidance.locator('details').getAttribute('open'),null,'Long recovery guidance starts collapsed');
    assert.equal(await page.getByLabel('Private proposal link',{exact:true}).count(),0,'Reload never retrieves a raw proposal token');
    assert.equal(s.writes.filter(action=>action==='publish').length,1,'Guidance/reload never republishes');
    await page.getByRole('complementary',{name:'Private link guidance for quote v1',exact:true}).scrollIntoViewIfNeeded();
    await screenshot('private-link-after-reload-390');
+   const details=guidance.locator('summary');await details.focus();await page.keyboard.press('Enter');
+   await guidance.getByText(/Publishing it invalidates earlier published links; saving a draft does not/).waitFor();
+   const writesBefore=s.writes.length;
+   await guidance.getByRole('button',{name:'Prepare replacement draft',exact:true}).click();
+   await page.getByRole('heading',{name:`Quotation · ${s.title}`,exact:true}).waitFor();
+   assert.equal(s.writes.length,writesBefore,'Preparing a replacement only opens an editor, never saves/publishes');
+   await page.getByRole('button',{name:'Close quotation',exact:true}).click();
+   const current=await fresh(s.context,s.id);
+   await api(s.context,'/api/sales','POST',{action:'quote',leadId:s.id,baseRevision:current.lead.baseRevision,items:[{description:'Synthetic replacement draft',quantity:1,priceMinor:2500000,costMinor:0}],terms:'Synthetic terms',expiresAt:'2099-12-01T12:00:00.000Z'});
+   await page.reload({waitUntil:'domcontentloaded'});await page.getByRole('button',{name:`Open enquiry: ${s.title}`,exact:true}).click();
+   await page.getByRole('complementary',{name:'Private link guidance for quote v1',exact:true}).getByRole('button',{name:'Review latest draft',exact:true}).click();
+   await focused(page.getByRole('heading',{name:'Quote v2 · Draft',exact:true}));
+   assert.equal(s.writes.length,writesBefore,'Review latest draft never publishes, saves or withdraws');
+
 
   }catch(error){caseFailure=error;report.failure=String(error);persist();await within(page.screenshot({path:path.join(out,'late-publish-failure.png'),timeout:3000,mask:[page.locator('#sales-private-link')]}),3000,'late publish failure screenshot').catch(()=>{});throw error;
   }finally{release();try{await within(page.unroute('**/api/sales'),3000,'publish route cleanup');await within(s.context.close(),3000,'publish context close');}catch(error){if(caseFailure){report.cleanupFailure=String(error);persist();}else throw error;}}
  }
- // Empty customer picker offers a permitted prerequisite route with honest dirty-navigation recovery.
+ // Customer creation stays inside the enquiry. Only an explicit enquiry save writes the enquiry.
  {
   const s=await start('customer-prerequisite',320);
   await page.getByRole('button',{name:'Save draft version',exact:true}).click();
   await page.getByRole('region',{name:'Selected enquiry',exact:true}).getByText('Staff-only draft. Not shared with the customer or published in the package catalogue.',{exact:true}).waitFor();
-  await page.route('**/api/sales',async route=>{if(route.request().method()==='GET'){const response=await route.fetch({timeout:15000});const data=await response.json();await route.fulfill({response,json:{...data,customers:[]}});}else await route.fallback();});
+  let verificationFailures=1;
+  await page.route('**/api/sales*',async route=>{
+   const url=new URL(route.request().url());
+   if(route.request().method()==='GET'&&url.searchParams.has('customerId')&&verificationFailures-- >0) return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic read unavailable'})});
+   if(route.request().method()==='GET'&&!url.searchParams.has('customerId')&&!url.searchParams.has('customers')){const response=await route.fetch({timeout:15000});const data=await response.json();return route.fulfill({response,json:{...data,customers:[]}});}
+   return route.fallback();
+  });
   await page.getByRole('button',{name:'Refresh records',exact:true}).click();await page.getByRole('button',{name:'New enquiry',exact:true}).click();
   const prerequisite=page.getByRole('region',{name:'Customer needed before enquiry',exact:true});await prerequisite.waitFor();
-  const action=prerequisite.getByRole('link',{name:'Open Customers to add a customer',exact:true});assert.equal(await action.getAttribute('href'),'/customers');
-  assert(await page.getByRole('button',{name:'Save enquiry',exact:true}).isDisabled());
-  await page.getByLabel('Enquiry title',{exact:true}).fill('Unsaved prerequisite fixture');
-  let dialogMessage='';page.once('dialog',dialog=>{dialogMessage=dialog.message();void dialog.dismiss();});await action.click();
-  assert.equal(dialogMessage,'Leave this enquiry? Unsaved changes will be lost.');assert(new URL(page.url()).pathname==='/sales');
-  assert.equal(await page.getByLabel('Enquiry title',{exact:true}).inputValue(),'Unsaved prerequisite fixture');
+  assert.equal(await prerequisite.locator('details').getAttribute('open'),null);
+  const values={'Enquiry title':'Unsaved prerequisite fixture','Source':'Synthetic review','Destination / route':'Kerala','Travel date':'2099-12-01','Follow-up deadline':'2099-11-01T12:30','Budget (INR)':'45000.50','Notes':'PRIVATE enquiry notes preserved in-flow only'};
+  for(const [label,value] of Object.entries(values))await page.getByLabel(label,{exact:true}).fill(value);
+  await page.getByLabel('Product',{exact:true}).selectOption('HOTEL');
+  const checkFields=async()=>{for(const [label,value] of Object.entries(values))assert.equal(await page.getByLabel(label,{exact:true}).inputValue(),value);assert.equal(await page.getByLabel('Product',{exact:true}).inputValue(),'HOTEL');assert.equal(new URL(page.url()).pathname,'/sales');};
+  const add=page.getByRole('button',{name:'Add customer here',exact:true});await add.click();
+  let customerDialog=page.getByRole('dialog',{name:'Add customer for this enquiry',exact:true});await customerDialog.waitFor();
+  await page.keyboard.press('Escape');await customerDialog.waitFor({state:'hidden'});await focused(add);await checkFields();
+  await add.click();customerDialog=page.getByRole('dialog',{name:'Add customer for this enquiry',exact:true});
+  await customerDialog.getByLabel('Full name',{exact:true}).fill('Discarded synthetic customer details');
+  let cancelMessage='';page.once('dialog',dialog=>{cancelMessage=dialog.message();void dialog.dismiss();});await page.keyboard.press('Escape');
+  assert.equal(cancelMessage,'Discard the unsaved customer details? Your enquiry fields will stay here.');assert(await customerDialog.isVisible());
+  await confirmClick(customerDialog.getByRole('button',{name:'Cancel customer',exact:true}),'Discard the unsaved customer details? Your enquiry fields will stay here.');await customerDialog.waitFor({state:'hidden'});await checkFields();
   await prerequisite.scrollIntoViewIfNeeded();await screenshot('customer-prerequisite-320');
-  await confirmClick(action,'Leave this enquiry? Unsaved changes will be lost.');await page.waitForURL('**/customers');await page.getByRole('button',{name:'New customer',exact:true}).waitFor();
-  assert.equal(s.writes.filter(action=>action==='create').length,0,'Prerequisite route never creates an enquiry');
-  await page.unroute('**/api/sales');
-  await page.getByRole('button',{name:'New customer',exact:true}).click();
-  const customerDialog=page.getByRole('dialog');await customerDialog.getByLabel('Full name *',{exact:true}).fill('Flow prerequisite fixture customer');await customerDialog.getByLabel('Phone *',{exact:true}).fill('9000000137');
-  await customerDialog.getByRole('button',{name:'Create customer',exact:true}).click();await page.waitForURL(/\/customers\/[^/?]+$/);
-  const menu=page.getByRole('button',{name:'Open navigation',exact:true});if(await menu.isVisible())await menu.click();
-  await page.locator('#workspace-navigation').getByRole('link',{name:'Enquiries & quotes',exact:true}).click();await page.waitForURL('**/sales');
-  await page.getByRole('button',{name:'New enquiry',exact:true}).click();
-  assert.equal(await page.getByLabel('Enquiry title',{exact:true}).inputValue(),'','Prior new-enquiry fields are not silently restored');
-  const picker=page.getByLabel('Customer',{exact:true});await picker.getByRole('option',{name:/Flow prerequisite fixture customer/}).waitFor({state:'attached'});
-  assert.equal(await page.getByRole('region',{name:'Customer needed before enquiry',exact:true}).count(),0);
-  assert.equal(await page.getByRole('button',{name:'Save enquiry',exact:true}).isDisabled(),false);
-  report.scenarios.push({name:'empty-customer-prerequisite-dirty-cancel-create-return',passed:true});
+  await add.click();customerDialog=page.getByRole('dialog',{name:'Add customer for this enquiry',exact:true});
+  assert.equal(await customerDialog.getByLabel('Full name',{exact:true}).inputValue(),'');
+  const customerName='Flow prerequisite fixture customer';await customerDialog.getByLabel('Full name',{exact:true}).fill(customerName);await customerDialog.getByLabel('Phone',{exact:true}).fill('9000000137');
+  let customerPosts=0,release,committed;const held=new Promise(resolve=>release=resolve),commit=new Promise(resolve=>committed=resolve);
+  await page.route('**/api/customers',async route=>{if(route.request().method()==='POST'){customerPosts++;const response=await route.fetch({timeout:15000});committed();await within(held,30000,'held customer response');return route.fulfill({response});}return route.fallback();});
+  try{
+   await customerDialog.locator('form').evaluate(form=>{form.requestSubmit();form.requestSubmit();});await within(commit,15000,'customer create commit');
+   assert.equal(customerPosts,1,'Synchronous repeated submission cannot create a duplicate customer');assert(await customerDialog.getByRole('button',{name:'Cancel customer',exact:true}).isDisabled());
+   await page.keyboard.press('Escape');assert(await customerDialog.isVisible(),'Pending customer cannot be dismissed');release();
+   await customerDialog.getByText(/The customer was created, but its current access could not be verified/).waitFor();
+   assert.equal(await customerDialog.getByRole('button',{name:'Create & select customer',exact:true}).count(),0);
+   await customerDialog.getByRole('button',{name:'Check saved customer',exact:true}).click();await customerDialog.waitFor({state:'hidden'});
+   assert.equal(customerPosts,1,'Acknowledged create with failed read only retries GET');
+  }finally{release();await page.unroute('**/api/customers');}
+  await checkFields();const picker=page.getByLabel('Customer',{exact:true});const selectedCustomer=await picker.inputValue();assert(selectedCustomer);assert.match(await picker.locator('option:checked').innerText(),new RegExp(customerName));
+  await page.getByLabel('Find a customer',{exact:true}).fill('No matching customer fixture');await page.getByRole('button',{name:'Search customers',exact:true}).click();
+  await page.getByText('Showing 0 customer matches for “No matching customer fixture”. Search by name or code for another customer. Your selected customer stays selected when you search.',{exact:true}).waitFor();
+  assert.equal(await picker.inputValue(),selectedCustomer,'Searching never drops the selected customer');await checkFields();
+  assert(await page.evaluate(secret=>![...Object.values(localStorage),...Object.values(sessionStorage)].some(value=>value.includes(secret)),values.Notes),'No enquiry PII persisted in local/session storage');
+  assert.equal(s.writes.filter(action=>action==='create').length,0,'Customer detour never creates an enquiry');
+  await page.getByRole('button',{name:'Save enquiry',exact:true}).click();await page.getByRole('heading',{name:values['Enquiry title'],exact:true}).waitFor();
+  assert.equal(s.writes.filter(action=>action==='create').length,1,'Only explicit Save enquiry writes it');
+  const saved=await db.salesLead.findFirstOrThrow({where:{title:values['Enquiry title'],customerId:selectedCustomer}});assert.equal(saved.notes,values.Notes);assert.equal(saved.budgetMinor,4500050);
+  await page.unroute('**/api/sales*');
+  report.scenarios.push({name:'in-flow-customer-cancel-repeat-unknown-read-preserves-enquiry',passed:true});
   await within(s.context.close(),3000,'prerequisite context close');
+ }
+ // Discovery searches the complete permitted dataset, not only the first display page.
+ {
+  const s=await start('bounded-discovery',390);
+  await page.getByRole('button',{name:'Save draft version',exact:true}).click();
+  await page.getByRole('region',{name:'Selected enquiry',exact:true}).getByText('Staff-only draft. Not shared with the customer or published in the package catalogue.',{exact:true}).waitFor();
+  const source=await db.salesLead.findUniqueOrThrow({where:{id:s.id}});
+  await db.salesLead.createMany({data:Array.from({length:221},(_,index)=>({id:`browser-discovery-${String(index).padStart(3,'0')}`,customerId:source.customerId,branchId:source.branchId,ownerId:source.ownerId,title:`Discovery bounded fixture ${String(index).padStart(3,'0')}`,source:'Synthetic browser fixture',createdAt:new Date(Date.UTC(2021,0,1,0,0,index))}))});
+  const list=page.getByRole('region',{name:'Enquiry list',exact:true});
+  const search=async text=>{await page.getByLabel('Search enquiries',{exact:true}).fill(text);await page.getByRole('button',{name:'Search all enquiries',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#sales-list-status')?.textContent?.includes('Changed filters are not applied')===false);};
+  await search('Discovery bounded fixture');assert.equal(await list.getByRole('button',{name:/^Open enquiry:/}).count(),50);
+  for(const expected of [100,150,200,221]){
+   await page.getByRole('button',{name:'Load more enquiries',exact:true}).click();
+   await page.waitForFunction(count=>document.querySelectorAll('.sales-list button[id^="sales-open-"]').length===count,expected);
+   await page.waitForFunction(()=>document.activeElement?.id?.startsWith('sales-open-browser-discovery-'));
+   assert.equal(await list.getByRole('button',{name:/^Open enquiry:/}).count(),expected);
+  }
+  assert.equal(await page.getByRole('button',{name:'Load more enquiries',exact:true}).count(),0);
+  await page.getByRole('button',{name:'Open enquiry: Discovery bounded fixture 000',exact:true}).click();
+  await page.getByRole('button',{name:'Refresh records',exact:true}).click();
+  await page.getByRole('region',{name:'Selected enquiry',exact:true}).getByRole('heading',{name:'Discovery bounded fixture 000',exact:true}).waitFor();
+  await page.waitForFunction(()=>document.querySelectorAll('.sales-list button[id^="sales-open-"]').length===50);
+  assert.equal(await page.locator('#sales-open-browser-discovery-000').count(),0,'Selected old record is refreshed by ID without polluting first search page');
+  await search('Discovery bounded fixture 000');assert.equal(await list.getByRole('button',{name:/^Open enquiry:/}).count(),1);
+  await search('no-matching-discovery-fixture');await list.getByText('No matching enquiries',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'View selected enquiry',exact:true}).click();assert(await page.getByRole('region',{name:'Selected enquiry',exact:true}).getByRole('heading',{name:'Discovery bounded fixture 000',exact:true}).isVisible(),'Search does not discard the selected enquiry');await page.getByRole('button',{name:'Back to enquiries',exact:true}).click();
+  await page.getByRole('button',{name:'Clear filters',exact:true}).click();await page.getByRole('button',{name:`Open enquiry: ${s.title}`,exact:true}).waitFor();
+  assert.equal(s.writes.filter(action=>action==='quote').length,1,'Search, load more and refresh never submit');
+  report.scenarios.push({name:'bounded-discovery-all-pages-old-search-selected-refresh-keyboard',passed:true});await screenshot('bounded-discovery-390');
+  await within(s.context.close(),3000,'discovery context close');
+ }
+ // A committed customer write with a lost response never offers a duplicate retry.
+ {
+  const s=await start('customer-unknown');await page.getByRole('button',{name:'Save draft version',exact:true}).click();await page.getByRole('button',{name:'New enquiry',exact:true}).click();
+  await page.getByLabel('Enquiry title',{exact:true}).fill('Preserved after unknown customer result');await page.getByRole('button',{name:'Add customer here',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Add customer for this enquiry',exact:true});const customerName='Unknown outcome synthetic customer';await dialog.getByLabel('Full name',{exact:true}).fill(customerName);await dialog.getByLabel('Phone',{exact:true}).fill('9000000138');
+  let writes=0;await page.route('**/api/customers',async route=>{if(route.request().method()==='POST'){writes++;const response=await route.fetch({timeout:15000});assert(response.ok());return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic dropped acknowledgement'})});}return route.fallback();});
+  await dialog.getByRole('button',{name:'Create & select customer',exact:true}).click();await dialog.getByText(/The customer save outcome is unknown/).waitFor();
+  assert.equal(await dialog.getByRole('button',{name:'Create & select customer',exact:true}).count(),0);await dialog.getByRole('button',{name:'Return to enquiry',exact:true}).click();
+  assert.equal(await page.getByLabel('Enquiry title',{exact:true}).inputValue(),'Preserved after unknown customer result');assert(await page.getByRole('button',{name:'Add customer here',exact:true}).isDisabled());
+  await page.getByLabel('Find a customer',{exact:true}).fill(customerName);await page.getByRole('button',{name:'Search customers',exact:true}).click();await page.getByLabel('Customer',{exact:true}).getByRole('option',{name:new RegExp(customerName)}).waitFor({state:'attached'});
+  assert.equal(writes,1);assert.equal(await db.customer.count({where:{name:customerName}}),1);assert.equal(s.writes.filter(action=>action==='create').length,0);
+  report.scenarios.push({name:'unknown-customer-save-search-only-no-repeat',passed:true});await page.unroute('**/api/customers');await within(s.context.close(),3000,'unknown customer context close');
+
+ }
+ // The provider owns a customer POST outcome across Activity, not a departed picker callback.
+ for(const outcome of ['created-while-away','unknown-after-forward']) {
+  const s=await start(`customer-activity-${outcome}`);await page.getByRole('button',{name:'Save draft version',exact:true}).click();await page.getByRole('region',{name:'Selected enquiry',exact:true}).getByText('Staff-only draft. Not shared with the customer or published in the package catalogue.',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'New enquiry',exact:true}).click();await page.getByLabel('Enquiry title',{exact:true}).fill(`Unsaved ${outcome}`);await page.getByRole('button',{name:'Add customer here',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Add customer for this enquiry',exact:true});const customerName=`Synthetic Activity ${outcome}`;await dialog.getByLabel('Full name',{exact:true}).fill(customerName);await dialog.getByLabel('Phone',{exact:true}).fill('9000000151');
+  let posts=0,release,committed;const held=new Promise(resolve=>release=resolve),commit=new Promise(resolve=>committed=resolve);
+  await page.route('**/api/customers',async route=>{if(route.request().method()!=='POST')return route.fallback();posts++;assert.match(route.request().headers()['x-sales-recovery-context'],/^[a-f0-9]{64}$/);const response=await route.fetch({timeout:15000});assert(response.ok());committed();await within(held,30000,'Activity customer response');return outcome==='created-while-away'?route.fulfill({response}):route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic unknown response'})});});
+  try {
+   await dialog.getByRole('button',{name:'Create & select customer',exact:true}).click();await within(commit,15000,'Activity customer commit');await back();
+   if(outcome==='created-while-away') { const delivered=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/customers'&&response.request().method()==='POST');release();await (await delivered).finished(); }
+   await forward(s.id,false);
+   const review=page.getByRole('region',{name:'Customer save review',exact:true});await review.waitFor();
+   if(outcome==='unknown-after-forward') {
+    await page.locator('[data-customer-save-state="submitting"]').waitFor();assert(await page.getByRole('button',{name:'New enquiry',exact:true}).isDisabled());
+    assert.equal(posts,1);release();await page.locator('[data-customer-save-state="uncertain"]').waitFor();
+   } else await page.locator('[data-customer-save-state="created"]').waitFor();
+   assert.equal(await page.getByRole('button',{name:'New enquiry',exact:true}).isDisabled(),false,'Settled hidden writes do not strand parent busy/lock');
+   await review.getByRole('button',{name:'Review customer in new enquiry',exact:true}).click();assert.equal(await page.getByLabel('Enquiry title',{exact:true}).inputValue(),'','Returning does not expose stale enquiry text');
+   assert(await page.getByRole('button',{name:'Add customer here',exact:true}).isDisabled(),'Unreviewed outcome cannot be blindly retried');
+   if(outcome==='created-while-away') { await page.getByRole('button',{name:'Check saved customer',exact:true}).click();await page.getByRole('status').filter({hasText:'Customer created and selected.'}).waitFor();assert.match(await page.getByLabel('Customer',{exact:true}).locator('option:checked').innerText(),new RegExp(customerName)); }
+   else { await page.getByLabel('Find a customer',{exact:true}).fill(customerName);await page.getByRole('button',{name:'Search customers',exact:true}).click();await page.getByRole('button',{name:'Finish customer review',exact:true}).waitFor();assert(await page.getByRole('button',{name:'Add customer here',exact:true}).isDisabled(),'Search alone cannot silently unlock unknown creation'); }
+   assert.equal(posts,1);assert.equal(await db.customer.count({where:{name:customerName}}),1);assert.equal(s.writes.filter(action=>action==='create').length,0);report.scenarios.push({name:`customer-activity-${outcome}`,passed:true});
+  } finally { release();await page.unroute('**/api/customers');await within(s.context.close(),3000,'Activity customer context close'); }
  }
  // Full document replacement intentionally ends memory-only recovery.
  {

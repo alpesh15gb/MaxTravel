@@ -55,8 +55,17 @@ export function privateLinkGuidance(lead: SalesLead, quote: SalesQuote, canQuote
   return `${explanation} To issue a replacement, review the latest draft or choose New quote version, then save and publish the latest unexpired draft. Publishing it invalidates earlier published links; saving a draft does not. Use Withdraw quote only if the existing proposal should stop being available immediately.`;
 }
 
+/** Navigation only. Reviewing/preparing a draft must never publish a replacement. */
+export function replacementQuoteAction(lead: SalesLead, quote: SalesQuote, canQuote: boolean, now = Date.now()) {
+  if (!privateLinkGuidance(lead, quote, canQuote) || !canQuote || !canStartQuote(lead)) return null;
+  const latest = lead.quotes[0];
+  return latest && canPublishQuote(lead, latest, now)
+    ? { kind: "review-draft" as const, quoteId: latest.id, version: latest.version }
+    : { kind: "new-draft" as const };
+}
+
 export function customerPrerequisite(canCreateCustomer: boolean) {
   return canCreateCustomer
-    ? { action: "Open Customers to add a customer", explanation: "Open Customers, choose New customer, then return to Enquiries & quotes to start a new enquiry. The customer must be available in your permitted scope." }
-    : { action: "Review permitted customers", explanation: "Ask an administrator to add or assign an eligible customer within your scope. You do not have permission to create a customer." };
+    ? { action: "Add customer here", explanation: "Create the customer without leaving this enquiry. Your enquiry fields stay on this page; the new customer is checked against your current permitted scope before selection." }
+    : { action: "Search permitted customers", explanation: "Ask an administrator to add or assign an eligible customer within your scope. You do not have permission to create a customer." };
 }

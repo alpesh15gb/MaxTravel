@@ -1,9 +1,15 @@
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { prisma } from "@/lib/db";
 import { optionalId, nextReference, transactionAudit, text } from "@/lib/transactions";
+import { salesRecoveryContext } from "@/lib/sales-recovery-context";
 export async function POST(req:Request){
   try{
-    const user=await requireSession("customer:create");const b=await req.json();
+    const user=await requireSession("customer:create");
+    // Inline enquiry forms must bind their write to the staff session/scope that collected the fields.
+    // Check before parsing private input or opening a transaction; normal Customers callers remain compatible.
+    const expectedContext=req.headers.get("x-sales-recovery-context");
+    if(expectedContext!==null&&expectedContext!==salesRecoveryContext(user))return Response.json({error:"Staff session or access changed. Reload this workspace before continuing.",code:"SALES_CONTEXT_CHANGED"},{status:409,headers:{"Cache-Control":"private, no-store"}});
+    const b=await req.json();
     const name=optionalId(b.name),phone=optionalId(b.phone);if(!name||!phone)throw new ApiError(400,"Enter the customer's name and phone.");
     if(name.length>150||phone.length>40)throw new ApiError(400,"Name or phone is too long.");
     const type=String(b.type??"INDIVIDUAL");if(!["INDIVIDUAL","CORPORATE","SUB_AGENT"].includes(type))throw new ApiError(400,"Invalid customer type.");

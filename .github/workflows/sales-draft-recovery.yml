@@ -33,7 +33,14 @@ jobs:
         run: |
           node --import tsx tests/sales-draft-memory.ts
           node --import tsx tests/sales-recovery-context.ts
+          node --import tsx tests/sales-workspace.ts
+          node --import tsx tests/enquiry-customer.ts
+          node --import tsx tests/customer-create-memory.ts
       - run: npm run build
+      - name: Verify customer creation is bound to the originating staff session
+        env:
+          CUSTOMER_CONTEXT_USE_BUILD: "1"
+        run: node --import tsx tests/customer-creation-context.mts
       - name: Verify real Back/Forward, scoped recovery, unknown writes and mobile keyboard
         timeout-minutes: 10
         run: node tests/sales-draft-recovery-browser.mjs
@@ -42,6 +49,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sales-draft-recovery
-          path: test-artifacts/sales-draft-recovery/
+          path: |
+            test-artifacts/sales-draft-recovery/
+            test-artifacts/customer-context/
           if-no-files-found: warn
           retention-days: 14

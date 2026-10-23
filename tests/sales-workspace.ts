@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {
-  matchingEnquiries, canPublishQuote, canStartQuote, quoteExplanation, hasPublishedShare, privateLinkGuidance, customerPrerequisite,
+  matchingEnquiries, canPublishQuote, canStartQuote, quoteExplanation, hasPublishedShare, privateLinkGuidance, customerPrerequisite, replacementQuoteAction,
   type SalesLead, type SalesQuote,
 } from "../src/app/(app)/sales/sales-workspace";
 
@@ -62,8 +62,16 @@ for (const state of ["DRAFT", "ACCEPTED", "WITHDRAWN", "SUPERSEDED"]) {
   assert.equal(privateLinkGuidance(lead, { ...quote, state }, true), null);
 }
 assert.equal(privateLinkGuidance(publishedLead, { ...published, bookingId: "booking-1" }, true), null);
-assert.equal(customerPrerequisite(true).action, "Open Customers to add a customer");
+assert.equal(customerPrerequisite(true).action, "Add customer here");
 assert.match(customerPrerequisite(true).explanation, /permitted scope/);
-assert.equal(customerPrerequisite(false).action, "Review permitted customers");
+assert.match(customerPrerequisite(true).explanation, /fields stay on this page/);
+assert.equal(customerPrerequisite(false).action, "Search permitted customers");
 assert.match(customerPrerequisite(false).explanation, /do not have permission/);
+assert.deepEqual(replacementQuoteAction(publishedLead, published, true, now), { kind: "new-draft" });
+assert.deepEqual(replacementQuoteAction({ ...publishedLead, quotes: [quote, published] }, published, true, now), { kind: "review-draft", quoteId: quote.id, version: quote.version });
+assert.deepEqual(replacementQuoteAction({ ...publishedLead, quotes: [{ ...quote, expiresAt: new Date(now).toISOString() }, published] }, published, true, now), { kind: "new-draft" });
+assert.equal(replacementQuoteAction(publishedLead, published, false, now), null);
+for (const stage of ["LOST", "WON"]) assert.equal(replacementQuoteAction({ ...publishedLead, stage }, published, true, now), null);
+assert.equal(replacementQuoteAction({ ...publishedLead, quotes: [{ ...quote, state: "ACCEPTED" }, published] }, published, true, now), null);
+assert.equal(replacementQuoteAction(lead, quote, true, now), null);
 console.log("Flow clarity guidance passed: no raw-link retrieval, permission-aware replacement and customer prerequisite.");

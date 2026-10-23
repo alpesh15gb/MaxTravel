@@ -226,6 +226,7 @@ jobs:
       - run: npm run test:package-media
       - run: npm run test:crm-core
       - run: npm run build
+      - run: node --import tsx tests/sales-discovery.mts
       - run: npm run test:staff-sales
 
   studio-visual-comparison:

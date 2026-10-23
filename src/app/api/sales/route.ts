@@ -2,10 +2,11 @@ import {boundedJson} from "@/lib/bounded-json";
 import {randomBytes} from "node:crypto";
 import {z} from "zod";
 import {prisma} from "@/lib/db";
-import {ApiError,requireSession,jsonError,scopeWhere,canTouchRecord} from "@/lib/guard";
+import {ApiError,requireSession,jsonError,canTouchRecord} from "@/lib/guard";
 import {customerFor,nextReference,transactionAudit} from "@/lib/transactions";
 import {hashToken} from "@/lib/staff-security";
 import {quoteItemSchema,quoteTotals} from "@/lib/sales";
+import {salesFilters,salesLeadPage,salesCustomerPage,salesCustomerScope,salesCustomerSelect} from "@/lib/sales-discovery";
 import {salesRecoveryContext,salesBaseRevision} from "@/lib/sales-recovery-context";
 class QuoteRevisionConflict extends ApiError {
  constructor(){super(409,"This save was not applied because the enquiry changed or this tab needs updating. Keep or copy your local text, then use Refresh to review the latest enquiry before preparing a new draft.");}
@@ -15,17 +16,25 @@ const leadInput=z.object({customerId:z.string().min(1),title:z.string().trim().m
 export async function GET(req:Request){try{
  const user=await requireSession("customer:view");
  const params=new URL(req.url).searchParams;
- const requestedId=params.has("leadId")?params.get("leadId"):null;
- if(requestedId!==null&&(!requestedId.trim()||requestedId.length>200))throw new ApiError(400,"Choose a valid enquiry.");
- const leads=await prisma.salesLead.findMany({where:{AND:[scopeWhere(user,null,"ownerId"),...(requestedId!==null?[{id:requestedId}]:[])]},orderBy:{updatedAt:"desc"},take:requestedId!==null?1:200,include:{quotes:{orderBy:{version:"desc"}}}});
- const visibleCustomers=await prisma.customer.findMany({where:{AND:[scopeWhere(user,null,undefined,"assignedToId"),{id:{in:leads.map(l=>l.customerId)},mergedIntoId:null}]},select:{id:true}});
- const visibleCustomerIds=new Set(visibleCustomers.map(c=>c.id));
  const finance=user.permissions.includes("payment:view");
- const projected=leads.filter(l=>visibleCustomerIds.has(l.customerId)).map(l=>({...l,baseRevision:salesBaseRevision(l,l.quotes),budgetMinor:finance?l.budgetMinor:null,quotes:l.quotes.map(q=>({...q,shareHash:undefined,items:finance?JSON.parse(q.items):[],totalMinor:finance?q.totalMinor:null,costMinor:finance?q.costMinor:null}))}));
- const context={recoveryContext:salesRecoveryContext(user),canEdit:user.permissions.includes("customer:edit"),canQuote:user.permissions.includes("invoice:create")&&finance};
- if(requestedId!==null){if(!projected[0])throw new ApiError(404,"Enquiry not found.");return Response.json({lead:projected[0],...context},{headers:noStore});}
- const customers=await prisma.customer.findMany({where:scopeWhere(user,null,undefined,"assignedToId"),select:{id:true,name:true,code:true},take:500,orderBy:{name:"asc"}});
- return Response.json({leads:projected,customers,...context,canCreate:user.permissions.includes("customer:create"),canConvert:user.permissions.includes("ticketing:create")&&finance},{headers:noStore});
+ const context={recoveryContext:salesRecoveryContext(user),canCreate:user.permissions.includes("customer:create"),canEdit:user.permissions.includes("customer:edit"),canQuote:user.permissions.includes("invoice:create")&&finance};
+ const customerId=params.get("customerId");
+ if(params.has("customerId")){
+  if(!customerId||customerId.length>200||params.getAll("customerId").length!==1)throw new ApiError(400,"Choose a valid customer.");
+  const customer=await prisma.customer.findFirst({where:{AND:[salesCustomerScope(user),{id:customerId}]},select:salesCustomerSelect});
+  if(!customer)throw new ApiError(404,"Customer not found.");
+  return Response.json({customer,...context},{headers:noStore});
+ }
+ if(params.get("customers")==="1")return Response.json({...await salesCustomerPage(prisma,user,salesFilters(params,true)),...context},{headers:noStore});
+ const requestedId=params.has("leadId")?params.get("leadId"):null;
+ if(requestedId!==null&&(!requestedId.trim()||requestedId.length>200||params.getAll("leadId").length!==1))throw new ApiError(400,"Choose a valid enquiry.");
+ const page=await salesLeadPage(prisma,user,salesFilters(params),requestedId??undefined);
+ const projected=page.leads.map(l=>({...l,baseRevision:salesBaseRevision(l,l.quotes),budgetMinor:finance?l.budgetMinor:null,quotes:l.quotes.map(q=>({...q,shareHash:undefined,items:finance?JSON.parse(q.items):[],totalMinor:finance?q.totalMinor:null,costMinor:finance?q.costMinor:null}))}));
+ if(requestedId!==null){if(!projected[0])throw new ApiError(404,"Enquiry not found.");const customer=await prisma.customer.findFirst({where:{AND:[salesCustomerScope(user),{id:projected[0].customerId}]},select:salesCustomerSelect});return Response.json({lead:projected[0],customer,...context},{headers:noStore});}
+ const customerPage=await salesCustomerPage(prisma,user,{q:"",stage:""});
+ const linkedCustomers=await prisma.customer.findMany({where:{AND:[salesCustomerScope(user),{id:{in:page.leads.map(l=>l.customerId)}}]},select:salesCustomerSelect,take:50});
+ const customers=[...new Map([...customerPage.customers,...linkedCustomers].map(c=>[c.id,c])).values()];
+ return Response.json({leads:projected,customers,nextCursor:page.nextCursor,...context,canConvert:user.permissions.includes("ticketing:create")&&finance},{headers:noStore});
 }catch(e){const response=jsonError(e);response.headers.set("Cache-Control",noStore["Cache-Control"]);return response;}}
 export async function POST(req:Request){try{const user=await requireSession("customer:edit");if(Number(req.headers.get("content-length")??0)>100000)throw new ApiError(413,"Request too large.");const b=await boundedJson(req);
  if(b.action==="create"){if(!user.permissions.includes("customer:create"))throw new ApiError(403,"Customer creation permission is required.");const data=leadInput.parse(b.data);if(data.budgetMinor&&!user.permissions.includes("payment:view"))throw new ApiError(403,"Finance access is required for budgets.");const lead=await prisma.$transaction(async tx=>{const c=await customerFor(tx,user,data.customerId);const row=await tx.salesLead.create({data:{...data,travelDate:data.travelDate?new Date(data.travelDate):null,followUpAt:data.followUpAt?new Date(data.followUpAt):null,branchId:c.branchId,ownerId:user.id}});await transactionAudit(tx,user,"CREATE","SalesLead",row.id,row.title);return row;});return Response.json({ok:true,id:lead.id});}
