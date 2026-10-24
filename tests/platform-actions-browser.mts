@@ -58,11 +58,13 @@ async function captureActionState(page: Page, panel: Locator, state: 'ready' | '
 /** Runs only inside the isolated online queue CI fixture; all command traffic is intercepted. */
 export async function verifyPlatformActions(page: Page) {
   await page.unroute('**/api/integrations/booking-platform/**');
+  let commandReads = 0;
   const sent: { id: string; bookingId: string; action: string; targetId?: string; data: Record<string, unknown> }[] = [];
   const cancellation = (id: string, status: string, accepted = false) => ({ id, status, accepted_at: accepted ? '2026-01-01' : null, offer_expires_at: '2099-01-01T00:00:00Z' });
   const records = [cancellation('requested', 'REQUESTED'), cancellation('unaccepted', 'AWAITING_ACCEPTANCE'), cancellation('accepted', 'AWAITING_ACCEPTANCE', true), cancellation('pending', 'SUPPLIER_PENDING'), cancellation('done', 'CONFIRMED'), cancellation('unknown', 'UNKNOWN')];
   await page.route('**/api/integrations/booking-platform/**', async route => {
     if (route.request().method() !== 'POST') {
+      commandReads++;
       const pending = sent.find(command => command.action === 'CANCELLATION_EXECUTE');
       return route.fulfill({ json: { commands: pending ? [{ ...pending, state: 'UNKNOWN' }] : [] } });
     }
@@ -82,6 +84,8 @@ export async function verifyPlatformActions(page: Page) {
   const target = panel.getByLabel('Related request or payment');
   for (const id of ['requested','unaccepted','done','unknown']) assert(await target.locator(`option[value="${id}"]`).isDisabled(), id);
   for (const id of ['accepted','pending']) assert(!(await target.locator(`option[value="${id}"]`).isDisabled()), id);
+  assert.match(await target.locator('option[value="accepted"]').innerText(), /Offer available/);
+  assert.doesNotMatch(await target.locator('option[value="accepted"]').innerText(), /Awaiting acceptance/);
   await target.selectOption('accepted');
   await captureActionState(page, panel, 'ready');
   await target.selectOption('pending');
@@ -109,6 +113,28 @@ export async function verifyPlatformActions(page: Page) {
   await panel.getByRole('status').filter({ hasText: 'Synthetic unknown outcome' }).waitFor();
   assert.equal(sent.at(-1)!.id, attempts[0].id, 'Browser Back recovers the persisted original command');
   assert.equal(await panel.getByRole('button', { name: 'Retry the original command safely' }).count(), 1, 'Unknown recovery remains visible');
+  const technicalReference = panel.locator('details').filter({ has: page.getByText('Technical command reference', { exact: true }) });
+  assert.equal(await technicalReference.getAttribute('open'), null, 'Technical UUID is collapsed by default');
+  assert.equal(await technicalReference.locator('code').textContent(), attempts[0].id, 'Exact recovery reference is retained');
+  assert(!(await technicalReference.locator('code').isVisible()), 'UUID does not compete with primary recovery guidance');
+  const readsBeforeTechnicalToggle = commandReads;
+  const unresolvedBeforeTechnicalToggle = await panel.getByText('Outcome unresolved:', { exact: false }).innerText();
+  const toggleTechnicalReference = async () => {
+    // Observe the actual native toggle, then allow React's synthetic propagation and the next paint to finish.
+    const toggled = technicalReference.evaluate(element => new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Technical details toggle did not complete')), 5000);
+      element.addEventListener('toggle', () => { clearTimeout(timer); resolve(); }, { once: true });
+    }));
+    await Promise.all([toggled, technicalReference.locator('summary').click()]);
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    assert.equal(commandReads, readsBeforeTechnicalToggle, 'Inner details do not reload the outer command list');
+    assert.equal(await panel.getByText('Outcome unresolved:', { exact: false }).innerText(), unresolvedBeforeTechnicalToggle, 'Inner details preserve unresolved outcome');
+    assert.equal(await technicalReference.locator('code').textContent(), attempts[0].id, 'Inner details preserve the original command key');
+    assert.equal(await panel.getByRole('button', { name: 'Retry the original command safely' }).count(), 1, 'Recovery remains available');
+  };
+  await toggleTechnicalReference();
+  assert(await technicalReference.locator('code').isVisible(), 'Staff can still inspect the original reference');
+  await toggleTechnicalReference();
   await captureActionState(page, panel, 'uncertain-recovery');
   console.log('PASS platform actions browser: supported, unsupported, pending, unknown, close/back, repeated click and exact retry');
 }

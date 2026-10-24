@@ -1,6 +1,8 @@
 /** UI guidance only. Booking-platform permissions, current state and provider checks remain authoritative. */
 export type ActionTarget = { id: string; status: string; accepted_at?: string | null; offer_expires_at?: string | null; amount_minor?: string };
 export function readablePlatformState(state: string) {
+  // Acceptance is a separate field: an offered request retains this status after acceptance.
+  if (state === 'AWAITING_ACCEPTANCE') return 'Offer available';
   return state.toLowerCase().replaceAll('_', ' ').replace(/^./, c => c.toUpperCase());
 }
 export function targetBlockReason(action: string, row: ActionTarget, now = Date.now()): string | null {
