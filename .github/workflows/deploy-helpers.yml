@@ -30,7 +30,7 @@ jobs:
           (cd cutover && sha256sum --check draft.sha256)
       - name: Check every Bash script without executing deployment scripts
         run: |
-          for script in preserve-build.sh revalidate-built-crm.sh collect-preflight.sh cutover/*.sh; do
+          for script in preserve-build.sh revalidate-built-crm.sh collect-preflight.sh test_snapshot_docker.sh cutover/*.sh; do
             bash -n "$script"
           done
       - name: Check isolated audit JavaScript syntax without executing audits
@@ -40,7 +40,26 @@ jobs:
           done
       - name: Run offline validator and recovery regressions
         run: python3 -m unittest -v test_verify.py test_revalidate.py
-      - name: Run 33 offline phase regressions without Docker or VPS access
+      - name: Run offline phase regressions without Docker or VPS access
         run: |
           python3 cutover/test_phase_offline.py
           python3 cutover/test_booking_offline.py
+
+  docker-cli-snapshot-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    defaults:
+      run:
+        shell: bash
+        working-directory: ops/deploy-20261024
+    steps:
+      - name: Read exact helper revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Verify smoke and helper payloads
+        run: sha256sum --check SHA256SUMS
+      - name: Exercise real Docker snapshot CLI on owned never-started fixtures
+        env:
+          SNAPSHOT_DOCKER_SMOKE: owned-synthetic-only
+        run: bash test_snapshot_docker.sh

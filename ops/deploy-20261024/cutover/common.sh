@@ -8,9 +8,11 @@ fail() { printf 'STOP: %s\n' "$*" >&2; exit 1; }
 pin() { python3 "$VERIFY_PY" pin "$APP_KIND" "$1"; }
 snapshot_all() {
  local ids
- ids=$(docker ps -aq --no-trunc --filter label!=maxtravel.cutover.helper=true)
+ ids=$(docker ps -aq --no-trunc)
  [[ -n $ids ]] || fail 'Empty container inventory.'
- docker inspect $ids > "$1"
+ # Preserve unfiltered private evidence; Docker ps negated-label filters are not portable.
+ docker inspect $ids > "$1.all.private.json"
+ python3 "$HERE/phase_verify.py" snapshot-filter "$1.all.private.json" > "$1"
 }
 protected_check() { python3 "$HERE/phase_verify.py" protected "$1" "$2" "${3:-}"; }
 init() {

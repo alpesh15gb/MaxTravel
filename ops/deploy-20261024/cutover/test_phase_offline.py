@@ -114,4 +114,27 @@ class Contracts(unittest.TestCase):
      with mock.patch.object(v.subprocess,'check_output',side_effect=[v.PINS['crm']['tree'],'']):
       with self.assertRaises(SystemExit):v.source('crm',tmp)
      p.write_bytes(original)
+ def test_snapshot_filter_exact_helper_label_only(self):
+  rows=[]
+  for i,labels in enumerate([None,{}, {'maxtravel.cutover.helper':'false'}, {'maxtravel.cutover.helper':'true'}, {'maxtravel.cutover.helper':True}, {'maxtravel.cutover.helper':'TRUE'}, {'maxtravel.cutover.helper':'true ','other':'value'}]):
+   r=row(str(i),'postgres' if i==2 else 'app','booking' if i==2 else 'unrelated');r['Config']['Labels']=labels;rows.append(r)
+  before=copy.deepcopy(rows);kept=v.non_helper_rows(rows)
+  self.assertEqual([r['Id'] for r in kept],['0','1','2','4','5','6']);self.assertEqual(rows,before)
+  self.assertIs(kept[2],rows[2])
+ def test_snapshot_filter_empty_protected_inventory_rejected(self):
+  r=row();r['Config']['Labels']['maxtravel.cutover.helper']='true'
+  for rows in [[],[r]]:
+   with self.assertRaises(SystemExit):v.non_helper_rows(rows)
+ def test_no_unsupported_negated_docker_filters(self):
+  for p in HERE.glob('*.sh'):
+   self.assertNotRegex(p.read_text(),r'--filter[^\n]*(?:label!|label\s*!=)')
+  common=(HERE/'common.sh').read_text();self.assertIn('ids=$(docker ps -aq --no-trunc)',common)
+  self.assertIn('docker inspect $ids > "$1.all.private.json"',common)
+  self.assertIn('snapshot-filter "$1.all.private.json" > "$1"',common)
+ def test_first_snapshot_failure_precedes_crm_stop(self):
+  s=(HERE/'freeze-backup-verify-crm.sh').read_text()
+  first=s.index('snapshot_all "$STAGE/all-before.private.json"')
+  self.assertLess(first,s.index('FROZEN=1'))
+  self.assertLess(first,s.index('docker stop --timeout 260 "$WORKER"'))
+  self.assertLess(first,s.index('docker stop --timeout 45 "$APP"'))
 if __name__=='__main__':unittest.main()

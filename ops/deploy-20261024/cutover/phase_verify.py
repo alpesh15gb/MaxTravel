@@ -4,6 +4,12 @@ import sys,json,pathlib,re,subprocess
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent.parent))
 from verify import PINS,require,read,regular,runtime,retained_upgrade_check,canonical_mounts
 
+def non_helper_rows(rows):
+ require(isinstance(rows,list) and all(isinstance(r,dict) for r in rows),'Invalid container inventory.')
+ kept=[r for r in rows if ((r.get('Config') or {}).get('Labels') or {}).get('maxtravel.cutover.helper')!='true']
+ require(bool(kept),'Empty protected container inventory.')
+ return kept
+
 def service(r):
  if retained_upgrade_check(r):return 'retained:'+r['Id']
  l=r.get('Config',{}).get('Labels') or {}
@@ -88,7 +94,8 @@ def runtime_equal(before,after,app):
   require(x==y,'Full runtime config changed beyond reviewed image metadata/migration skip.')
 if __name__=='__main__':
  mode=sys.argv[1]
- if mode=='stage':stage(*sys.argv[2:])
+ if mode=='snapshot-filter':json.dump(non_helper_rows(read(sys.argv[2])),sys.stdout)
+ elif mode=='stage':stage(*sys.argv[2:])
  elif mode=='runtime-equal':runtime_equal(read(sys.argv[2]),read(sys.argv[3]),sys.argv[4])
  elif mode=='source':source(*sys.argv[2:])
  elif mode=='protected':protected(read(sys.argv[2]),read(sys.argv[3]),sys.argv[4])
