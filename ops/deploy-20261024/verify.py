@@ -73,6 +73,12 @@ def environment_matches(container, image, service):
  require(effective_environment(image,service)==env_map(container['Config'].get('Env')),
          'Full frozen/image environment does not match runtime; inspect privately.')
 
+def canonical_mounts(mounts):
+ # Only top-level Mounts order is presentation-only. Keep complete records,
+ # duplicate multiplicity, value types, nested arrays, and every unknown field.
+ require(isinstance(mounts,list) and all(isinstance(m,dict) for m in mounts),'Malformed mount inspection.')
+ return sorted(json.dumps(m,sort_keys=True,separators=(',',':')) for m in mounts)
+
 def main():
  mode=sys.argv[1]
  if mode=='pin': print(PINS[sys.argv[2]][sys.argv[3]])
@@ -82,7 +88,8 @@ def main():
   require(before.keys()==after.keys(),'Container inventory changed during build.')
   for id,r in before.items():
    n=after[id]
-   require(all(r.get(k)==n.get(k) for k in ['Name','Image','RestartCount','Config','HostConfig','Mounts']),'Container configuration or restart count changed.')
+   require(all(r.get(k)==n.get(k) for k in ['Name','Image','RestartCount','Config','HostConfig']),'Container configuration or restart count changed.')
+   require(canonical_mounts(r.get('Mounts'))==canonical_mounts(n.get('Mounts')),'Container mount configuration changed.')
    for key in ('StartedAt','FinishedAt','Paused','Restarting','Dead','OOMKilled','Running','Status','ExitCode'):
     require(r['State'].get(key)==n['State'].get(key),'Container lifecycle state changed.')
    if r['State'].get('Health',{}).get('Status')=='healthy': require(n['State'].get('Health',{}).get('Status')=='healthy','Previously healthy container became unhealthy.')

@@ -7,7 +7,7 @@
 - CRM (`alpesh15gb/MaxTravel`): `c27b8e352a9bdaf55f94df9fb3da1376f0f402d6`
 - Booking (`alpesh15gb/MaxTripJack`, `booking-platform`): `a0360fb0e8b533452bec5b3d7c3865e46d608f4e`
 
-Scripts are pinned to these source commits and historical runtime identities. Their Bash/Python checks and 22 synthetic validator tests passed locally. No VPS build or live runtime validation is claimed. If remote `main`, runtime identity, or frozen configuration has changed, stop and review; do not bypass a guard.
+Scripts are pinned to these source commits and historical runtime identities. Their Bash/Python checks and 32 offline validator/recovery tests passed locally. No VPS build or live runtime validation is claimed. If remote `main`, runtime identity, or frozen configuration has changed, stop and review; do not bypass a guard.
 
 ## Transfer and verify
 
@@ -40,3 +40,9 @@ Creates private rollback-image/config evidence, fetches pinned source into an is
 It does not restart production, start application/worker entrypoints, migrate databases, call providers, change live checkouts/Compose pointers, or cut over. A rollback-image archive is not a database backup. Preserve prior releases and frozen dependency files. Both builds must pass before any separately reviewed backup/restore, write-freeze, or cutover plan; later cutover is CRM receiver first, then booking. This package supplies no cutover commands.
 
 A final `build-verified.json` is created only after all validations pass. It binds the stage, app, source commit/tree and candidate image. Partial/failed build directories without this marker must never be selected for cutover.
+
+## Confirmed Mounts-order final-guard recovery
+
+The reported existing CRM image stage `/root/crm-build-c27b8e3-p3drk2` reached its final preservation guard and failed solely because Docker returned an old backup helper's Mounts in a different order. The corrected validator compares complete mount records without discarding values or duplicates. Other configuration list ordering is not relaxed.
+
+After coordinator review of this exact helper revision, `revalidate-built-crm.sh` can revalidate **only that stage**, without rebuilding. It requires `APPROVED_BUILD_REVALIDATION='reviewed mounts order only; no rebuild'`, reruns full source/archive/rollback/frozen/config/image/current-runtime/non-root-readability proofs, preserves original evidence, and writes the original stage's success marker only after all checks pass. New private evidence is stored in that stage's `revalidation-*` directory. A successful build marker is not permission to cut over; booking build and reviewed backup/restore remain required. This recovery has not been live-tested by the assistant.
