@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { requirePage } from "@/lib/guard";
 import { can } from "@/lib/rbac";
 import EmployeesClient from "./EmployeesClient";
+import { employeeReadScope, employeeRecoveryContext, employeeRevision } from "@/lib/employee-recovery-server";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ export default async function EmployeesPage() {
   const user = await requirePage("employee:view");
   const [employees, roles, branches] = await Promise.all([
     prisma.user.findMany({
-      where: user.accessMode === "BRANCH" ? { branchId: user.branchId } : user.accessMode === "ASSIGNED" ? { id: user.id } : {},
+      where: employeeReadScope(user),
       include: {
         role: true, branch: true,
         tasks: { where: { status: { in: ["OPEN", "IN_PROGRESS"] } }, select: { id: true } },
@@ -24,8 +25,10 @@ export default async function EmployeesPage() {
 
   return (
     <EmployeesClient
+      key={employeeRecoveryContext(user)}
+      recoveryContext={employeeRecoveryContext(user)}
       employees={employees.map((e) => ({
-        id: e.id, employeeCode: e.employeeCode, name: e.name, email: e.email, phone: e.phone,
+        revision: employeeRevision(e), id: e.id, employeeCode: e.employeeCode, name: e.name, email: e.email, phone: e.phone,
         roleId: e.roleId, role: e.role.name, roleKey: e.role.key, branchId: e.branchId,
         branch: e.branch?.name ?? "—", active: e.active, joinedOn: e.joinedOn?.toISOString() ?? null,
         salary: can(user.permissions, "hr:view") ? e.salary : null,

@@ -8,6 +8,7 @@ export default function PdfAttachment({ customerId, disabled, value, onChange, o
   return <div className="space-y-2 rounded-xl border border-slate-200 p-3">
     <label className="block text-xs font-semibold">Attach ticket, voucher or receipt PDF
       <input className="mt-2 block w-full text-xs" type="file" accept="application/pdf,.pdf" disabled={disabled || uploading} onChange={async event => {
+        if (disabled || controller.current) return;
         const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
         setError(""); onChange(null);
         if (file.size > 5 * 1024 * 1024 || !file.name.toLowerCase().endsWith(".pdf")) { setError("Choose a PDF up to 5 MB."); return; }
@@ -17,7 +18,7 @@ export default function PdfAttachment({ customerId, disabled, value, onChange, o
           const data = await response.json(); if (!response.ok) throw new Error(data.error || "PDF upload failed.");
           if (!abort.signal.aborted) onChange({ id: data.id, filename: data.filename, url: data.url, confirmed: false });
         } catch (error) { if (!abort.signal.aborted) setError(error instanceof Error ? error.message : "PDF upload failed."); }
-        finally { if (!abort.signal.aborted) {setUploading(false);onUploading(false);} }
+        finally { if (controller.current === abort) controller.current = null; if (!abort.signal.aborted) {setUploading(false);onUploading(false);} }
       }} />
     </label>
     {uploading && <p role="status" className="text-xs text-slate-500">Preparing private PDF…</p>}

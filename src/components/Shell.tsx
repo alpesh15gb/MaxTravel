@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import UniversalSearch from "./UniversalSearch";
 import { useSalesDraftMemory } from "./SalesDraftProvider";
+import { useWhatsAppComposerMemory } from "./WhatsAppComposerProvider";
 import { usePackageDraftMemory } from "./PackageDraftProvider";
 import Icon, { type IconName } from "./Icon";
 import { Field } from "./ui";
@@ -54,6 +55,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
   const path = usePathname(); const router = useRouter();
   const draftMemory = useSalesDraftMemory();
   const packageDraftMemory = usePackageDraftMemory();
+  const whatsappMemory = useWhatsAppComposerMemory();
   const [mobile, setMobile] = useState(false); const [pwOpen, setPwOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false); const [userOpen, setUserOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>(() => {
@@ -102,7 +104,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
       menuTrigger?.focus();
     };
   }, [mobile]);
-  async function logout() { draftMemory.clear(); try { const r = await fetch("/api/auth/logout", { method: "POST" }); if (!r.ok) throw new Error(); packageDraftMemory.clear(); router.push("/login"); router.refresh(); } catch { setError("Could not sign out. Please try again."); } }
+  async function logout() { draftMemory.clear(); try { const r = await fetch("/api/auth/logout", { method: "POST" }); if (!r.ok) throw new Error(); packageDraftMemory.clear(); whatsappMemory.clear(); router.push("/login"); router.refresh(); } catch { setError("Could not sign out. Please try again."); } }
   const nav = NAV.filter(n => user.permissions.includes(n.perm));
   const quick = QUICK.filter(q => user.permissions.includes(q.perm));
   const activeModule = nav.find(n => path === n.href || path.startsWith(n.href + "/"));

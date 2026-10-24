@@ -89,6 +89,8 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
+      - name: Verify employee recovery outcome and generation contracts
+        run: node --import tsx tests/employee-recovery.ts
 
   build:
     name: Production build
@@ -147,6 +149,20 @@ jobs:
         run: |
           node --test tests/fixture-lifecycle.test.mjs
           node --import tsx tests/online-bookings-query.mts --browser
+      - name: Verify recipient-bound WhatsApp composer races
+        if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
+        timeout-minutes: 5
+        run: |
+          npm run test:whatsapp-idempotency
+          npm run test:whatsapp-browser
+      - name: Verify scoped staff recovery HTTP contracts
+        if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
+        timeout-minutes: 5
+        run: node --import tsx tests/employee-recovery-http.mts
+      - name: Verify staff lost-response and duplicate-submit recovery
+        if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
+        timeout-minutes: 6
+        run: node tests/employee-recovery-browser.mjs
       - name: Verify task-first mobile workspace journeys
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         run: node tests/mobile-workspace-browser.mjs
@@ -175,6 +191,10 @@ jobs:
             test-artifacts/reporting/
             test-artifacts/journeys/
             test-artifacts/mobile-workspace/
+            test-artifacts/whatsapp-recipient-context/
+            test-artifacts/whatsapp-manual-idempotency/
+            test-artifacts/employee-recovery/
+            test-artifacts/employee-recovery-http/
             test-artifacts/online-bookings/
             test-artifacts/travel-packages/
             test-artifacts/a11y/report.json
