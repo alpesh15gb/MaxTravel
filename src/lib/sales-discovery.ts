@@ -38,14 +38,14 @@ export function salesFilters(params: URLSearchParams, customers = false): SalesF
 
 // SalesLead intentionally has no Prisma customer relation. A parameterized join applies both
 // scopes BEFORE LIMIT, so inaccessible/merged customers cannot consume a whole visible page.
-function discoveryScope(user: SessionUser): Prisma.Sql {
+export function salesDiscoveryScope(user: SessionUser): Prisma.Sql {
   const mode = user.accessMode ?? accessModeFor(user.role);
   if (mode === "ALL") return Prisma.sql`1 = 1`;
   if (mode === "BRANCH") return user.branchId ? Prisma.sql`l."branchId" = ${user.branchId} AND c."branchId" = ${user.branchId}` : Prisma.sql`1 = 0`;
   return Prisma.sql`l."ownerId" = ${user.id} AND c."assignedToId" = ${user.id}`;
 }
 export async function salesLeadPage(db: PrismaClient, user: SessionUser, filters: SalesFilters, leadId?: string) {
-  const clauses = [discoveryScope(user), Prisma.sql`c."mergedIntoId" IS NULL`];
+  const clauses = [salesDiscoveryScope(user), Prisma.sql`c."mergedIntoId" IS NULL`];
   if (leadId) clauses.push(Prisma.sql`l."id" = ${leadId}`);
   else {
     if (filters.stage) clauses.push(Prisma.sql`l."stage" = ${filters.stage}`);

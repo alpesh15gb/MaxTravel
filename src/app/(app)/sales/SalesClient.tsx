@@ -30,7 +30,7 @@ const localDateTime = (value: string | null) => {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 };
 
-export default function SalesClient() {
+export default function SalesClient({ initialLeadId }: { initialLeadId?: string }) {
   const draftMemory = useSalesDraftMemory();
   const customerMemory = useCustomerCreateMemory();
   const customerWrite = useCustomerCreateEntry();
@@ -44,6 +44,7 @@ export default function SalesClient() {
   const recoveryCheck = useRef(0);
   const readGeneration = useRef(0);
   const activationGeneration = useRef(0);
+  const pendingHandoffId = useRef<string | null>(null);
   const customerAccessGeneration = useRef(0);
   const [recovery, setRecovery] = useState<Recovery | null>(null);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
@@ -180,16 +181,26 @@ export default function SalesClient() {
     // Reset before paint: Activity may preserve old fields while hidden, but cannot authorize their reveal.
     // Activity/Back restoration is not authorization. Re-check before exposing any retained text.
     setLoading(true); setData(null); setRecovery(null); setView("list"); setDirty(false); activeQuote.current = null;
+    pendingHandoffId.current = initialLeadId ?? null;
+    if (initialLeadId) setSelectedId(null);
+    setError(""); setNotice("");
     setItems([newItem()]); setTerms(""); setExpiry("");
     setShare(""); setShareContext(""); setShareQuoteId(null);
     draftMemory.expire();
-    load().then(async () => {
+    load({ focusId: initialLeadId }).then(async latest => {
+      if (!active || activation !== activationGeneration.current) return;
+      if (initialLeadId) {
+        if (latest.leads.some(lead => lead.id === initialLeadId)) {
+          setSelectedId(initialLeadId); setView("lead"); setFocusRequest(value => value + 1);
+        } else { setSelectedId(null); setNotice("This enquiry is no longer available in your workspace."); }
+        pendingHandoffId.current = null;
+      }
       const entry = draftMemory.getSnapshot();
       if (active && activation === activationGeneration.current && entry) await checkRecovery(entry);
     }).catch(error => { if (active && activation === activationGeneration.current) setError(error instanceof Error && error.message.startsWith("Staff session or access changed") ? error.message : "Enquiries could not be loaded. Retry to see the latest records."); })
       .finally(() => { if (active && activation === activationGeneration.current) setLoading(false); });
     return () => { active = false; activationGeneration.current += 1; recoveryCheck.current += 1; readGeneration.current += 1; };
-  }, [load, checkRecovery, draftMemory]);
+  }, [load, checkRecovery, draftMemory, initialLeadId]);
 
   useEffect(() => {
     if (!recovery) return;
@@ -279,9 +290,14 @@ export default function SalesClient() {
     const pendingReview = actionMemory.getSnapshot();
     const reviewEpoch = actionMemory.getReviewEpoch();
     const reviewUnknownCreate = pendingReview?.kind === "create" && pendingReview.phase === "uncertain";
+    // A failed initial exact-record read must retry the URL target, not silently fall back
+    // to page one. A pending write review takes precedence; resolved links do not override
+    // the operator's later selection. The activation check below fences route changes.
+    const handoffId = pendingHandoffId.current;
+    const focusId = pendingReview?.leadId ?? (reviewUnknownCreate ? undefined : handoffId ?? selectedIdRef.current ?? undefined);
     mutationLock.current = true; setLoading(true); setError("");
     try {
-      const latest = await load({ focusId: pendingReview?.leadId, ...(reviewUnknownCreate ? { q: "", stage: "ALL" } : {}) });
+      const latest = await load({ focusId, ...(reviewUnknownCreate ? { q: "", stage: "ALL" } : {}) });
       if (activation !== activationGeneration.current) return;
       reconcileShare(latest);
       if (activeQuote.current) draftMemory.clear(activeQuote.current.nonce);
@@ -294,8 +310,13 @@ export default function SalesClient() {
       }
       if (reviewUnknownCreate) { setQuery(""); setFilter("ALL"); }
       setUncertain(false); setDirty(false);
-      setView(selectedId && latest.leads.some(lead => lead.id === selectedId) ? "lead" : "list");
-      setNotice("Latest records loaded. Review the enquiry and quote versions before making another change.");
+      const selectedAfterReview = focusId ?? selectedIdRef.current;
+      const available = !!selectedAfterReview && latest.leads.some(lead => lead.id === selectedAfterReview);
+      setSelectedId(available ? selectedAfterReview : null); setView(available ? "lead" : "list");
+      pendingHandoffId.current = null;
+      setNotice(handoffId && focusId === handoffId && !available
+        ? "This enquiry is no longer available in your workspace."
+        : "Latest records loaded. Review the enquiry and quote versions before making another change.");
       setFocusRequest(value => value + 1);
     } catch { if (activation === activationGeneration.current) setError("Latest status could not be loaded. Keep your local notes and try loading again; do not repeat an uncertain save."); }
     finally { mutationLock.current = false; if (activation === activationGeneration.current) setLoading(false); }

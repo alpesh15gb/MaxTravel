@@ -22,7 +22,9 @@ export async function automationRules(tx: Prisma.TransactionClient = prisma): Pr
 }
 
 export async function queueAutomation(tx: Prisma.TransactionClient, customerId: string, rule: AutomationRule, key: string, body: string, variables:Record<string,string>={},attachmentId?:string) {
-  if(rule==="BOOKING_DOCUMENT"&&!isCloud())return;
+  if(rule==="BOOKING_DOCUMENT") {
+    if(!isCloud()||!await bookingDocumentIsCurrent(tx,key,attachmentId))return;
+  }
   const config = messagingConfig();
   if (!config || !(await automationRules(tx)).includes(rule)) return;
   const customer = await tx.customer.findUnique({ where: { id: customerId } });
@@ -146,7 +148,7 @@ export async function processWhatsAppQueue() {
   for (const message of messages) {
     const customer = message.thread.customer;
     let contextBody=message.body;if(isCloud()&&message.cloudTemplate){try{const parsed=JSON.parse(message.cloudTemplate);if(typeof parsed.contextBody==="string")contextBody=parsed.contextBody;}catch{/* Template validation below will block malformed stored values. */}}
-    const current = !message.automation || await reminderIsCurrent(message.automation, message.requestKey!, contextBody);
+    const current = !message.automation || await reminderIsCurrent(message.automation, message.requestKey!, contextBody, message.attachmentId);
     if ((isCloud()&&!customer.phone.trim().startsWith("+"))||whatsappPhone(customer.phone) !== message.recipient || customer.status === "INACTIVE" ||
       !current || (isCloud()&&(!customer.whatsappOptIn||Boolean(await prisma.settings.findUnique({where:{key:`wa.meta.optout.${message.recipient}`}})))) || (message.automation && (!customer.whatsappOptIn || !rules.includes(message.automation as AutomationRule) || Date.now()-message.at.getTime()>48*3600000))) {
       await prisma.whatsAppMessage.updateMany({ where: { id: message.id, status: "QUEUED" }, data: { status: "CANCELLED", lastError: "Recipient, consent or automation settings changed, or reminder expired." } });
@@ -180,6 +182,13 @@ export async function processWhatsAppQueue() {
         const latest=await prisma.customer.findUniqueOrThrow({where:{id:customer.id}});
         if(!latest.whatsappOptIn||latest.status==="INACTIVE"||whatsappPhone(latest.phone)!==message.recipient||await prisma.settings.findUnique({where:{key:`wa.meta.optout.${message.recipient}`}})||!prepared&&!await cloudReplyWindow(customer.id,message.recipient!))throw new CloudError(false,false,"Consent, recipient or reply window changed before PDF delivery.");
       }
+      // PDF upload/template validation is asynchronous: invalidate a superseded
+      // automated document again immediately before the external submission.
+      if(message.automation==="BOOKING_DOCUMENT"&&!await reminderIsCurrent(message.automation,message.requestKey!,contextBody,message.attachmentId)) {
+        await prisma.whatsAppMessage.updateMany({where:{id:message.id,status:"SENDING"},data:{status:"CANCELLED",lastError:"The booking document was superseded before delivery."}});
+        processed++;
+        continue;
+      }
       const id = isCloud()?await cloudSend(message.recipient!,body,prepared?.template,message.id,document):await evolutionSend(message.recipient!, body);
       // Receipt webhooks can beat this response; do not downgrade a delivered/read message.
       const key = isCloud()?`${config.instance}:${id}`:providerKey(id);
@@ -198,10 +207,15 @@ export async function processWhatsAppQueue() {
   return { state, processed };
 }
 
-async function reminderIsCurrent(rule: string, key: string, body: string) {
+async function bookingDocumentIsCurrent(tx: Prisma.TransactionClient, bookingId: string, attachmentId?: string | null) {
+  const link=await tx.platformBookingLink.findUnique({where:{bookingId}});
+  return Boolean(link?.documentsCurrent && attachmentId===`platform-pdf-${link.platformId}-${link.revision}`);
+}
+
+async function reminderIsCurrent(rule: string, key: string, body: string, attachmentId?: string | null) {
   const parts = key.split(":"), id = parts[2], when = parts.slice(3).join(":");
   if (rule === "BOOKING_CREATED" || rule === "TICKET_CONFIRMED" || rule === "HOTEL_CONFIRMED" || rule === "BOOKING_DOCUMENT") {
-    if(rule==="BOOKING_DOCUMENT"){const link=await prisma.platformBookingLink.findUnique({where:{bookingId:id}});if(!link?.documentsCurrent)return false;}
+    if(rule==="BOOKING_DOCUMENT"&&!await bookingDocumentIsCurrent(prisma,id,attachmentId))return false;
     const booking = await prisma.booking.findUnique({ where: { id } });
     if (!booking || ["CANCELLED","VOID","REFUNDED"].includes(booking.status)) return false;
     return rule !== "BOOKING_CREATED" ? booking.status === "TICKETED" : !["TICKETED","REISSUED"].includes(booking.status);

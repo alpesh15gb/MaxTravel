@@ -1,3 +1,4 @@
+import { salesAttention } from "./sales-attention";
 import { enumLabel } from "@/lib/labels";
 import { dateTimeLabel } from "@/lib/dates";
 import { inrAmount } from "@/lib/money";
@@ -29,7 +30,7 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
   // quietly change what the agency is owed. A capped list announces itself instead (see below).
   const truncated:string[]=[];
   const bounded=async <T,>(p:Promise<T[]>,kind:string):Promise<T[]>=>{const rows=await p;if(rows.length<=ITEM_LIMIT)return rows;truncated.push(kind);return rows.slice(0,ITEM_LIMIT);};
-  const [bookings,cases,invoices,documents,passports,tasks,refunds,dues,threads,customerCount]=await Promise.all([
+  const [bookings,cases,invoices,documents,passports,tasks,refunds,dues,threads,customerCount,sales]=await Promise.all([
     can("ticketing:view")?prisma.booking.findMany({where:work,include:{customer:{select:{name:true}},payments:{select:{amount:true}},refunds:{select:{amount:true,status:true}}}}):[],
     can("visa:view")?prisma.visaCase.findMany({where:work,include:{stage:true,customer:{select:{name:true}},documents:{select:{status:true}}}}):[],
     can("invoice:view")?prisma.invoice.findMany({where:{customer:{is:customer}},include:{customer:{select:{name:true}},booking:{select:{status:true}}}}):[],
@@ -45,8 +46,9 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
     // stricter "and it is still the latest message" rule runs below, unchanged.
     can("whatsapp:view")?bounded(prisma.whatsAppThread.findMany({where:{customer:{is:customer},msgs:{some:{direction:"IN",at:{lt:new Date(now-4*H)}}}},orderBy:{lastMsgAt:"asc"},include:{customer:{select:{name:true}},msgs:{orderBy:{at:"desc"},take:1}},take:ITEM_LIMIT+1}),"threads"):[],
     can("customer:view")?prisma.customer.count({where:customer}):0,
+    salesAttention(prisma,user,now),
   ]);
-  const items:PulseItem[]=[];
+  const items:PulseItem[]=[...sales];
   const open=(label:string,href:string):PulseAction=>({label,href});
   const log=(label:string,body:Record<string,unknown>):PulseAction=>({label,api:"/api/whatsapp/send",body});
   for(const b of bookings){

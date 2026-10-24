@@ -11,15 +11,17 @@ interface Action { label:string; api?:string; method?:string; body?:Record<strin
 interface Item { id:string;kind:string;severity:string;title:string;detail:string;href:string;actions:Action[];at?:string }
 interface Resp { items:Item[];counts:{urgent:number;high:number;medium:number};generatedAt:string;kpis:{label:string;value:string;href:string;tone:string;icon:IconName;note:string}[];quickActions:{label:string;description:string;href:string;icon:IconName}[];firstRun:boolean;name:string }
 type Filter = "ALL" | "URGENT" | "HIGH" | "MEDIUM";
-type Workstream = "all" | "travel" | "documents" | "money" | "followups";
+type Workstream = "all" | "sales" | "travel" | "documents" | "money" | "followups";
 const WORKSTREAMS: { value: Workstream; label: string; icon: IconName }[] = [
   { value: "all", label: "All work", icon: "dashboard" },
+  { value: "sales", label: "Sales follow-ups", icon: "customers" },
   { value: "travel", label: "Travel & appointments", icon: "plane" },
   { value: "documents", label: "Documents to resolve", icon: "documents" },
   { value: "money", label: "Payments & refunds", icon: "wallet" },
   { value: "followups", label: "Tasks & conversations", icon: "tasks" },
 ];
 function workstream(item: Item): Workstream {
+  if (/SALES/.test(item.kind)) return "sales";
   if (/PAYMENT|REFUND|SUPPLIER|INVOICE/.test(item.kind)) return "money";
   if (/DOC|PASSPORT/.test(item.kind)) return "documents";
   if (/TASK|WHATSAPP|MESSAGE/.test(item.kind)) return "followups";

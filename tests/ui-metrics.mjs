@@ -23,6 +23,7 @@
 // A metrics run that cannot cover the screens is not a pass: a route that fails to load, or a walk
 // that collected no text nodes, fails the gate rather than being skipped.
 import assert from "node:assert/strict";
+import { checkSalesToday } from "./sales-today-browser.mjs";
 import { checkStaffHandoffs } from "./staff-handoff-browser.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -437,6 +438,7 @@ try {
     console.log(`\nUI metrics gate passed. Screenshots: ${path.relative(ROOT, shotDir)} (desktop 1440 + phone 390, ${ROUTES.length} routes each).`);
   }
   await checkStaffHandoffs(page, base, fixture);
+  await checkSalesToday(page, base, fixture);
   await context.close();
 } catch (error) {
   console.error(`UI metrics gate could not complete: ${error.message}`);
