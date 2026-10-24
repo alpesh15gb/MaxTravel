@@ -1,0 +1,31 @@
+import assert from "node:assert/strict";
+import { readReportJson, ReportReadTimeout, REPORT_READ_TIMEOUT_MS } from "../src/lib/report-read";
+const deferred = <T>() => { let resolve!: (value: T) => void; let reject!: (reason: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { resolve, reject, promise }; };
+async function run() {
+ let checks = 0;
+ const check = (name: string) => { checks++; console.log(`✓ ${name}`); };
+ assert.equal(REPORT_READ_TIMEOUT_MS,35_000);check("Report deadline allows the 30s server transaction to finish before 35s client recovery");
+ const controller = new AbortController();
+ const good = (async () => new Response(JSON.stringify({ total: 42 }))) as typeof fetch;
+ const result = await readReportJson<{ total: number }>("/report", { signal: controller.signal, timeoutMs: 50, fetcher: good });
+ assert.deepEqual(result.data, { total: 42 });assert(!controller.signal.aborted);check("Timely real JSON resolves without aborting the owning generation");
+ const stalled = deferred<Response>();let innerSignal: AbortSignal | null = null;
+ const ignoredAbort = (async (_input, init) => { innerSignal = init?.signal ?? null; return stalled.promise; }) as typeof fetch;
+ await assert.rejects(readReportJson("/report", { signal: controller.signal, timeoutMs: 5, fetcher: ignoredAbort }), ReportReadTimeout);
+ assert((innerSignal as unknown as AbortSignal).aborted);assert(!controller.signal.aborted);check("Stalled transport times out independently of abort compliance without cancelling its owner");
+ stalled.resolve(new Response(JSON.stringify({ stale: true })));
+ const retry = await readReportJson<{ total: number }>("/report", { signal: controller.signal, timeoutMs: 50, fetcher: good });
+ assert.deepEqual(retry.data, { total: 42 });check("An explicit retry succeeds; late old transport completion cannot replace its result");
+ const body = deferred<unknown>();let bodySignal: AbortSignal | null = null;
+ const stalledBody = (async (_input, init) => { bodySignal = init?.signal ?? null; return { json: () => body.promise } as Response; }) as typeof fetch;
+ await assert.rejects(readReportJson("/report", { signal: controller.signal, timeoutMs: 5, fetcher: stalledBody }), ReportReadTimeout);
+ assert((bodySignal as unknown as AbortSignal).aborted);body.resolve({ stale: true });check("Deadline also covers a response whose JSON body never settles");
+ const cancelled = new AbortController(), pending = deferred<Response>();
+ const read = readReportJson("/report", { signal: cancelled.signal, timeoutMs: 100, fetcher: (async () => pending.promise) as typeof fetch });
+ cancelled.abort();await assert.rejects(read, (error: unknown) => error instanceof DOMException && error.name === "AbortError");pending.resolve(new Response("{}"));check("External generation cancellation retains AbortError rather than a retryable timeout");
+ let calls = 0;const preCancelled = new AbortController();preCancelled.abort();
+ await assert.rejects(readReportJson("/report", { signal: preCancelled.signal, fetcher: (async () => { calls++; return new Response("{}"); }) as typeof fetch }));assert.equal(calls,0);check("Already cancelled generations never start transport");
+ await assert.rejects(readReportJson("/report", { signal: controller.signal, timeoutMs: 50, fetcher: (async () => new Response("not json")) as typeof fetch }), SyntaxError);check("Malformed JSON is an error, never zero totals or a fabricated success");
+ console.log(`${checks} bounded report-read checks passed.`);
+}
+run().catch(error => { console.error(error); process.exitCode = 1; });

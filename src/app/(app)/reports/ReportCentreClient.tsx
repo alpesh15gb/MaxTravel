@@ -7,6 +7,7 @@ import { PageHeader, EmptyState, Field } from "@/components/ui";
 import { inrAmount } from "@/lib/money";
 import type { AccountReport, ReportRow } from "@/lib/account-reports";
 import { REPORT_CATALOGUE, REPORT_GROUPS, REPORT_DATE_PRESETS, indiaDay, isBalanceReport, isStatementReport, isWorkReport, reportCurrency, reportDatePreset, reportDefinition, reportFilterQuery } from "@/lib/report-workspace";
+import { readReportJson } from "@/lib/report-read";
 import "./reporting-workspace.css";
 
 type Options = { customers: { id: string; name: string; code: string }[]; suppliers: { id: string; name: string }[]; staff: { id: string; name: string }[]; statuses: string[]; cutover: string | null };
@@ -28,7 +29,7 @@ export default function ReportCentreClient({ canExport, canSupplier, canRefund, 
   optionsRequest.current?.abort(); const c = new AbortController(); optionsRequest.current = c; const id = ++optionsGeneration.current;
   setOptionsError("");
   try {
-   const r = await fetch("/api/reports/accounts?options=1", { signal: c.signal }); const d = await r.json();
+   const { response: r, data: d } = await readReportJson<Options & { error?: string }>("/api/reports/accounts?options=1", { signal: c.signal });
    if (c.signal.aborted || id !== optionsGeneration.current) return;
    if (!r.ok) throw new Error(d.error || "Could not load report accounts.");
    setOptions(d);
@@ -52,7 +53,7 @@ export default function ReportCentreClient({ canExport, canSupplier, canRefund, 
   setBusy(true); setError(""); setData(null); setTerms(false);
   const p = new URLSearchParams(query); p.delete("page"); lastRequest.current = { page, query: p.toString() }; p.set("page", String(page));
   try {
-   const r = await fetch("/api/reports/accounts?" + p, { signal: c.signal }); const d = await r.json();
+   const { response: r, data: d } = await readReportJson<AccountReport & { error?: string }>("/api/reports/accounts?" + p, { signal: c.signal });
    if (c.signal.aborted || id !== generation.current) return;
    if (!r.ok) throw new Error(d.error || "Could not load report.");
    setData(d); p.delete("page"); setApplied(p.toString());

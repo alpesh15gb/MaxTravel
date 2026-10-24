@@ -7,6 +7,7 @@ import { inrAmount } from "@/lib/money";
 import { enumLabel } from "@/lib/labels";
 import type { AgencyReport } from "@/lib/reports";
 import { indiaDay } from "@/lib/report-workspace";
+import { readReportJson } from "@/lib/report-read";
 
 function Breakdown({title,rows,money=false}:{title:string;rows:{label:string;value:number}[];money?:boolean}){
   const max=Math.max(1,...rows.map(r=>r.value));
@@ -18,7 +19,7 @@ export default function ReportsClient({canExport}:{canExport:boolean}){
   const request=useRef<AbortController|null>(null),generation=useRef(0),lastQuery=useRef("");
   const load=useCallback(async(query="")=>{
     request.current?.abort(); const controller=new AbortController();request.current=controller;const id=++generation.current;lastQuery.current=query;setBusy(true);setError("");setData(null);
-    try{const r=await fetch("/api/reports"+query,{signal:controller.signal});const result=await r.json();if(controller.signal.aborted||id!==generation.current)return;if(!r.ok)throw new Error(result.error||"Unable to load reports.");setData(result);setFrom(result.period.from);setTo(result.period.to);}catch(e){if(!controller.signal.aborted&&id===generation.current)setError(e instanceof Error?e.message:"Unable to load reports.");}finally{if(!controller.signal.aborted&&id===generation.current)setBusy(false);}
+    try{const {response:r,data:result}=await readReportJson<AgencyReport & {error?:string}>("/api/reports"+query,{signal:controller.signal});if(controller.signal.aborted||id!==generation.current)return;if(!r.ok)throw new Error(result.error||"Unable to load reports.");setData(result);setFrom(result.period.from);setTo(result.period.to);}catch(e){if(!controller.signal.aborted&&id===generation.current)setError(e instanceof Error?e.message:"Unable to load reports.");}finally{if(!controller.signal.aborted&&id===generation.current)setBusy(false);}
   },[]);
   useEffect(()=>{void load();return()=>{request.current?.abort();};},[load]);
   const query=data?new URLSearchParams({...data.period,format:"csv"}).toString():"";
