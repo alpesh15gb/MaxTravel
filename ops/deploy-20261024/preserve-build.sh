@@ -39,10 +39,12 @@ snapshot() {
 snapshot "$STAGE/before.private.json"
 python3 "$HERE/verify.py" runtime "$STAGE/before.private.json"
 # Image defaults are necessary for full effective-environment comparison, including PostgreSQL.
-python3 - "$STAGE/before.private.json" <<'PYIMAGES' > "$STAGE/protected-image-ids.txt"
-import json,sys
-rows=json.load(open(sys.argv[1]))
-print('\n'.join(sorted({r['Image'] for r in rows if (r['Config'].get('Labels') or {}).get('com.docker.compose.project') in ('max-travel-crm','max-travel-booking')})))
+python3 - "$HERE" "$STAGE/before.private.json" <<'PYIMAGES' > "$STAGE/protected-image-ids.txt"
+import sys
+sys.path.insert(0,sys.argv[1]);from verify import runtime,read
+# Retired check image is not a deployed runtime dependency. Its entire container
+# remains in before/after snapshots and must not be changed or removed.
+print('\n'.join(sorted({r['Image'] for r in runtime(read(sys.argv[2])).values()})))
 PYIMAGES
 mapfile -t PROTECTED_IMAGES < "$STAGE/protected-image-ids.txt"
 docker image inspect "${PROTECTED_IMAGES[@]}" > "$STAGE/deployed-images.private.json"
@@ -140,5 +142,16 @@ timeout --kill-after=10s 60s docker run --rm --pull never --network none --read-
 sha256sum --check --status "$STAGE/frozen-originals.sha256" || fail 'Frozen dependencies changed during build.'
 snapshot "$STAGE/after.private.json"
 python3 "$HERE/verify.py" after "$STAGE/before.private.json" "$STAGE/after.private.json"
+# Final success marker is emitted atomically ONLY after every preceding check passes.
+python3 - "$STAGE" "$APP" "$TARGET" "$TREE" "$NEW_IMAGE" <<'PYVERIFIED'
+import json,pathlib,sys,os,datetime
+stage=pathlib.Path(sys.argv[1])
+marker={'status':'verified','stage':str(stage),'app':sys.argv[2],'commit':sys.argv[3],
+        'tree':sys.argv[4],'image':sys.argv[5],'verified_at':datetime.datetime.now(datetime.timezone.utc).isoformat()}
+temporary=stage/'build-verified.json.tmp'
+with temporary.open('x') as out:
+ json.dump(marker,out,sort_keys=True);out.write('\n');out.flush();os.fsync(out.fileno())
+os.replace(temporary,stage/'build-verified.json')
+PYVERIFIED
 printf '\nBUILD COMPLETE — NOT DEPLOYED\nApp: %s\nDirectory: %s\nSource: %s\nTree: %s\nCandidate: %s\n' "$APP" "$STAGE" "$TARGET" "$TREE" "$NEW_IMAGE"
 printf 'Disposable network-isolated non-root readability check passed. No application/worker startup, migration, provider request, production service stop or cutover performed. Private rollback/config evidence retained.\nBoth images must finish before downtime. CRM receiver cutover precedes booking. A separately reviewed backup/restore and cutover plan is still required.\n'

@@ -13,9 +13,25 @@ def regular(p):
  require(p.is_absolute() and p.is_file() and not any(x.is_symlink() for x in [p,*p.parents]), 'Missing or symlinked frozen file; review privately.')
  return p
 
+# User-confirmed retained upgrade check, 2026-10-24 20:48 UTC. Not a generic
+# stopped/one-off exemption: exact identity and successful exited state only.
+RETAINED_CHECK_ID='cdd10ab33db2d17a04e1a861def28366dcc2ee60b54c55285a86b7071d87f33e'
+RETAINED_CHECK_NAME='/max-travel-crm-upgrade-check-56e110ae'
+def retained_upgrade_check(row):
+ if row.get('Id')!=RETAINED_CHECK_ID and row.get('Name')!=RETAINED_CHECK_NAME: return False
+ labels=row.get('Config',{}).get('Labels') or {}; state=row.get('State',{})
+ require(row.get('Id')==RETAINED_CHECK_ID and row.get('Name')==RETAINED_CHECK_NAME
+         and labels.get('com.docker.compose.project')=='max-travel-crm'
+         and labels.get('com.docker.compose.service')=='app'
+         and state.get('Status')=='exited' and state.get('ExitCode')==0
+         and all(state.get(k) is False for k in ('Running','Paused','Restarting','Dead','OOMKilled')),
+         'Retained upgrade-check identity/state changed; review before proceeding.')
+ return True
+
 def runtime(rows):
  found={}
  for r in rows:
+  if retained_upgrade_check(r): continue
   labels=r.get('Config',{}).get('Labels') or {}; project=labels.get('com.docker.compose.project')
   if project not in ('max-travel-crm','max-travel-booking'): continue
   app='crm' if project=='max-travel-crm' else 'booking'; service=labels['com.docker.compose.service']; key=(app,service)
@@ -66,8 +82,8 @@ def main():
   require(before.keys()==after.keys(),'Container inventory changed during build.')
   for id,r in before.items():
    n=after[id]
-   require(all(r[k]==n[k] for k in ['Image','RestartCount','Config','HostConfig','Mounts']),'Container configuration or restart count changed.')
-   for key in ('StartedAt','FinishedAt','Paused','Restarting','Dead','OOMKilled','Running'):
+   require(all(r.get(k)==n.get(k) for k in ['Name','Image','RestartCount','Config','HostConfig','Mounts']),'Container configuration or restart count changed.')
+   for key in ('StartedAt','FinishedAt','Paused','Restarting','Dead','OOMKilled','Running','Status','ExitCode'):
     require(r['State'].get(key)==n['State'].get(key),'Container lifecycle state changed.')
    if r['State'].get('Health',{}).get('Status')=='healthy': require(n['State'].get('Health',{}).get('Status')=='healthy','Previously healthy container became unhealthy.')
  elif mode=='paths':
