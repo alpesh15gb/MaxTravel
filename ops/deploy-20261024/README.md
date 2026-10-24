@@ -1,48 +1,38 @@
-# MaxTravel — build-only preparation, 24 October 2026
+# MaxTravel — booking build only
 
-**BUILD-ONLY CORRECTION: use only after fresh VPS preflight review and explicit build-only clearance.** The prior user-run attempt stopped before building on a retained upgrade-check container; the narrowly identified successful stopped check is now excluded only from service eligibility, not from preservation. This is not cutover approval.
+**CRM is already verified. Reuse it; do not build or revalidate CRM again.**
 
-## Exact tested source targets
+- CRM stage: `/root/crm-build-c27b8e3-p3drk2`
+- CRM source: `c27b8e352a9bdaf55f94df9fb3da1376f0f402d6`
+- Verified CRM image: `sha256:b10e495f4f8fbaca93153552e6484800670c91fa7e778a759674829b28cc3e0a`
 
-- CRM (`alpesh15gb/MaxTravel`): `c27b8e352a9bdaf55f94df9fb3da1376f0f402d6`
-- Booking (`alpesh15gb/MaxTripJack`, `booking-platform`): `a0360fb0e8b533452bec5b3d7c3865e46d608f4e`
+These are prepared candidate images, **not a completed production cutover**. Retain the verified CRM stage, current production releases, frozen environment files, and private rollback evidence.
 
-Scripts are pinned to these source commits and historical runtime identities. Their Bash/Python checks and 32 offline validator/recovery tests passed locally. No VPS build or live runtime validation is claimed. If remote `main`, runtime identity, or frozen configuration has changed, stop and review; do not bypass a guard.
+## Next step — booking only, after coordinator clearance
 
-## Transfer and verify
+Booking target: `40b4988136c9708ca29a7f9340af52c53da37cc1`  
+Repository tree: `197826e00a7b1b092035c3352912de86a3a6d081`
 
-Use the exact reviewed ops-branch commit supplied by the deployment coordinator via Git. Keep both scripts and this checksum manifest together; run `sha256sum -c SHA256SUMS` before execution. This verifies file integrity, not execution approval. Do not use an earlier checkout or blindly retry a failed stage.
+The coordinator reports the actual isolated Docker gate, contract and native checks green. Final integration/browser/WebKit results and source promotion remain pending. **Do not run the booking build until the coordinator confirms the accepted booking commit is on main and the reviewed helper revision is published.**
 
-## Before any build
-
-Fresh review must confirm intended root host `Apex`, local default Docker context, current containers/images/health/restarts, PostgreSQL identity and volume, operative Compose paths, frozen environment dependencies, and resource headroom. Scripts require at least 9 GiB available RAM and 20 GiB free space on staging/Docker filesystems. The standard builder has no CPU/memory caps and can affect production latency. Use existing approved Git authentication only; do not put tokens in commands or this package.
-
-## After explicit fresh-preflight clearance only
-
-From the extracted directory, as root on the reviewed VPS:
-
-```bash
-APPROVED_BUILD_ONLY='reviewed fresh preflight; build only' bash ./preserve-build.sh crm
-```
-
-Wait for `BUILD COMPLETE — NOT DEPLOYED`, review the outcome, and only then run:
+Use the exact coordinator-supplied Git helper commit. Keep the helper files together and verify its manifest with `sha256sum -c SHA256SUMS`. After explicit clearance, from that reviewed `ops/deploy-20261024` directory on Apex, the only next build command is:
 
 ```bash
 APPROVED_BUILD_ONLY='reviewed fresh preflight; build only' bash ./preserve-build.sh booking
 ```
 
-Never run the builds concurrently. On any STOP, error, or timeout, stop and review the private stage/logs and builder activity; do not automatically retry or weaken guards. Do not paste private logs, environment files, or credentials into chat.
+**Do not run `preserve-build.sh crm` or `revalidate-built-crm.sh`.** Those historical helper files remain for audit/compatibility, not as the current next step.
 
-## What this does — and does not do
+The booking script verifies that remote main still equals the pinned target, preserves frozen configuration and rollback-image evidence, then builds in isolation and performs a disposable network-none, non-root file-read/dependency-resolution check. It does not start application/worker entrypoints or mount production data in that check. It writes `build-verified.json` only after all source, configuration, image and complete container-preservation validations pass.
 
-Creates private rollback-image/config evidence, fetches pinned source into an isolated directory, builds candidate images, and runs a disposable network-isolated non-root file/dependency check. No live credentials are included in this ZIP; runtime evidence produced on the VPS is private and may contain secrets.
+The standard existing builder has no CPU/memory caps; it checks at least 9 GiB available RAM and 20 GiB staging/Docker free space. Latency can temporarily increase. Never overlap builds. On STOP/error/timeout, retain evidence and report the concise message; do not retry blindly, remove containers, weaken guards, or paste private logs/env files into chat.
 
-It does not restart production, start application/worker entrypoints, migrate databases, call providers, change live checkouts/Compose pointers, or cut over. A rollback-image archive is not a database backup. Preserve prior releases and frozen dependency files. Both builds must pass before any separately reviewed backup/restore, write-freeze, or cutover plan; later cutover is CRM receiver first, then booking. This package supplies no cutover commands.
+## Safety and review
 
-A final `build-verified.json` is created only after all validations pass. It binds the stage, app, source commit/tree and candidate image. Partial/failed build directories without this marker must never be selected for cutover.
+- Only booking commit/tree pins changed. Production code/Dockerfile/package/lockfiles did not change in the isolated-build fix.
+- Mount comparisons ignore top-level listing order only; complete mount contents and duplicate counts remain checked.
+- The precisely identified stopped historical upgrade-check remains preserved. Other unexpected services/containers still fail closed.
+- Full effective environment, frozen-file hashes, source/tree/image pins, non-root readability and container lifecycle checks remain active.
+- Both Python regression test files are unchanged; 32 offline checks pass. The proposed ops-branch-only workflow runs those tests and Bash syntax with read-only repository permission; it performs no Docker/VPS/provider action. This does not substitute for the separate application Docker gate or the user-run VPS build.
 
-## Confirmed Mounts-order final-guard recovery
-
-The reported existing CRM image stage `/root/crm-build-c27b8e3-p3drk2` reached its final preservation guard and failed solely because Docker returned an old backup helper's Mounts in a different order. The corrected validator compares complete mount records without discarding values or duplicates. Other configuration list ordering is not relaxed.
-
-After coordinator review of this exact helper revision, `revalidate-built-crm.sh` can revalidate **only that stage**, without rebuilding. It requires `APPROVED_BUILD_REVALIDATION='reviewed mounts order only; no rebuild'`, reruns full source/archive/rollback/frozen/config/image/current-runtime/non-root-readability proofs, preserves original evidence, and writes the original stage's success marker only after all checks pass. New private evidence is stored in that stage's `revalidation-*` directory. A successful build marker is not permission to cut over; booking build and reviewed backup/restore remain required. This recovery has not been live-tested by the assistant.
+After booking builds successfully, return its concise summary. Final consistent database/upload backups, isolated restore verification and cutover remain separately gated. Later cutover must bring up the CRM receiver before booking. Do not enable previously disabled provider-facing workers or change credentials as part of this build.

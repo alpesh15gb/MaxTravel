@@ -3,7 +3,7 @@
 import json, pathlib, sys, os, hashlib, re
 PINS = {
  'crm': dict(repo='MaxTravel', commit='c27b8e352a9bdaf55f94df9fb3da1376f0f402d6', tree='3e5df6ecc245dbb40d02272cb257b203153ae123', baseline='2ecf81096489b0a74a953a692cee0e2642b3f769', image='sha256:ee8cb38694f9713b6f816d218b27e5276efe2e572bcb3ac026dea7a6f9f0d37d', release='/root/crm-build-2ecf810-ERht2Z/crm-release-2ecf810-IMh1AX', live='/opt/max-travel-crm', env='crm.env', files=['compose.vps.yaml','compose.evolution.yaml','image-override.yaml'], user='node'),
- 'booking': dict(repo='MaxTripJack', commit='a0360fb0e8b533452bec5b3d7c3865e46d608f4e', tree='e1be83336ae1001ab02e2f5747549d2fd356ea51', baseline='fe14634d50568a2fb905e90ed22040557347f162', image='sha256:93b3669a105a5b2520e9ea59d57dde817affde74fa70cc736e43239e8b5fe220', release='/root/booking-build-fe14634-qbbdjR/booking-release-fe14634-ZJBWG3', live='/opt/max-travel-booking/booking-platform', env='compose.env', files=['compose.production.yaml','image-override.yaml'], user='travel'),
+ 'booking': dict(repo='MaxTripJack', commit='40b4988136c9708ca29a7f9340af52c53da37cc1', tree='197826e00a7b1b092035c3352912de86a3a6d081', baseline='fe14634d50568a2fb905e90ed22040557347f162', image='sha256:93b3669a105a5b2520e9ea59d57dde817affde74fa70cc736e43239e8b5fe220', release='/root/booking-build-fe14634-qbbdjR/booking-release-fe14634-ZJBWG3', live='/opt/max-travel-booking/booking-platform', env='compose.env', files=['compose.production.yaml','image-override.yaml'], user='travel'),
 }
 def require(ok, message):
  if not ok: raise SystemExit('STOP: '+message)
