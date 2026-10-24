@@ -6,9 +6,13 @@ import path from "node:path";
 import net from "node:net";
 import {chromium} from "./browser.mjs";
 import {PrismaClient} from "@prisma/client";
-import {createReportDiagnostics,reportClientState} from "./reporting-diagnostics.mjs";
+import {createReportDiagnostics,reportClientState,probeReportServer} from "./reporting-diagnostics.mjs";
 const root=process.cwd(),artifactDir=path.join("test-artifacts/reporting",`${Date.now()}-${process.pid}`);mkdirSync(artifactDir,{recursive:true});
-const diagnostic=createReportDiagnostics();
+const diagnostic=createReportDiagnostics(),lastReportReads=new WeakMap();
+function observeReports(target) {
+ target.on("request",request=>{diagnostic.request(request);const url=new URL(request.url());if(request.method()==="GET"&&url.origin===base&&url.pathname==="/api/reports/accounts"&&url.searchParams.has("report")&&!url.searchParams.has("format"))lastReportReads.set(target,request.url());});
+ target.on("response",diagnostic.response);target.on("requestfinished",diagnostic.finished);target.on("requestfailed",diagnostic.failed);
+}
 writeFileSync(path.join(artifactDir,"invocation.json"),JSON.stringify({startedAt:new Date().toISOString(),commit:process.env.GITHUB_SHA||null,run:process.env.GITHUB_RUN_ID||null,pid:process.pid},null,2));
 console.log(`Reporting evidence: ${artifactDir}`);
 // Capture real settled UI, not a responsive drawer transition or an autoscrolled sticky header.
@@ -38,12 +42,12 @@ try{
  db=new PrismaClient({datasources:{db:{url:`file:${path.join(fixture.runtime,"test.db")}`}}});
  const owner=await db.user.findUniqueOrThrow({where:{email:"review@visual.test"}}),readerRole=await db.role.findUniqueOrThrow({where:{key:"READ_ONLY"}});
  await db.user.create({data:{employeeCode:"REPORT-READER",name:"Report reader",email:"report-reader@visual.test",phone:"",passwordHash:owner.passwordHash,roleId:readerRole.id}});
- browser=await chromium.launch({headless:true});const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
+ browser=await chromium.launch({headless:true});diagnostic.mark("browser-version",{version:browser.version()});const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
  const login=await context.request.post(base+"/api/auth/login",{data:{email:"review@visual.test",password:"Review-Visual-2026!"}});assert(login.ok());
  const supplierResponse=await context.request.post(base+"/api/suppliers",{data:{name:"Aero consolidator",type:"CONSOLIDATOR"}});assert(supplierResponse.ok());const supplier=(await supplierResponse.json()).supplier;
  const dueResponse=await context.request.post(base+"/api/suppliers/dues",{data:{supplierId:supplier.id,description:"Review airline settlement",amount:18000,dueDate:new Date(Date.now()+330*60000).toISOString().slice(0,10)}});assert(dueResponse.ok());
  page=await context.newPage();activePage=page;page.setDefaultTimeout(15000);const errors=[];page.on("pageerror",e=>errors.push(e.message));
- page.on("request",diagnostic.request);page.on("response",diagnostic.response);page.on("requestfinished",diagnostic.finished);page.on("requestfailed",diagnostic.failed);
+ observeReports(page);
  await page.goto(base+`/reports?report=statement&customerId=${fixture.customerId}`);
  await page.getByRole("button",{name:"Generate report",exact:true}).waitFor({state:"visible"});await page.waitForFunction(()=>{const button=Array.from(document.querySelectorAll("button")).find(b=>b.textContent==="Generate report");return button&&!button.disabled;});
  await page.getByRole("navigation",{name:"Report catalogue",exact:true}).getByText("Customer accounts",{exact:true}).waitFor();
@@ -71,10 +75,12 @@ try{
  await page.getByRole("button",{name:"Set payment terms",exact:true}).click();await page.getByRole("heading",{name:"Set payment terms",exact:true}).waitFor();
  assert.equal(await page.getByRole("combobox",{name:"Obligation",exact:true}).getByRole("option",{name:/ON-2026-0001/}).count(),0,"Platform-managed terms must not be offered for editing");
  assert.match(await page.getByRole("combobox",{name:"Obligation",exact:true}).locator("option:checked").innerText(),/BK-2026-0001/,"Largest eligible local booking is selected by default");
- let releaseTerms;const termsReceived=new Promise((resolve,reject)=>{releaseTerms={ready:resolve,failed:reject,finish:null};});
+ let releaseTerms,termsHandled=false;const termsReceived=new Promise((resolve,reject)=>{releaseTerms={ready:resolve,failed:reject,finish:null};});
  // The route can reject before click() resolves; awaiting the original gate below still propagates its failure.
  void termsReceived.catch(()=>{});
- await page.route("**/api/reports/terms",async route=>{try{diagnostic.mark("held-terms-start");const response=await route.fetch();diagnostic.mark("held-terms-server-response",{status:response.status()});assert(response.ok(),"The real payment-terms write must succeed before testing its pending UI");releaseTerms.finish=async()=>{diagnostic.mark("held-terms-release-start");await route.fulfill({response});diagnostic.mark("held-terms-release-finished");};releaseTerms.ready();}catch(error){diagnostic.mark("held-terms-failed",{name:error?.name||"Error"});releaseTerms.failed(error);await route.abort().catch(()=>{});}},{times:1});
+ // Keep this narrow handler registered: Chromium <155 can orphan the next fetch when
+ // the final times:1 route triggers Fetch.disable (microsoft/playwright#41802).
+ await page.route("**/api/reports/terms",async route=>{if(termsHandled)return route.continue();termsHandled=true;try{diagnostic.mark("held-terms-start");const response=await route.fetch();diagnostic.mark("held-terms-server-response",{status:response.status()});assert(response.ok(),"The real payment-terms write must succeed before testing its pending UI");releaseTerms.finish=async()=>{diagnostic.mark("held-terms-release-start");await route.fulfill({response});diagnostic.mark("held-terms-release-finished");};releaseTerms.ready();}catch(error){diagnostic.mark("held-terms-failed",{name:error?.name||"Error"});releaseTerms.failed(error);await route.abort().catch(()=>{});}});
  await page.getByLabel("Payment due date",{exact:true}).fill(new Date(Date.now()+330*60000-86400000).toISOString().slice(0,10));await page.getByRole("button",{name:"Save payment terms",exact:true}).click();await termsReceived;assert(await page.getByRole("button",{name:"Cancel",exact:true}).isDisabled(),"Pending terms cannot be dismissed and later refresh another report");assert(await page.getByLabel("Payment due date",{exact:true}).isDisabled());await page.keyboard.press("Escape");assert(await page.getByRole("dialog",{name:"Payment terms",exact:true}).isVisible());await releaseTerms.finish();await page.getByRole("heading",{name:"Set payment terms",exact:true}).waitFor({state:"hidden"});diagnostic.mark("terms-modal-closed");writeFileSync(path.join(artifactDir,"after-terms-client-state.json"),JSON.stringify(await page.evaluate(reportClientState),null,2));await page.getByRole("table",{name:"Customer outstanding and ageing",exact:true}).waitFor();assert(await page.getByText("1 days overdue",{exact:true}).count()>=1);
  await page.getByRole("button",{name:"Sales & margin",exact:true}).click();
  await page.getByRole("combobox",{name:"Staff / owner",exact:true}).selectOption({label:"Asha Verma"});
@@ -212,7 +218,7 @@ try{
  await readerContext.close();activePage=page;
  // A separate controlled page proves recovery from an actually stalled read, not a longer ordinary wait.
  const timeoutPage=await context.newPage();activePage=timeoutPage;timeoutPage.on("pageerror",e=>errors.push(e.message));timeoutPage.setDefaultTimeout(15000);await timeoutPage.clock.install();
- timeoutPage.on("request",diagnostic.request);timeoutPage.on("response",diagnostic.response);timeoutPage.on("requestfinished",diagnostic.finished);timeoutPage.on("requestfailed",diagnostic.failed);
+ observeReports(timeoutPage);
  await timeoutPage.addInitScript(()=>{const original=window.fetch.bind(window);window.fetch=async(input,init)=>{if(window.__holdReportBody&&String(input).startsWith("/api/reports/accounts?")&&!String(input).includes("options=1")){window.__holdReportBody=false;const response=await original(input,{...init,signal:undefined});return{ok:response.ok,status:response.status,json:()=>new Promise(resolve=>{window.__releaseReportBody=async()=>{const body=await response.json();body.title="Stale delayed report";resolve(body);};})};}return original(input,init);};});
  await timeoutPage.goto(base+`/reports?report=ageing&customerId=${fixture.customerId}`);
  await timeoutPage.waitForFunction(()=>{const button=[...document.querySelectorAll("button")].find(b=>b.textContent==="Generate report");return button&&!button.disabled;});
@@ -221,12 +227,14 @@ try{
  assert.equal(await timeoutPage.getByRole("table").count(),0);assert.equal(await timeoutPage.getByRole("link",{name:"Download CSV",exact:true}).count(),0,"Timed-out reads never expose fabricated or stale totals/exports");
  await timeoutPage.getByRole("button",{name:"Retry same report",exact:true}).click();await timeoutPage.getByRole("table",{name:"Customer outstanding and ageing",exact:true}).waitFor();
  const retryExport=await timeoutPage.getByRole("link",{name:"Download CSV",exact:true}).getAttribute("href");
- await timeoutPage.evaluate(()=>window.__releaseReportBody());assert.equal(await timeoutPage.getByRole("link",{name:"Download CSV",exact:true}).getAttribute("href"),retryExport);assert.equal(await timeoutPage.getByRole("alert").count(),0);assert.equal(await timeoutPage.getByRole("table",{name:"Stale delayed report",exact:true}).count(),0);await timeoutPage.getByRole("table",{name:"Customer outstanding and ageing",exact:true}).waitFor();await capture(timeoutPage,"bounded-read-retried");
+ await timeoutPage.evaluate(()=>window.__releaseReportBody());assert.equal(await timeoutPage.getByRole("link",{name:"Download CSV",exact:true}).getAttribute("href"),retryExport);assert.equal(await timeoutPage.getByRole("main").getByRole("alert").count(),0,"No report errors remain after retry; the framework route announcer is not a report error");assert.equal(await timeoutPage.getByRole("table",{name:"Stale delayed report",exact:true}).count(),0);await timeoutPage.getByRole("table",{name:"Customer outstanding and ageing",exact:true}).waitFor();await capture(timeoutPage,"bounded-read-retried");
  assert.deepEqual(errors,[]);await timeoutPage.close();activePage=page;
  assert.deepEqual(errors,[]);console.log("PASS reporting browser: customer statements, 81400 closing balance, Excel download, PDF API, due-date editing, scoped staff/status filters, applied export filters, work and cash drill-downs, supplier statement, catalogue search, truthful CSV metadata, dirty filters, responsive full-detail cards at 1440/390/320, delayed-response protection, recoverable errors, read-only export denial, phone layout, no runtime errors.");
  }catch(e){
  diagnostic.mark("assertion-failed",{name:e?.name||"Error"});
  if(activePage){try{writeFileSync(path.join(artifactDir,"browser-failure.html"),await activePage.content());writeFileSync(path.join(artifactDir,"failure-client-state.json"),JSON.stringify(await activePage.evaluate(reportClientState),null,2));await activePage.screenshot({path:path.join(artifactDir,"browser-failure.png"),fullPage:true});}catch(diagnosticError){console.error("Reporting failure capture could not complete:",diagnosticError?.name);}}
+ // A second, bounded read only diagnoses server availability; it cannot rescue the failed assertion.
+ if(activePage&&lastReportReads.has(activePage)){diagnostic.mark("failure-server-probe",await probeReportServer(activePage.context().request,lastReportReads.get(activePage)));}
  throw e;
  }finally{
  try{writeFileSync(path.join(artifactDir,"network-timing.json"),JSON.stringify(diagnostic.snapshot(),null,2));}catch(diagnosticError){console.error("Reporting network diagnostics could not be saved:",diagnosticError?.name);}

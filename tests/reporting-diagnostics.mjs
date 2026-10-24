@@ -20,3 +20,10 @@ export function reportClientState() {
  const chooser = [...document.querySelectorAll("select")].find(select => select.closest("label")?.textContent.includes("Choose a report"));
  return { viewport: { width: innerWidth, height: innerHeight }, scroll: { x: scrollX, y: scrollY }, visibility: document.visibilityState, selectedReport: chooser?.value || null, generate: generate ? { label: generate.textContent, disabled: generate.disabled } : null, loading: [...document.querySelectorAll('[role="status"]')].some(el => /Loading report/.test(el.textContent)), alerts: document.querySelectorAll('[role="alert"]').length, openDialogs: document.querySelectorAll("dialog[open]").length, tables: [...document.querySelectorAll("table")].map(table => ({ label: table.getAttribute("aria-label"), visible: table.getBoundingClientRect().width > 0, rows: table.tBodies[0]?.rows.length || 0 })), reportLinks: [...document.querySelectorAll('a[href^="/api/reports"]')].length };
 }
+
+/** Only called for the already-observed, owned fixture report URL after a failed assertion. */
+export async function probeReportServer(request, url, now = () => Date.now()) {
+ const started = now();
+ try { const response = await request.get(url, { timeout: 5000, maxRedirects: 0, maxRetries: 0 });return { status: response.status(), durationMs: now() - started }; }
+ catch (error) { return { error: error?.name || "Error", durationMs: now() - started }; }
+}
