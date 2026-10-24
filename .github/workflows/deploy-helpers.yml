@@ -24,7 +24,23 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - name: Check Bash syntax without executing deployment scripts
-        run: bash -n preserve-build.sh revalidate-built-crm.sh collect-preflight.sh
+      - name: Verify exported helper and phase file manifests
+        run: |
+          sha256sum --check SHA256SUMS
+          (cd cutover && sha256sum --check draft.sha256)
+      - name: Check every Bash script without executing deployment scripts
+        run: |
+          for script in preserve-build.sh revalidate-built-crm.sh collect-preflight.sh cutover/*.sh; do
+            bash -n "$script"
+          done
+      - name: Check isolated audit JavaScript syntax without executing audits
+        run: |
+          for script in cutover/audit-crm.cjs cutover/audit-tree.cjs; do
+            node --check "$script"
+          done
       - name: Run offline validator and recovery regressions
         run: python3 -m unittest -v test_verify.py test_revalidate.py
+      - name: Run 33 offline phase regressions without Docker or VPS access
+        run: |
+          python3 cutover/test_phase_offline.py
+          python3 cutover/test_booking_offline.py
