@@ -154,7 +154,7 @@ export default function EmployeesClient({ employees, roles, branches, canManage,
       />
 
       {accessChanged && <p role="alert" className="form-error mb-5">Staff session or access changed. Reload the team page before continuing.</p>}
-      {action && !modal && <div className="panel mb-5 p-4"><StaffRecovery action={action} checkCurrent={checkCurrent} />{action.phase === "review" && <button type="button" className="btn-secondary mt-3" onClick={() => finishReview()}>Done reviewing</button>}</div>}
+      {action && !modal && <div className="panel mb-5 p-4"><StaffRecovery action={action} checkCurrent={checkCurrent} focusOnChange />{action.phase === "review" && <button type="button" className="btn-secondary mt-3" onClick={() => finishReview()}>Done reviewing</button>}</div>}
       <div className="panel mb-5 flex flex-wrap items-center gap-3 p-3">
         <p className="px-2 text-sm text-slate-500">
           {rows.length} staff members
@@ -219,9 +219,28 @@ export default function EmployeesClient({ employees, roles, branches, canManage,
 
 type StaffAction = { attempt: EmployeeAttempt; phase: "saving" | "unknown" | "checking" | "review"; message: string; current?: EmployeeRecord | null };
 class StaffContextChanged extends Error {}
-function StaffRecovery({ action, checkCurrent }: { action: StaffAction; checkCurrent: () => void }) {
+/** Focus the native dialog result, or its recovery banner after the dialog is dismissed. */
+function focusEmployeeFeedback(element: HTMLElement | null) {
+  const dialog = element?.closest("dialog");
+  if (!element) return;
+  if (dialog instanceof HTMLDialogElement && dialog.open) {
+    element.focus({ preventScroll: true });
+    dialog.scrollTop = 0;
+  } else if (!document.querySelector("dialog[open]")) {
+    // An unresolved action remains in the page banner after Close; its disabled opener is
+    // not a valid return-focus target. Never focus the background of another open dialog.
+    element.focus();
+  }
+}
+function StaffRecovery({ action, checkCurrent, focusOnChange = false }: { action: StaffAction; checkCurrent: () => void; focusOnChange?: boolean }) {
+  const feedback = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    // Disabling the submit/check control can otherwise drop focus onto the document body.
+    // The result lives before the retained fields so its identity and next action stay discoverable.
+    if (focusOnChange) focusEmployeeFeedback(feedback.current);
+  }, [action.phase, action.message, focusOnChange]);
   return <section aria-label="Employee save recovery" className="space-y-3 text-sm">
-    <p role="alert">{action.message}</p>
+    <p ref={feedback} tabIndex={-1} data-employee-recovery-status role="alert">{action.message}</p>
     <p className="text-xs text-slate-500">Employee: {action.attempt.name}{action.attempt.email ? ` · ${action.attempt.email}` : ""}</p>
     {action.current && <div className="rounded-lg border p-3" aria-label="Current employee record">
       <p className="font-semibold">{action.current.name} · {action.current.employeeCode}</p>
@@ -249,6 +268,14 @@ function EmployeeForm({ modal, roles, branches, hrVisible, canResetPassword, onC
   const [baseRevision, setBaseRevision] = useState(emp?.revision);
   const busy = action?.phase === "saving" || action?.phase === "checking";
   const [err, setErr] = useState<string | null>(null);
+  const errorFeedback = useRef<HTMLDivElement>(null);
+  const firstField = useRef<HTMLInputElement>(null);
+  const hadAction = useRef(false);
+  useEffect(() => {
+    if (!action && err) focusEmployeeFeedback(errorFeedback.current);
+    else if (!action && hadAction.current) focusEmployeeFeedback(firstField.current);
+    hadAction.current = !!action;
+  }, [action, err]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -261,14 +288,17 @@ function EmployeeForm({ modal, roles, branches, hrVisible, canResetPassword, onC
     if (!error) onClose(); else setErr(error);
   }
   const canRetry = action?.phase === "review" && employeeRetryAllowed(action.attempt, action.current, !!emp);
+  function dismiss() { if (action?.phase === "review") finishReview(); onClose(); }
 
   return (
-    <Modal label={emp ? `Edit ${emp.name}` : "New employee"} onClose={onClose} width="max-w-md" busy={busy}>
+    <Modal label={emp ? `Edit ${emp.name}` : "New employee"} onClose={dismiss} width="max-w-md" busy={busy}>
       <form onSubmit={submit} className="space-y-4">
         <h2 className="text-xl font-semibold">{emp ? `Edit ${emp.name}` : "New employee"}</h2>
         {emp && <p className="-mt-2 text-xs text-slate-500">{emp.employeeCode}</p>}
+        {action && <StaffRecovery action={action} checkCurrent={checkCurrent} focusOnChange />}
+        {!action && err && <div ref={errorFeedback} tabIndex={-1} role="alert" className="form-error">{err}</div>}
         <fieldset disabled={!!action} className="space-y-4">
-        <Field label="Full name *"><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+        <Field label="Full name *"><input ref={firstField} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
         <Field label="Email *"><input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
         <Field label="Phone"><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
         <div className="form-grid">
@@ -308,11 +338,9 @@ function EmployeeForm({ modal, roles, branches, hrVisible, canResetPassword, onC
           </div>
         )}
         </fieldset>
-        {action && <StaffRecovery action={action} checkCurrent={checkCurrent} />}
-        {!action && err && <div role="alert" className="form-error">{err}</div>}
         {canRetry && <button type="button" className="btn-secondary" onClick={() => { setBaseRevision(action?.current?.revision); setErr(null); finishReview(false); }}>Review and allow another save</button>}
         <div className="flex justify-end gap-2 pt-1">
-          <button type="button" disabled={busy} onClick={() => { if (action?.phase === "review") finishReview(); onClose(); }} className="btn-secondary">{action ? "Close" : "Cancel"}</button>
+          <button type="button" disabled={busy} onClick={dismiss} className="btn-secondary">{action ? "Close" : "Cancel"}</button>
           <button className="btn-primary" disabled={!!action}>{busy ? "Saving…" : emp ? "Save changes" : "Create employee"}</button>
         </div>
       </form>

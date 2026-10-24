@@ -1,3 +1,4 @@
+import { customerSalesHistory } from "./customer-sales-history";
 import { prisma } from "./db";
 import type { SessionUser } from "./session";
 import { maskPassportFor } from "./serialize";
@@ -87,6 +88,7 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
   });
 
   return {
+    salesHistory: await customerSalesHistory(prisma, customerId, user),
     customer: {
       id: c.id, code: c.code, name: c.name, type: c.type, phone: c.phone, email: c.email,
       city: c.city, address: c.address, status: c.status, companyName: c.companyName,

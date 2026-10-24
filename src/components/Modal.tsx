@@ -41,7 +41,8 @@ const FOCUSABLE = [
 
 function stopsIn(scope: HTMLElement) {
   return [...scope.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-    (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden",
+    // A fieldset disables its descendants without adding a disabled attribute to each input.
+    (el) => !el.matches(":disabled") && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden",
   );
 }
 
@@ -103,13 +104,16 @@ export default function Modal({
         const el = dialog.current;
         if (!el) return;
         const stops = stopsIn(el);
-        if (!stops.length) return;
+        // A pending form may disable every control; keep its focused status inside the dialog.
+        if (!stops.length) { event.preventDefault(); return; }
         const first = stops[0];
         const last = stops[stops.length - 1];
         const active = document.activeElement;
-        // Wraps at both ends, and also pulls focus back in if it is somehow outside the dialog.
-        const leavingForward = !event.shiftKey && (active === last || !el.contains(active));
-        const leavingBackward = event.shiftKey && (active === first || !el.contains(active));
+        // A programmatically focused status (tabindex=-1) is inside the dialog but outside its
+        // Tab cycle. Enter at the appropriate end instead of letting reverse Tab escape it.
+        const enterCycle = !stops.some((stop) => stop === active);
+        const leavingForward = !event.shiftKey && (active === last || enterCycle);
+        const leavingBackward = event.shiftKey && (active === first || enterCycle);
         if (!leavingForward && !leavingBackward) return;
         event.preventDefault();
         (leavingForward ? first : last).focus();

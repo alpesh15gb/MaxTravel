@@ -96,3 +96,63 @@ async function acknowledgedCreateSurvivesReadFailure() {
   console.log("PASS acknowledged-create controller: real POST acknowledgement → GET failure → email rename → ID-only recovery; even scoped null or lost acknowledgement cannot enable duplicate creation.");
 }
 acknowledgedCreateSurvivesReadFailure().catch(error => { console.error(error); process.exitCode = 1; });
+
+// Keep the shared modal's ordinary trap unchanged while respecting fieldset-inherited disability.
+function verifyModalFocusStops() {
+  const source = readFileSync("src/components/Modal.tsx", "utf8");
+  const start = source.indexOf("const FOCUSABLE ="), end = source.indexOf("export default function Modal", start);
+  assert(start >= 0 && end > start);
+  const compiled = ts.transpileModule(source.slice(start, end), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const stopsIn = new Function("getComputedStyle", compiled + "; return stopsIn;")((node: { visibility: string }) => ({ visibility: node.visibility }));
+  const ast = ts.createSourceFile("Modal.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let keydown = "";
+  const visit = (node: ts.Node) => { if (ts.isJsxAttribute(node) && node.name.getText(ast) === "onKeyDown" && node.initializer && ts.isJsxExpression(node.initializer) && node.initializer.expression) keydown = node.initializer.expression.getText(ast); ts.forEachChild(node, visit); };
+  visit(ast); assert(keydown);
+  type Control = { name: string; disabled: boolean; visibility: string; matches: (selector: string) => boolean; getClientRects: () => object[]; focus: () => void };
+  let active: Control | null = null;
+  const make = (name: string, disabled = false, visibility = "visible"): Control => {
+    const control = { name, disabled, visibility, matches: (selector: string) => { assert.equal(selector, ":disabled"); return disabled; }, getClientRects: () => [{}], focus: () => { active = control; } };
+    return control;
+  };
+  const first = make("ordinary first field"), last = make("ordinary last button"), disabledDescendant = make("fieldset-disabled input", true), hidden = make("hidden", false, "hidden"), status = make("programmatically focused status");
+  let nodes = [first, last];
+  // A tabindex=-1 status is inside the dialog, but intentionally absent from the Tab stops.
+  const scope = { querySelectorAll: () => nodes, contains: (node: Control) => node === status || nodes.includes(node) };
+  const handlerCode = ts.transpileModule(`const handler = ${keydown};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const handler = new Function("dialog", "document", "stopsIn", handlerCode + "; return handler;")({ current: scope }, { get activeElement() { return active; } }, stopsIn);
+  const tab = (shiftKey = false) => { let prevented = 0; handler({ key: "Tab", shiftKey, preventDefault() { prevented += 1; } }); return prevented; };
+  assert.deepEqual(stopsIn(scope), [first, last]); active = last; assert.equal(tab(), 1); assert.equal(active, first);
+  assert.equal(tab(true), 1); assert.equal(active, last); active = first; assert.equal(tab(), 0, "Ordinary native forward movement remains untouched");
+  active = last; assert.equal(tab(true), 0, "Ordinary native reverse movement remains untouched");
+  active = make("outside dialog"); assert.equal(tab(), 1); assert.equal(active, first, "Outside forward focus re-enters the first control");
+  active = make("outside dialog"); assert.equal(tab(true), 1); assert.equal(active, last, "Outside reverse focus re-enters the last control");
+  nodes = [disabledDescendant, first, hidden, last]; assert.deepEqual(stopsIn(scope), [first, last]);
+  active = last; assert.equal(tab(), 1); assert.equal(active, first, "Forward wrap skips fieldset-disabled descendants");
+  assert.equal(tab(true), 1); assert.equal(active, last, "Reverse wrap preserves reachable enabled controls");
+  active = status; assert.equal(tab(true), 1, "Immediate Shift+Tab from a focused non-stop must be trapped"); assert.equal(active, last, "Immediate reverse traversal enters the last enabled control, not the page/browser chrome");
+  active = status; assert.equal(tab(), 1); assert.equal(active, first, "Forward traversal from a focused non-stop enters the first enabled control");
+  nodes = [disabledDescendant]; active = status; assert.equal(tab(), 1); assert.equal(active, status, "A fully disabled pending form retains status focus");
+  assert.equal(tab(true), 1); assert.equal(active, status, "A fully disabled pending form retains reverse Tab focus too");
+  console.log("PASS shared modal focus: ordinary enabled-control trap unchanged; fieldset-disabled/hidden descendants excluded; immediate status Tab/Shift+Tab trapped; pending status retains focus.");
+}
+verifyModalFocusStops();
+
+
+function verifyEmployeeFeedbackIsolation() {
+  const source = readFileSync("src/app/(app)/employees/EmployeesClient.tsx", "utf8");
+  const start = source.indexOf("function focusEmployeeFeedback("), end = source.indexOf("function StaffRecovery(", start);
+  assert(start >= 0 && end > start);
+  const compiled = ts.transpileModule(source.slice(start, end), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  class FakeDialog { open = true; scrollTop = 125; }
+  let otherDialog: FakeDialog | null = null;
+  const focusFeedback = new Function("HTMLDialogElement", "document", compiled + "; return focusEmployeeFeedback;")(FakeDialog, { querySelector: () => otherDialog });
+  const dialog = new FakeDialog(), calls: unknown[] = [];
+  focusFeedback({ closest: () => dialog, focus: (options: unknown) => calls.push(options) });
+  assert.equal(JSON.stringify(calls), JSON.stringify([{ preventScroll: true }])); assert.equal(dialog.scrollTop, 0, "Only the inner dialog scroll is changed");
+  calls.length = 0; otherDialog = new FakeDialog();
+  const banner = { closest: () => null, focus: (options: unknown) => calls.push(options) };
+  focusFeedback(banner); assert.equal(calls.length, 0, "Never focus the background banner while another dialog is open");
+  otherDialog = null; focusFeedback(banner); assert.equal(calls.length, 1, "Dismissed unknown action can focus its visible recovery banner");
+  console.log("PASS employee feedback focus: inner-dialog scroll only; unknown dismissal banner focus; no background focus behind another modal.");
+}
+verifyEmployeeFeedbackIsolation();

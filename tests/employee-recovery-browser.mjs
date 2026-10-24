@@ -37,7 +37,7 @@ async function target(id) {
   return db.user.create({ data: { id, employeeCode: `TEST-${id}`, name: `Synthetic ${id}`, email: `${id}@example.test`, phone: "9000000001", passwordHash: hash, roleId: "role-reader", branchId: "branch-fixture" } });
 }
 async function start(name, width = 1440, actorId = "owner-a") {
-  const context = await browser.newContext({ viewport: { width, height: 1000 }, serviceWorkers: "block" });
+  const context = await browser.newContext({ viewport: { width, height: width <= 320 ? 640 : width < 768 ? 844 : 1000 }, serviceWorkers: "block" });
   context.setDefaultTimeout(15000); context.setDefaultNavigationTimeout(30000);
   await context.route("**/*", route => {
     if (new URL(route.request().url()).origin === base) return route.continue();
@@ -72,7 +72,24 @@ async function repeatSubmit(form) {
 async function repeatClick(locator) { await locator.evaluate(node => { node.click(); node.click(); }); }
 async function unknown(root = page) { await root.getByText(/outcome unknown/i).first().waitFor(); }
 async function matches(root = page) { await root.getByText(/Current record matches/i).first().waitFor(); }
-async function shot(name) { await page.screenshot({ path: join(out, `${name}.png`), fullPage: true, animations: "disabled" }); }
+async function shot(name) { await page.screenshot({ path: join(out, `${name}.png`), fullPage: false, animations: "disabled" }); }
+async function focusedFeedbackGeometry(locator, label) {
+  const handle = await locator.elementHandle(); assert(handle);
+  try { await page.waitForFunction(node => document.activeElement === node, handle); } finally { await handle.dispose(); }
+  const geometry = await locator.evaluate(node => {
+    const dialog = node.closest("dialog"), r = node.getBoundingClientRect(), d = dialog.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { viewport: { width: innerWidth, height: innerHeight }, dialog: { top: d.top, bottom: d.bottom, left: d.left, right: d.right, scrollTop: dialog.scrollTop, scrollHeight: dialog.scrollHeight, clientHeight: dialog.clientHeight, modal: dialog.matches(":modal") },
+      target: { top: r.top, bottom: r.bottom, left: r.left, right: r.right }, focused: document.activeElement === node, focusInside: dialog.contains(document.activeElement), hit: hit === node || node.contains(hit),
+      skipLinkFocused: document.activeElement?.matches(".skip-link"), pageScroll: { x: scrollX, y: scrollY }, documentWidth: document.documentElement.scrollWidth };
+  });
+  assert(geometry.dialog.modal && geometry.focused && geometry.focusInside && !geometry.skipLinkFocused, `${label}: focus belongs to the real modal, never the skip link/background`);
+  assert(geometry.dialog.top >= -1 && geometry.dialog.bottom <= geometry.viewport.height + 1, `${label}: modal itself fits the viewport`);
+  assert(geometry.target.top >= Math.max(0, geometry.dialog.top) - 1 && geometry.target.bottom <= Math.min(geometry.viewport.height, geometry.dialog.bottom) + 1 && geometry.target.left >= 0 && geometry.target.right <= geometry.viewport.width + 1 && geometry.hit, `${label}: focused feedback/control is visible and unobscured`);
+  assert(geometry.documentWidth <= geometry.viewport.width + 1, `${label}: no page-level horizontal overflow`);
+  (report.geometry ??= []).push({ label, ...geometry }); return geometry;
+}
+
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 async function loseAcknowledgement() {
   const committed = deferred();
@@ -116,6 +133,21 @@ await withFixtureCleanup(async () => {
     browser = await chromium.launch({ headless: true, timeout: 30000 });
     report.browser = { engine: browser.browserType().name(), version: browser.version() };
 
+    // Ordinary editable modals retain their existing initial focus, Tab wrap and dismissal behavior.
+    for (const width of [1440, 390]) {
+      const employee = await target(`ordinary-modal-${width}`), s = await start(`ordinary-modal-${width}`, width), d = await edit(employee);
+      await focusedFeedbackGeometry(field("Full name *", d), `ordinary-initial-${width}`);
+      await page.keyboard.press("Shift+Tab"); await focusedFeedbackGeometry(button("Save changes", d), `ordinary-reverse-wrap-${width}`);
+      await page.keyboard.press("Tab"); await focusedFeedbackGeometry(field("Full name *", d), `ordinary-forward-wrap-${width}`);
+      await shot(`ordinary-editable-modal-${width}`);
+      await page.keyboard.press("Escape"); await d.waitFor({ state: "hidden" });
+      await page.waitForFunction(email => { const row = [...document.querySelectorAll("tbody tr")].find(node => node.textContent.includes(email)); return row && [...row.querySelectorAll("button")].some(node => node.textContent === "Edit" && document.activeElement === node); }, employee.email);
+      await page.keyboard.press("Enter"); await d.waitFor(); await focusedFeedbackGeometry(field("Full name *", d), `ordinary-reopened-${width}`);
+      await page.keyboard.press("Escape"); await d.waitFor({ state: "hidden" });
+      assert.equal(s.writes.length, 0, "Ordinary modal keyboard checks never submit staff changes");
+      await s.context.close(); report.checks.push(`Ordinary editable modal ${width}px: initial focus, forward/reverse Tab wrap, Escape restore and reopen remain unchanged`);
+    }
+
     // Definite server rejection keeps every typed field and permits correction, not a false success.
     {
       const employee = await target("rejected"), s = await start("rejected");
@@ -153,8 +185,8 @@ await withFixtureCleanup(async () => {
     }
 
     // Two submit events in one turn cannot double-write; dropped success requires an explicit read.
-    {
-      const employee = await target("lost-update"), s = await start("lost-update", 390), d = await edit(employee);
+    for (const width of [390, 320]) {
+      const employee = await target(`lost-update-${width}`), s = await start(`lost-update-${width}`, width), d = await edit(employee);
       await field("Phone", d).fill("9000000888");
       const lost = await loseAcknowledgement();
       await repeatSubmit(d.locator("form")); await within(lost.committed, 15000, "lost update committed"); await unknown(d);
@@ -183,7 +215,42 @@ await withFixtureCleanup(async () => {
       await page.unroute("**/api/employees*", wrongRecord); await checkRecord(d); await matches(d);
       assert(s.reads.every(url => new URL(url).searchParams.get("employeeId") === employee.id), "Recovery checks only the originating employee");
       assert.equal(s.writes.length, 1, "Successful reconciliation never replays the save");
-      await shot("lost-update-reconciled-mobile"); await s.context.close(); report.checks.push("Lost committed update: one same-turn POST, retained draft, failed check stays blocked, mismatched employee response is ignored, scoped check matches without replay");
+      const status = d.locator("[data-employee-recovery-status]");
+      const summaryGeometry = await focusedFeedbackGeometry(status, `reconciled-summary-${width}`);
+      assert.equal(summaryGeometry.dialog.scrollTop, 0, "The result resets only the inner dialog so the heading and outcome are discoverable");
+      const heading = await d.getByRole("heading").boundingBox(); assert(heading && heading.y >= summaryGeometry.dialog.top && heading.y + heading.height <= summaryGeometry.viewport.height);
+      await shot(width === 390 ? "lost-update-reconciled-mobile" : "lost-update-reconciled-small-mobile");
+      // Start in reverse directly from the tabindex=-1 status, before visiting a Tab stop.
+      // Real keyboard navigation, no scripted focus/scroll: disabled fieldset inputs are not stops.
+      await page.keyboard.press("Shift+Tab"); await focusedFeedbackGeometry(button("Close", d), `reconciled-status-immediate-reverse-${width}`);
+      await page.keyboard.press("Tab"); await focusedFeedbackGeometry(button("Check current record", d), `reconciled-check-${width}`);
+      await page.keyboard.press("Tab"); await focusedFeedbackGeometry(button("Close", d), `reconciled-close-${width}`);
+      await page.keyboard.press("Tab"); await focusedFeedbackGeometry(button("Check current record", d), `reconciled-forward-wrap-${width}`);
+      await page.keyboard.press("Shift+Tab"); await focusedFeedbackGeometry(button("Close", d), `reconciled-reverse-wrap-${width}`);
+      await shot(`lost-update-keyboard-actions-${width}`);
+      await page.keyboard.press("Escape"); await d.waitFor({ state: "hidden" });
+      await button("Edit", rowFor(employee)).waitFor();
+      await page.waitForFunction(email => { const row = [...document.querySelectorAll("tbody tr")].find(node => node.textContent.includes(email)); return row && [...row.querySelectorAll("button")].some(node => node.textContent === "Edit" && document.activeElement === node); }, employee.email);
+      assert.equal(s.writes.length, 1, "Keyboard review and dismissal cannot replay the mutation");
+      await s.context.close(); report.checks.push(`Lost committed update ${width}px: retained draft, scoped recovery, visible focused result, immediate status Shift+Tab containment, real Tab/Shift+Tab controls, Escape return focus, no replay`);
+    }
+
+    // Dismissing an unknown result preserves the blocking page banner and gives it focus.
+    {
+      const employee = await target("unknown-dismissal"), s = await start("unknown-dismissal", 390), d = await edit(employee);
+      await field("Phone", d).fill("9000000999");
+      const abortWrite = route => route.request().method() === "POST" ? route.abort("failed") : route.fallback();
+      await page.route("**/api/employees*", abortWrite); await button("Save changes", d).click(); await unknown(d);
+      await focusedFeedbackGeometry(d.locator("[data-employee-recovery-status]"), "unknown-before-dismissal");
+      await page.keyboard.press("Escape"); await d.waitFor({ state: "hidden" });
+      const banner = page.getByRole("region", { name: "Employee save recovery", exact: true });
+      const status = banner.locator("[data-employee-recovery-status]"); const handle = await status.elementHandle(); assert(handle);
+      try { await page.waitForFunction(node => document.activeElement === node, handle); } finally { await handle.dispose(); }
+      assert(await button("+ New employee").isDisabled()); assert(await button("Edit", rowFor(employee)).isDisabled());
+      await page.keyboard.press("Tab");
+      assert(await button("Check current record", banner).evaluate(node => document.activeElement === node), "Unknown dismissal focuses its recovery action, not the disabled original editor");
+      assert.equal(s.writes.length, 1); assert.equal(s.reads.length, 0, "Escape does not clear uncertainty or silently check/replay it");
+      await shot("unknown-dismissal-blocking-banner"); await s.context.close(); report.checks.push("Unknown result Escape keeps a focused blocking banner; creation/edit remain disabled and no check or write is repeated");
     }
 
     // If no write reached the server, a scoped differing record permits only an explicit new save.
@@ -343,7 +410,7 @@ await withFixtureCleanup(async () => {
     assert.deepEqual(report.errors, [], "No unhandled browser exceptions");
     assert.deepEqual(report.blocked, [], "No external network dependency");
     report.passed = true; console.log(`PASS employee recovery browser: ${report.checks.length} interrupted/repeated staff flows`);
-  } catch (error) { report.failure = error?.stack ?? String(error); await page?.screenshot({ path: join(out, "failure.png"), fullPage: true, timeout: 5000 }).catch(() => {}); throw error; }
+  } catch (error) { report.failure = error?.stack ?? String(error); await page?.screenshot({ path: join(out, "failure.png"), fullPage: false, timeout: 5000 }).catch(() => {}); throw error; }
 }, async () => {
   persist();
   await browser?.close();

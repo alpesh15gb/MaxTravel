@@ -100,8 +100,12 @@ the manual-idempotency fixture but stopped the browser fixture before its first
 recipient switch. The exact `getByLabel` selector did not match the shared `Field`
 wrapper, whose label text includes its select's options. The uploaded screenshot
 shows Customer A's picker and draft present; the report has no page errors and no
-completed race groups. This was fixture lookup failure, not evidence of a product
-race. The fixture now matches the exact `.field-label` text and its unique control,
-including the later cloud-template select. All race and no-provider assertions
-remain intact. Local browser execution remains prohibited; a fresh CI run must
-establish the corrected fixture's runtime result.
+completed race groups. This did not demonstrate a product race, but it exposed a
+real accessible-name gap in the two selects. They now use stable React IDs to
+associate their visible label via `aria-labelledby`, without option text in their
+name. The existing cloud guidance is linked separately via `aria-describedby`.
+Shared `Field` is unchanged. The fixture matches each exact visible label's unique
+control and requires its exact computed accessible name, plus the associated
+cloud description. All race and no-provider assertions remain intact. Local browser
+execution remains prohibited; a fresh CI run must establish the corrected
+fixture's runtime result.

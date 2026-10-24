@@ -200,6 +200,8 @@ jobs:
             test-artifacts/a11y/report.json
             test-artifacts/a11y/report.md
             test-artifacts/a11y/gate.json
+            test-artifacts/a11y/login-failure.json
+            test-artifacts/a11y/login-failure.png
             test-artifacts/a11y-gate-server.log
             tests/.runtime/latest.json
             docs/verification-results.json

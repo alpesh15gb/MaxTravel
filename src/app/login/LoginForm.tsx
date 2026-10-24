@@ -1,11 +1,16 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
 import { Field } from "@/components/ui";
 
 export default function LoginForm({ agencyName, created }: { agencyName: string; created: boolean }) {
   const router = useRouter();
+  // SSR fields must not accept input before React owns their controlled values/submit handler.
+  // Otherwise a fast user (or keyboard automation) can type text that hydration discards,
+  // or submit the server-rendered form before its client handler exists.
+  const [ready, setReady] = useState(false);
+  useEffect(() => { setReady(true); }, []);
   const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
   const [code,setCode]=useState("");
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
@@ -21,5 +26,5 @@ export default function LoginForm({ agencyName, created }: { agencyName: string;
     } catch { setError("Could not connect to your workspace. Check your connection and try again."); }
     finally { setBusy(false); }
   }
-  return <div className="auth-form-wrap"><div className="eyebrow">{agencyName}</div><h2>Sign in</h2><p className="auth-description">Use the work email your agency set up for you.</p>{created && <div className="form-success mb-5" role="status">Your workspace is ready. Sign in with the owner account you just created.</div>}<form className="auth-form" onSubmit={submit}><Field label="Work email"><input type="email" autoComplete="username" placeholder="you@agency.com" value={email} onChange={e => setEmail(e.target.value)} required /></Field><Field label="Password"><input type="password" autoComplete="current-password" placeholder="Your password" value={password} onChange={e => setPassword(e.target.value)} required /></Field><Field label="Authenticator or recovery code (if enabled)"><input autoComplete="one-time-code" value={code} onChange={e=>setCode(e.target.value)} maxLength={40}/></Field>{error && <div role="alert" className="form-error">{error}</div>}<button className="btn-primary auth-submit" disabled={busy}>{busy ? "Signing in…" : "Sign in to workspace"}<Icon name="arrow" size={18} /></button></form><p className="mt-6 text-xs leading-6 text-slate-500">Need access or a password reset? Contact your agency owner or administrator.</p></div>;
+  return <div className="auth-form-wrap"><div className="eyebrow">{agencyName}</div><h2>Sign in</h2><p className="auth-description">Use the work email your agency set up for you.</p>{created && <div className="form-success mb-5" role="status">Your workspace is ready. Sign in with the owner account you just created.</div>}<form className="auth-form" onSubmit={submit}><Field label="Work email"><input disabled={!ready || busy} type="email" autoComplete="username" placeholder="you@agency.com" value={email} onChange={e => setEmail(e.target.value)} required /></Field><Field label="Password"><input disabled={!ready || busy} type="password" autoComplete="current-password" placeholder="Your password" value={password} onChange={e => setPassword(e.target.value)} required /></Field><Field label="Authenticator or recovery code (if enabled)"><input disabled={!ready || busy} autoComplete="one-time-code" value={code} onChange={e=>setCode(e.target.value)} maxLength={40}/></Field>{error && <div role="alert" className="form-error">{error}</div>}<button className="btn-primary auth-submit" disabled={!ready || busy}>{busy ? "Signing in…" : "Sign in to workspace"}<Icon name="arrow" size={18} /></button></form><p className="mt-6 text-xs leading-6 text-slate-500">Need access or a password reset? Contact your agency owner or administrator.</p></div>;
 }

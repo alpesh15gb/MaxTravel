@@ -17,6 +17,7 @@ if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(fixture.base)) throw new Error("Audit mu
 const rules = (process.argv.find(a => a.startsWith("--rules="))?.slice(8) ?? "contrast,names,taps,focus,modal,semantics").split(",");
 const outDir = path.resolve("test-artifacts/a11y");
 fs.mkdirSync(outDir, { recursive: true });
+for (const name of ["login-failure.json", "login-failure.png"]) fs.rmSync(path.join(outDir, name), { force: true });
 
 const findings = [];
 const indeterminate = [];
@@ -305,9 +306,17 @@ try {
     await page.goto("/login", { waitUntil: "domcontentloaded" });
     await page.getByLabel("Work email", { exact: true }).fill("review@visual.test");
     await page.getByLabel("Password", { exact: true }).fill("Review-Visual-2026!");
-    await page.getByRole("button", { name: "Sign in to workspace", exact: true }).click();
+    const [signedIn] = await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname === "/api/auth/login" && response.request().method() === "POST"),
+      page.getByRole("button", { name: "Sign in to workspace", exact: true }).click(),
+    ]);
+    if (!signedIn.ok()) throw new Error(`Login rejected with HTTP ${signedIn.status()}: ${(await signedIn.json().catch(() => ({}))).error ?? "No error body"}`);
     await page.waitForURL("**/dashboard", { waitUntil: "domcontentloaded" });
   } catch (error) {
+    // Preserve failure evidence without credentials, cookies or response bodies.
+    const state = await page.evaluate(() => ({ pathname: location.pathname, alerts: [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent), fields: [...document.querySelectorAll('input')].map(input => ({ type: input.type, disabled: input.disabled, empty: !input.value })) })).catch(() => ({ unavailable: true }));
+    fs.writeFileSync(path.join(outDir, "login-failure.json"), JSON.stringify(state, null, 2));
+    await page.screenshot({ path: path.join(outDir, "login-failure.png"), mask: [page.locator("input")], timeout: 5000 }).catch(() => {});
     throw new Error(`Could not sign in to the review workspace at ${fixture.base} — ${String(error.message).split("\n")[0]}. Is the review server still running on that port?`);
   }
 

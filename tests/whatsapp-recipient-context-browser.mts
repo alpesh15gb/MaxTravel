@@ -85,17 +85,17 @@ await withFixtureCleanup(async () => {
     page.on("pageerror", error => report.pageErrors.push(error.message));
     page.on("dialog", dialog => void dialog.accept());
     await page.goto("/whatsapp?customer=a");
-    // Field wraps its select/options in the label, so exact getByLabel includes
-    // option text. Match the visible field-label exactly, then its sole control.
+    // Match each visible label's sole control, and require the two selects to
+    // expose that exact accessible name (without their option text or guidance).
     const field = (name: string) => page!.locator("label.field").filter({
       has: page!.locator(".field-label").filter({ hasText: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) }),
     }).locator("input, select, textarea");
-    const picker = field("Start or open a conversation");
+    const picker = field("Start or open a conversation").and(page.getByRole("combobox", { name: "Start or open a conversation", exact: true }));
     const message = field("Message");
     const quick = page.getByRole("combobox", { name: "Insert quick reply" });
     const send = page.getByRole("button", { name: "Send WhatsApp message", exact: true });
     const quickKey = await quick.locator("option").nth(1).getAttribute("value"); assert(quickKey);
-    await picker.waitFor(); assert.equal(await picker.count(), 1, "Exactly one conversation picker");
+    await picker.waitFor(); assert.equal(await picker.count(), 1, "Conversation picker has exactly its visible label as its accessible name");
     const choose = async (id: string) => { await picker.selectOption(id); await page!.getByRole("heading", { name: `Customer ${id.toUpperCase()}`, exact: true }).waitFor(); };
     const waitValue = async (value: string) => { await within((async () => { while (await message.inputValue() !== value) await new Promise(resolve => setTimeout(resolve, 10)); })(), 10000, `composer value ${value}`); };
     const discard = async () => { const button = page!.getByRole("button", { name: "Discard draft", exact: true }); if (await button.isVisible()) await button.click(); };
@@ -124,7 +124,14 @@ await withFixtureCleanup(async () => {
     await page.getByRole("link", { name: "Customer workspace →", exact: true }).click(); await page.waitForURL("**/customers/a"); await page.goBack(); await reviewed.waitFor(); assert(await send.isDisabled());
     await reviewed.click(); hold = "send"; await send.click(); await waitHeld(); assert.equal(held!.payload.requestId, unknownRequest.requestId); await releaseHeld(); await waitValue("");
     report.checks.push("Uncertain outcomes remain blocked after Back; explicit reviewed identical retry reuses its idempotency key");
-    const cloud = field("Approved Meta utility template"); await cloud.waitFor(); assert.equal(await cloud.count(), 1, "Exactly one approved template picker"); await cloud.selectOption("RECEIPT");
+    const cloud = field("Approved Meta utility template").and(page.getByRole("combobox", { name: "Approved Meta utility template", exact: true }));
+    await cloud.waitFor(); assert.equal(await cloud.count(), 1, "Approved template picker has exactly its visible label as its accessible name");
+    assert.equal(await cloud.evaluate(element => {
+      const id = element.getAttribute("aria-describedby");
+      return id ? document.getElementById(id)?.textContent : null;
+    }), "Template name, approval and utility category are checked with Meta before sending. Enter the specific business fields; the approved wording is used.", "Cloud guidance is associated as a description, not part of the accessible name");
+    report.checks.push("Conversation and approved-template selects expose exact visible accessible names; cloud guidance remains a description");
+    await cloud.selectOption("RECEIPT");
     const reference = field("reference"), previewButton = page.getByRole("button", { name: "Preview approved message", exact: true });
     await reference.fill("A-1"); hold = "preview"; await previewButton.click(); await waitHeld(); await reference.fill("A-2"); await releaseHeld();
     assert.equal(await page.getByText("Approved a: A-1", { exact: true }).count(), 0); assert(await send.isDisabled());

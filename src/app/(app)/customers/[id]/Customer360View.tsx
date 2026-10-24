@@ -12,6 +12,7 @@ import { EmptyState, Status, avatarClass, initialsOf, type ToastTone } from "@/c
 import Modal from "@/components/Modal";
 import { useToast } from "@/lib/useToast";
 import { openSignedFile } from "@/lib/openSignedFile";
+import CustomerSalesHistory from "@/components/CustomerSalesHistory";
 import RecordEditor from "@/components/RecordEditor";
 
 const money = (n: number | null | undefined) => (n == null ? "—" : inrAmount(n));
@@ -83,7 +84,7 @@ export default function Customer360View({ data, perms, initialTab, permsExtra, o
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
-            {p.editCustomer && <RecordEditor title="Edit customer" buttonLabel="Edit customer" endpoint={`/api/customers/${c.id}`} values={{name:c.name,phone:c.phone,email:c.email,city:c.city,address:c.address,companyName:c.companyName,type:c.type,status:c.status,assignedToId:c.manager?.id??"",handoverWork:false}} fields={[{key:"name",label:"Customer name",required:true},{key:"phone",label:"Phone",type:"tel",required:true},{key:"email",label:"Email",type:"email"},{key:"city",label:"City"},{key:"address",label:"Address",type:"textarea"},{key:"companyName",label:"Company"},{key:"type",label:"Customer type",type:"select",options:["INDIVIDUAL","CORPORATE","SUB_AGENT"].map(value=>({value,label:value.replaceAll("_"," ")}))},{key:"status",label:"Relationship status",type:"select",options:["ACTIVE","LEAD","INACTIVE"].map(value=>({value,label:value}))},...(owners.length?[{key:"assignedToId",label:"Relationship manager",type:"select" as const,options:owners.map(o=>({value:o.id,label:o.name}))},{key:"handoverWork",label:"Hand over existing bookings, visa cases and open tasks",type:"checkbox" as const}]:[])]}/>}
+            {p.editCustomer && <RecordEditor title="Edit customer" buttonLabel="Edit customer" endpoint={`/api/customers/${c.id}`} values={{name:c.name,phone:c.phone,email:c.email,city:c.city,address:c.address,companyName:c.companyName,type:c.type,status:c.status,assignedToId:c.manager?.id??"",handoverWork:false}} fields={[{key:"name",label:"Customer name",required:true},{key:"phone",label:"Phone",type:"tel",required:true},{key:"email",label:"Email",type:"email"},{key:"city",label:"City"},{key:"address",label:"Address",type:"textarea"},{key:"companyName",label:"Company"},{key:"type",label:"Customer type",type:"select",options:["INDIVIDUAL","CORPORATE","SUB_AGENT"].map(value=>({value,label:value.replaceAll("_"," ")}))},{key:"status",label:"Relationship status",type:"select",options:["ACTIVE","LEAD","INACTIVE"].map(value=>({value,label:value}))},...(owners.length?[{key:"assignedToId",label:"Relationship manager",type:"select" as const,options:owners.map(o=>({value:o.id,label:o.name}))},{key:"handoverWork",label:"Hand over open enquiries, existing bookings, visa cases and open tasks",type:"checkbox" as const}]:[])]}/>}
             {perms.record && <QuickBtn primary onClick={() => location.assign(`/payments?action=record&customer=${c.id}`)}>Record payment</QuickBtn>}
             {(perms.send || perms.createVisa || perms.createTicket || perms.createTask || perms.requestDocs || p.invoice) && <details className="customer-tools" onClick={e => { if ((e.target as HTMLElement).closest("button")) e.currentTarget.removeAttribute("open"); }} onKeyDown={e => { if (e.key === "Escape") { e.currentTarget.removeAttribute("open"); e.currentTarget.querySelector("summary")?.focus(); } }}>
               <summary className="btn-secondary">Customer actions<Icon name="chevronDown" size={14} /></summary>
@@ -205,6 +206,7 @@ function Overview({ data, onSelect }: { data: Data; onSelect: (tab: string) => v
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0 space-y-4">
+      <CustomerSalesHistory history={data.salesHistory} />
       <Panel title="Current work">
         <div className="divide-y divide-slate-100">
           {data.visaCases.filter(v => !["CLOSED", "DELIVERED", "REJECTED"].includes(v.stageKey)).slice(0, 3).map(v => <Link key={v.id} href={`/visa/${v.id}`} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0 hover:text-teal-700">
