@@ -30,7 +30,7 @@ jobs:
           (cd cutover && sha256sum --check draft.sha256)
       - name: Check every Bash script without executing deployment scripts
         run: |
-          for script in preserve-build.sh revalidate-built-crm.sh collect-preflight.sh test_snapshot_docker.sh cutover/*.sh; do
+          for script in preserve-build.sh revalidate-built-crm.sh collect-preflight.sh test_snapshot_docker.sh test_compose_replace_docker.sh cutover/*.sh; do
             bash -n "$script"
           done
       - name: Check isolated audit JavaScript syntax without executing audits
@@ -63,3 +63,22 @@ jobs:
         env:
           SNAPSHOT_DOCKER_SMOKE: owned-synthetic-only
         run: bash test_snapshot_docker.sh
+
+  docker-compose-replacement-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        shell: bash
+        working-directory: ops/deploy-20261024
+    steps:
+      - name: Read exact helper revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Verify smoke and helper payloads
+        run: sha256sum --check SHA256SUMS
+      - name: Verify real Compose replacement metadata with never-started owned fixtures
+        env:
+          COMPOSE_REPLACE_SMOKE: owned-synthetic-only
+        run: bash test_compose_replace_docker.sh

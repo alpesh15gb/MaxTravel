@@ -79,7 +79,13 @@ def runtime_equal(before,after,app):
   replacement=(y.get('Labels') or {}).get('com.docker.compose.replace')
   if a['Id']==b['Id']:
    require(replacement==(x.get('Labels') or {}).get('com.docker.compose.replace'),'Unchanged-container replacement label drift.')
-  else:require(replacement is None or replacement==a['Id'],'Unrecognized Compose replacement identity.')
+  else:
+   labels_a=a['Config'].get('Labels') or {};labels_b=b['Config'].get('Labels') or {}
+   project=labels_a.get('com.docker.compose.project');svc=labels_a.get('com.docker.compose.service');number=labels_a.get('com.docker.compose.container-number')
+   relative=(svc+'-'+number) if isinstance(svc,str) and isinstance(number,str) and re.fullmatch(r'[1-9][0-9]*',number) else None
+   canonical=('/'+project+'-'+relative) if isinstance(project,str) and relative else None
+   modern=bool(relative and replacement==relative and a.get('Name')==canonical and b.get('Name')==canonical and all(labels_a.get(k)==labels_b.get(k) for k in ('com.docker.compose.project','com.docker.compose.service','com.docker.compose.container-number')))
+   require(replacement is None or replacement==a['Id'] or modern,'Unrecognized Compose replacement identity.')
   (y.get('Labels') or {}).pop('com.docker.compose.replace',None)
   (x.get('Labels') or {}).pop('com.docker.compose.replace',None)
   for obj in (x,y):

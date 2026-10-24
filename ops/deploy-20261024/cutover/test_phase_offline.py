@@ -137,4 +137,34 @@ class Contracts(unittest.TestCase):
   self.assertLess(first,s.index('FROZEN=1'))
   self.assertLess(first,s.index('docker stop --timeout 260 "$WORKER"'))
   self.assertLess(first,s.index('docker stop --timeout 45 "$APP"'))
+ def replacement_rows(self):
+  a=mounted();a['Id']='a'*64;a['Name']='/max-travel-crm-app-1';a['Config']['Hostname']='a'*12;a['Config']['Labels']['com.docker.compose.container-number']='1';a['Config']['Labels']['com.docker.compose.replace']='app-1'
+  b=copy.deepcopy(a);b['Id']='b'*64;b['Config']['Hostname']='b'*12;b['Config']['Env'].append('RUN_MIGRATIONS=false')
+  return a,b
+ def test_modern_exact_service_relative_replace(self):
+  a,b=self.replacement_rows();v.runtime_equal([a],[b],'crm')
+ def test_legacy_exact_id_replace(self):
+  a,b=self.replacement_rows();b['Config']['Labels']['com.docker.compose.replace']=a['Id'];v.runtime_equal([a],[b],'crm')
+ def test_replace_wrong_identity_rejected(self):
+  for field,value in [('replace','other-1'),('replace','app-2'),('container-number','2'),('project','other'),('service','other')]:
+   a,b=self.replacement_rows();b['Config']['Labels']['com.docker.compose.'+field]=value
+   with self.assertRaises(SystemExit):v.runtime_equal([a],[b],'crm')
+  for which in ('old','new'):
+   a,b=self.replacement_rows();(a if which=='old' else b)['Name']='/unrelated'
+   with self.assertRaises(SystemExit):v.runtime_equal([a],[b],'crm')
+ def test_incident_recovery_is_same_id_only_and_once(self):
+  s=(HERE/'recover-crm-app-existing.sh').read_text()
+  self.assertIn('APP=e7153d4b7464ca74d9583c4ad25b134eb5daff3e9c3d8e35c078ec531630675e',s)
+  self.assertIn('! -e $RELEASE/app-recovery-attempted.txt',s)
+  self.assertLess(s.index('> "$RELEASE/app-recovery-attempted.txt"'),s.index('docker update --restart='))
+  self.assertLess(s.index('docker update --restart='),s.index('docker start "$APP"'))
+  self.assertNotIn('docker start "$WORKER"',s)
+  self.assertIn('RELEASE="$RECOVERY" quiesce_candidate app',s)
+  self.assertNotRegex(s,r'(?m)^.*\b(?:up -d|--force-recreate|pg_restore|scripts/restore\.mjs)\b')
+  self.assertGreater(s.index('> "$RELEASE/app-verified.txt"'),s.index('protected_check "$RELEASE/all-before.private.json" "$RECOVERY/all-after.private.json"'))
+ def test_incident_recovery_python_is_optimization_isolated(self):
+  s=(HERE/'recover-crm-app-existing.sh').read_text()
+  for line in s.splitlines():
+   if line.startswith('python3 '):self.assertTrue(line.startswith('python3 -I '))
+  self.assertIn("n['Image']==s['Image']==contained[0]['Image']=='sha256:b10e495f4f8fbaca93153552e6484800670c91fa7e778a759674829b28cc3e0a'",s)
 if __name__=='__main__':unittest.main()
