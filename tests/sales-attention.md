@@ -38,3 +38,28 @@ login timeout has been conclusively explained. CI browser rerun remains required
 `node tests/login-readiness.mjs` renders the actual login component with hook
 stubs and checks disabled-before-mount, ready and busy states without launching
 a browser; it also guards the explicit Today visible-label binding.
+
+## Sales recovery CI 40047023119
+
+The restricted push-branch allowlist left the delivery candidate without this
+recovery gate and exposed an obsolete navigation expectation on main at
+`sales-draft-recovery-browser.mjs:174`. After explicit review of a late publish
+acknowledgement, the controller now selects the exact scoped enquiry directly;
+the fixture still tried to click its list-row button. The failure screenshot
+shows the correct selected enquiry and its published quote. The artifact report
+has no page errors or external requests, and the job log places the timeout
+after the acknowledged-outcome lock and no-private-link checks.
+
+The browser fixture now asserts the exact selected enquiry, one published quote,
+one publish request, and zero private-link regions/inputs at that transition.
+All subsequent capability, no-replay and full-reload/list checks remain. The
+pure handoff test additionally combines the actual outcome-memory and reload
+controller to prove the late-publish review contract without a browser.
+
+The Sales draft recovery workflow now runs for every pushed candidate branch,
+as the full CI gate already does, and retains `workflow_dispatch` and main PR
+coverage. It runs the handoff controller regression before its browser suite.
+Local browser execution was not attempted; candidate recovery CI must pass
+before promotion. Evidence: run `40047023119`, job `120730989320`, artifact
+`12541309755`, ZIP SHA-256
+`809c4b4b2e05f5a93d780a53261e3438a6e69f187e4b3eb8c33956e9e27eac12`.

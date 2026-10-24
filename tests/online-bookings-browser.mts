@@ -1,3 +1,4 @@
+import { verifyPlatformActions } from "./platform-actions-browser.mts";
 import assert from "node:assert/strict";
 import { drainDiagnostics, observeDiagnostic, stopFixtureChild, withFixtureCleanup, within } from "./fixture-lifecycle.mjs";
 import { spawn } from "node:child_process";
@@ -178,6 +179,7 @@ export async function verifyOnlineBookingsUi(db: PrismaClient, databaseUrl: stri
     await page.getByRole("button", { name: "Apply filters", exact: true }).click();
     await page.waitForURL(url => url.pathname === "/online-bookings" && ["q", "product", "status"].every(key => url.searchParams.get(key) === ""));
     assert.deepEqual(await references(), first, "Applying the cleared form remains unfiltered");
+    await verifyPlatformActions(page);
     await page.getByLabel("Search bookings", { exact: true }).fill("not-a-booking"); await page.getByRole("button", { name: "Apply filters" }).press("Enter"); await page.getByRole("heading", { name: "No matching online bookings" }).waitFor();
     await page.screenshot({ path: resolve(output, "empty-mobile.png") });
     await page.goto(origin + "/online-bookings?cursor=%25"); await page.getByRole("alert").filter({ hasText: "These filters" }).waitFor();

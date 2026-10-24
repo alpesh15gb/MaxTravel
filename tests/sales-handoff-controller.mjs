@@ -19,10 +19,13 @@ const page = () => ({ leads: [{ id: "page-one" }], customers: [], recoveryContex
 const detail = id => response({ lead: { id }, recoveryContext: "fixture" });
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+const actionMemorySource = readFileSync(new URL("../src/lib/sales-action-memory.ts", import.meta.url), "utf8");
+const actionMemoryExports = {};
+new Function("exports", ts.transpileModule(actionMemorySource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText)(actionMemoryExports);
 
-function harness() {
-  const state = { data: null, view: "list", selectedId: null, loading: false, error: "", notice: "", focus: 0 };
-  const calls = [], reviewed = [];
+function harness(actionMemory) {
+  const state = { data: null, view: "list", selectedId: null, loading: false, error: "", notice: "", focus: 0, share: "" };
+  const calls = [], requests = [], reviewed = [];
   let activate, pendingReview = null;
   let fetcher = async url => url.includes("leadId=") ? detail(new URL(url, "http://fixture.invalid").searchParams.get("leadId")) : response(page());
   const env = {
@@ -31,20 +34,20 @@ function harness() {
     pendingHandoffId: { current: null }, listCriteria: { current: { q: "", stage: "ALL" } },
     selectedIdRef: { current: null }, dataRef: { current: null }, activeQuote: { current: null }, mutationLock: { current: false },
     draftMemory: { context: "fixture", getSnapshot: () => null, clear() {}, expire() {} },
-    actionMemory: { getSnapshot: () => pendingReview, getReviewEpoch: () => 1, clearAfterReview(nonce) { reviewed.push(nonce); pendingReview = null; return true; } },
+    actionMemory: actionMemory ?? { getSnapshot: () => pendingReview, getReviewEpoch: () => 1, clearAfterReview(nonce) { reviewed.push(nonce); pendingReview = null; return true; } },
     customerMemory: { getSnapshot: () => null }, dirty: false,
-    async fetch(url) { calls.push(url); return fetcher(url); },
+    async fetch(url, init) { calls.push(url); requests.push({ url, method: init?.method ?? "GET" }); return fetcher(url); },
     setData(value) { state.data = value; env.dataRef.current = value; },
     setSelectedId(value) { state.selectedId = value; env.selectedIdRef.current = value; },
     setView(value) { state.view = value; }, setLoading(value) { state.loading = value; },
     setError(value) { state.error = value; }, setNotice(value) { state.notice = value; },
     setFocusRequest(value) { state.focus = value(state.focus); },
     setContextChanged() {}, setDirty() {}, setItems() {}, newItem: () => ({}), setTerms() {}, setExpiry() {},
-    setShare() {}, setShareContext() {}, setShareQuoteId() {}, setAppendedFocusId() {}, setListIds() {},
+    setShare(value) { state.share = value; }, setShareContext() {}, setShareQuoteId() {}, setAppendedFocusId() {}, setListIds() {},
     setRecovery() {}, reconcileShare() {}, checkRecovery: async () => null, setQuery() {}, setFilter() {}, setUncertain() {},
   };
   return {
-    state, env, calls, reviewed,
+    state, env, calls, requests, reviewed,
     fetchWith(fn) { fetcher = fn; }, review(value) { pendingReview = value; },
     route(initialLeadId) {
       const inputs = { ...env, initialLeadId };
@@ -52,6 +55,27 @@ function harness() {
       return { ...controller, activate: () => activate() };
     },
   };
+}
+
+// A publish acknowledgement received after navigation stays locked until explicit review.
+// Review opens the exact record directly; ordinary /sales activation still opens the list.
+{
+  const memory = actionMemoryExports.createSalesActionMemory("fixture");
+  assert(memory.begin("late-publish", "publish", "published-lead"));
+  memory.pageHide(true); memory.settle("late-publish", "acknowledged"); memory.pageShow(true);
+  assert.equal(memory.clearAfterReview("late-publish"), false, "A late callback cannot clear the resumed-page review barrier");
+  assert.equal(memory.begin("duplicate-publish", "publish", "published-lead"), false);
+  const h = harness(memory), route = h.route(undefined);
+  await route.reload();
+  assert.equal(h.calls.at(-1), "/api/sales?leadId=published-lead");
+  assert.equal(h.state.selectedId, "published-lead"); assert.equal(h.state.view, "lead");
+  assert.equal(memory.getSnapshot(), null, "Explicit successful scoped review clears the acknowledged barrier");
+  assert(h.requests.every(request => request.method === "GET"), "Review never publishes or sends another mutation");
+  assert.equal(h.state.share, "", "Review cannot reconstruct a departed private capability");
+  route.activate(); await flush();
+  assert.equal(h.state.view, "list", "Ordinary activation without a URL handoff preserves the enquiry-list entry point");
+  assert.equal(h.state.share, "");
+  console.log("PASS late publish review: actual outcome memory and controller require explicit scoped review, select its exact lead, never POST/reveal a link, and preserve ordinary list activation.");
 }
 
 // The original defect: a failed off-page exact read made Retry silently abandon the URL target.

@@ -3,7 +3,8 @@ name: Sales draft recovery
 on:
   workflow_dispatch:
   push:
-    branches: [main, feat/crm-sales-draft-recovery, feat/crm-workspace-polish]
+    # Candidate branches must prove the same recovery contract before main promotion.
+    branches: ["**"]
   pull_request:
     branches: [main]
 permissions:
@@ -37,6 +38,7 @@ jobs:
           node --import tsx tests/enquiry-customer.ts
           node --import tsx tests/customer-create-memory.ts
           node --import tsx tests/sales-action-memory.ts
+          node tests/sales-handoff-controller.mjs
       - run: npm run build
       - name: Verify customer creation is bound to the originating staff session
         env:

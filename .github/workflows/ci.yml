@@ -148,6 +148,7 @@ jobs:
         timeout-minutes: 5
         run: |
           node --test tests/fixture-lifecycle.test.mjs
+          node --import tsx tests/platform-action-guidance.mts
           node --import tsx tests/online-bookings-query.mts --browser
       - name: Verify recipient-bound WhatsApp composer races
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}

@@ -169,14 +169,18 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
    const refreshed=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/sales'&&response.request().method()==='GET',{timeout:15000});
    await page.getByRole('button',{name:'Reload latest status',exact:true}).click();const currentRead=await refreshed;
    assert.equal(currentRead.status(),200);assert.equal(await within(currentRead.finished(),15000,'explicit record read'),null);
-   // The departed action retains no private capability and never retries. Explicitly review its record.
+   // Explicit review now opens the action's exact scoped record directly. It must not return
+   // to a first-page list and require a second selection (the record may be off that page).
    await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(node=>node.textContent?.trim()==='New enquiry'&&!node.disabled),undefined,{timeout:15000});
-   await page.getByRole('button',{name:`Open enquiry: ${s.title}`,exact:true}).click();
    const selected=page.getByRole('region',{name:'Selected enquiry',exact:true});
+   report.latePublishReview={publishedQuotes:await db.salesQuote.count({where:{leadId:s.id,state:'PUBLISHED'}}),publishRequests:s.writes.filter(action=>action==='publish').length,privateLinkRegions:await page.getByRole('region',{name:'Private proposal link',exact:true}).count(),privateLinkInputs:await page.getByLabel('Private proposal link',{exact:true}).count()};persist();
+   assert.deepEqual(report.latePublishReview,{publishedQuotes:1,publishRequests:1,privateLinkRegions:0,privateLinkInputs:0},'Explicit scoped review never republishes or reveals a departed capability');
+   await selected.getByRole('heading',{name:s.title,exact:true}).waitFor();
    await selected.getByRole('heading',{name:'Quote v1 · Published',exact:true}).waitFor();
    await selected.getByText('Private customer proposal. Accessible through its private link, not the public package catalogue.',{exact:true}).waitFor();
    await selected.getByRole('complementary',{name:'Private link guidance for quote v1',exact:true}).getByText('Earlier links cannot be retrieved. Losing a link does not withdraw the proposal.',{exact:true}).waitFor();
    assert.equal(await page.getByRole('region',{name:'Private proposal link',exact:true}).count(),0,'Late private link is not revealed in another activation');assert.equal(await page.getByLabel('Private proposal link',{exact:true}).count(),0);assert.equal(await db.salesQuote.count({where:{leadId:s.id,state:'PUBLISHED'}}),1);assert.equal(s.writes.filter(action=>action==='publish').length,1,'Navigation never republishes');report.scenarios.push({name:'late-publish-link-withheld',passed:true});await screenshot('late-publish-withheld');
+   // An ordinary full reload of /sales (no lead query) still starts in the list.
    await page.reload({waitUntil:'domcontentloaded'});await page.getByRole('button',{name:`Open enquiry: ${s.title}`,exact:true}).click();
    const guidance=page.getByRole('complementary',{name:'Private link guidance for quote v1',exact:true});
    await guidance.getByText('Earlier links cannot be retrieved. Losing a link does not withdraw the proposal.',{exact:true}).waitFor();
