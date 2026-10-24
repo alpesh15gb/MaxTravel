@@ -92,3 +92,16 @@ Browser launch had been denied earlier in the task; it was neither retried nor
 bypassed. Permitted CI must establish its runtime result. The full `npm test` chain
 was not run locally because it includes browser launches. No push or deployment was
 performed as part of this local fix.
+
+## First integrated CI browser run
+
+Run `40043782410`, job `120720675843`, at integrated commit `5d7acc0` passed
+the manual-idempotency fixture but stopped the browser fixture before its first
+recipient switch. The exact `getByLabel` selector did not match the shared `Field`
+wrapper, whose label text includes its select's options. The uploaded screenshot
+shows Customer A's picker and draft present; the report has no page errors and no
+completed race groups. This was fixture lookup failure, not evidence of a product
+race. The fixture now matches the exact `.field-label` text and its unique control,
+including the later cloud-template select. All race and no-provider assertions
+remain intact. Local browser execution remains prohibited; a fresh CI run must
+establish the corrected fixture's runtime result.
