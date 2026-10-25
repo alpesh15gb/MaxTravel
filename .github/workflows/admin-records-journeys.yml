@@ -6,6 +6,24 @@ on:
     paths:
       - '.github/workflows/admin-records-journeys.yml'
       - 'tests/admin-records-complete-journey-browser.mjs'
+      - 'tests/synthetic-ui-journey-fixture.mjs'
+      - 'tests/visual-review-server.mjs'
+      - 'tests/fixture-lifecycle.mjs'
+      - 'src/app/(app)/audit/**'
+      - 'src/app/api/audit/**'
+      - 'src/lib/audit*.ts'
+      - 'src/app/(app)/tasks/**'
+      - 'src/app/api/tasks/**'
+      - 'src/app/(app)/settings/InvoiceSettings.tsx'
+      - 'src/app/(app)/settings/SettingsClient.tsx'
+      - 'src/app/(app)/settings/page.tsx'
+      - 'src/app/api/settings/invoice-config/**'
+      - 'src/app/(app)/payments/**'
+      - 'src/app/api/invoices/**'
+      - 'src/lib/invoice-config.ts'
+      - 'src/lib/financial-idempotency.ts'
+      - 'src/lib/money.ts'
+      - 'src/lib/transactions.ts'
 permissions:
   contents: read
 concurrency:
