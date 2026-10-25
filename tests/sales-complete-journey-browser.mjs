@@ -69,7 +69,7 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
   const lead=await db.salesLead.findUniqueOrThrow({where:{id:created.id}});assert.equal(lead.stage,'QUALIFIED');assert.equal(lead.followUpAt.toISOString(),'2099-11-01T05:00:00.000Z');
   const first=await draft(page,'accepted exact v1','123.45');
   page.once('dialog',d=>d.accept());await savedAction(page,'publish',()=>page.getByRole('button',{name:'Publish private proposal',exact:true}).click());
-  const privateLink=await page.getByLabel('Private proposal link',{exact:true}).inputValue();assert(new URL(privateLink,base).hash);assert.equal(new URL(privateLink,base).origin,base);
+  const privateLink=await page.getByRole('textbox',{name:'Private proposal link',exact:true}).inputValue();assert(new URL(privateLink,base).hash);assert.equal(new URL(privateLink,base).origin,base);
   // A newer private draft must not replace the older proposal the customer actually sees and accepts.
   const second=await draft(page,'unaccepted newer v2','333.33');assert.notEqual(first.quoteId,second.quoteId);
   await proposal.goto(new URL(privateLink,base).href);await proposal.getByRole('heading',{name:title,exact:true}).waitFor();await proposal.getByText('Total ₹246.90',{exact:true}).waitFor();assert.equal(new URL(proposal.url()).hash,'','Private capability is removed from history');
