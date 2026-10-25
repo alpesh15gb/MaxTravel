@@ -81,6 +81,15 @@ try{
  const track=request=>{const url=new URL(request.url());if(request.method()==="GET"&&url.pathname==="/api/reports/accounts"&&!url.searchParams.has("options"))reads.push(url);};
  page.on("request",track);
  const apply=page.getByRole("button",{name:"Apply report filters",exact:true});
+ assert.equal(await apply.getAttribute("type"),"button");
+ assert.equal(await page.locator("main .btn-primary, main button[type=submit]").count(),1,"Preserve the strict single-primary UI metric");
+ const customerFilter=page.locator('#report-filters select').first();
+ await customerFilter.selectOption("");
+ await apply.focus();await page.keyboard.press("Enter");
+ assert.equal(await customerFilter.evaluate(el=>el.validity.valueMissing),true,"Lower apply retains native required-field validation");
+ assert.equal(await page.locator("#report-filters").evaluate(el=>el.checkValidity()),false);
+ assert.equal(reads.length,0,"Invalid required filter must not start a report read");
+ await customerFilter.selectOption(fixture.customerId);
  await apply.focus();await page.keyboard.press("Enter");
  await page.getByRole("table",{name:"Customer statement",exact:true}).waitFor();
  page.off("request",track);
