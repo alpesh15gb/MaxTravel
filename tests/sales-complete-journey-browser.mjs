@@ -6,10 +6,12 @@ import {spawn} from 'node:child_process';
 import {PrismaClient} from '@prisma/client';
 import {chromium} from './browser.mjs';
 import {within,withFixtureCleanup} from './fixture-lifecycle.mjs';
-const port=3381,base=`http://127.0.0.1:${port}`,out=path.resolve('test-artifacts/sales-complete-journey');
+const port=3391,base=`http://127.0.0.1:${port}`,out=path.resolve('test-artifacts/sales-complete-journey');
 const metadata=path.resolve('tests/.runtime/visual-review-current.json');
 fs.mkdirSync(out,{recursive:true});fs.rmSync(metadata,{force:true});
 const server=spawn(process.execPath,['tests/visual-review-server.mjs'],{detached:true,stdio:['ignore','pipe','pipe'],env:{...process.env,REVIEW_PORT:String(port),REVIEW_DEV:'0',APP_ORIGIN:base,WA_PROVIDER:'manual'}});
+// Fatal exits cannot leave this owned detached fixture behind for later CI steps.
+const stopOwnedOnExit=()=>{if(server.pid)try{process.kill(-server.pid,'SIGKILL');}catch{}};process.once('exit',stopOwnedOnExit);
 const report={scope:'Real UI against isolated SQLite; desktop and phone emulation, no provider or customer contact',scenarios:[],errors:[],blocked:[],passed:false};
 let logs='',spawnError='',browser,db,fixture,currentPage;
 server.stdout.on('data',v=>logs+=v);server.stderr.on('data',v=>logs+=v);server.on('error',e=>spawnError=String(e));
@@ -17,7 +19,9 @@ const persist=()=>{fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(
 async function context(width){
  const c=await browser.newContext({viewport:{width,height:width===1440?1000:844},locale:'en-IN',timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
  c.setDefaultTimeout(15000);c.setDefaultNavigationTimeout(30000);
- await c.route('**/*',r=>{const u=new URL(r.request().url());if(u.origin===base)return r.continue();report.blocked.push({origin:u.origin,path:u.pathname});return r.abort('blockedbyclient');});
+ // Intercept only forbidden origins. Do not route local navigation through an extra
+ // continue handler: Back/reload can cancel that handler after the browser handles it.
+ await c.route(url=>url.origin!==base,r=>{const u=new URL(r.request().url());report.blocked.push({origin:u.origin,path:u.pathname});return r.abort('blockedbyclient');});
  await c.routeWebSocket('**/*',s=>{report.blocked.push({transport:'websocket'});return s.close({code:1008,reason:'Isolated fixture'});});
  c.on('page',p=>p.on('pageerror',e=>report.errors.push(e.message)));return c;
 }
@@ -102,5 +106,5 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
 },async()=>{
  persist();const errors=[];if(browser)try{await within(browser.close(),3000,'browser close');}catch(e){errors.push(e);}if(db)try{await db.$disconnect();}catch(e){errors.push(e);}
  if(server.pid){const signal=s=>{try{process.kill(-server.pid,s);return true;}catch(e){if(e.code==='ESRCH')return false;throw e;}};const gone=async ms=>{const end=Date.now()+ms;while(Date.now()<end){if(!signal(0))return;await new Promise(r=>setTimeout(r,100));}if(signal(0))throw Error('Owned fixture still alive');};try{if(signal('SIGTERM'))try{await gone(3000);}catch{signal('SIGKILL');await gone(2000);}}catch(e){errors.push(e);}}
- if(errors.length)throw new AggregateError(errors,'Fixture cleanup incomplete');
+ if(errors.length)throw new AggregateError(errors,'Fixture cleanup incomplete');process.removeListener('exit',stopOwnedOnExit);
 },e=>{report.passed=false;report.cleanupFailure=String(e);persist();});
