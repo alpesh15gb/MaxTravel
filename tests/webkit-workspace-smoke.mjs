@@ -112,7 +112,8 @@ await withFixtureCleanup(async () => {
     page.on("request", captureReportRead);
     await identity.getByRole("link", { name: "Customer statement", exact: true }).click();
     await page.waitForURL("**/reports?**");
-    const customerFilter = page.getByLabel("Customer *", { exact: true });
+    // Use the associated accessible name; raw wrapping-label text includes every option.
+    const customerFilter = page.locator("#report-filters").getByRole("combobox", { name: "Customer *", exact: true });
     const apply = page.getByRole("button", { name: "Apply report filters", exact: true });
     await apply.waitFor();
     await page.waitForFunction(() => {
