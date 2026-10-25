@@ -1,0 +1,52 @@
+name: Complete CRM operational journeys
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+    paths:
+      - '.github/workflows/complete-crm-journeys.yml'
+      - 'tests/synthetic-ui-journey-fixture.mjs'
+      - 'tests/money-complete-journey-browser.mjs'
+      - 'tests/customer-data-complete-journey-browser.mjs'
+      - 'tests/operations-complete-journey-browser.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: complete-crm-journeys-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  journeys:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      DATABASE_URL: 'file:./ci.db'
+      JWT_SECRET: 'ci-only-complete-journey-fixture-no-real-secret-0123456789abcdef'
+      WA_PROVIDER: manual
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx playwright install --with-deps chromium
+      - name: Build exact candidate
+        id: build
+        run: npm run build
+      - name: Ticket receipt advance refund and supplier complete UI lifecycles
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 7
+        run: node tests/money-complete-journey-browser.mjs
+      - name: Preserve original failures and exact completed-flow evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: complete-crm-journeys-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            test-artifacts/money-complete-journey/
+            test-artifacts/customer-data-complete-journey/
+            test-artifacts/operations-complete-journey/
+          if-no-files-found: warn
+          retention-days: 14
