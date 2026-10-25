@@ -10,6 +10,14 @@ on:
       - "tests/fixture-lifecycle.mjs"
       - "src/components/Shell.tsx"
       - "src/app/(app)/travel-packages/PackagesClient.tsx"
+      - "src/app/(app)/customers/**"
+      - "src/app/(app)/reports/**"
+      - "src/app/api/customers/**"
+      - "src/app/api/reports/**"
+      - "src/lib/account-reports.ts"
+      - "src/lib/report-workspace.ts"
+      - "src/lib/report-read.ts"
+      - "src/lib/money.ts"
       - "src/app/globals.css"
       - "package.json"
       - "package-lock.json"
@@ -46,7 +54,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: webkit-workspace-evidence
+          name: webkit-workspace-evidence-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-artifacts/webkit-workspace/
           if-no-files-found: warn
           retention-days: 14

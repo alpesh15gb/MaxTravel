@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { webkit, devices } from "playwright";
 import { within, withFixtureCleanup } from "./fixture-lifecycle.mjs";
 
@@ -13,13 +13,22 @@ const ephemeral = fs.readFileSync("/proc/sys/net/ipv4/ip_local_port_range", "utf
 assert(ephemeral.length === 2 && ephemeral.every(Number.isInteger), "Expected Linux ephemeral port range");
 assert(port < ephemeral[0] || port > ephemeral[1], "Fixture listener must not overlap client ephemeral ports");
 const out = path.resolve("test-artifacts/webkit-workspace"), fixturePath = path.resolve("tests/.runtime/visual-review-current.json");
+const provenance = {
+  commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+  runId: process.env.GITHUB_RUN_ID || null,
+  runAttempt: process.env.GITHUB_RUN_ATTEMPT || null,
+};
+if (process.env.GITHUB_ACTIONS === "true") {
+  assert.equal(provenance.commit, process.env.GITHUB_SHA, "Evidence must identify the tested checkout");
+  assert(provenance.runId && provenance.runAttempt, "CI evidence requires run and attempt");
+}
 fs.mkdirSync(out, { recursive: true }); fs.rmSync(fixturePath, { force: true });
 const server = spawn(process.execPath, ["tests/visual-review-server.mjs"], {
   env: { ...process.env, REVIEW_PORT: String(port), REVIEW_DEV: "0", WA_PROVIDER: "manual" },
   detached: true, stdio: ["ignore", "pipe", "pipe"],
 });
 let logs = "", spawnError = "", browser, page;
-const report = { scope: "Linux WebKit desktop and iPhone 13 emulation; not real-device Safari", engine: null, version: null, scenarios: [], errors: [], blockedRequests: [], passed: false };
+const report = { provenance, scope: "Linux WebKit desktop and iPhone 13 emulation; not real-device Safari", engine: null, version: null, scenarios: [], errors: [], blockedRequests: [], passed: false };
 server.stdout.on("data", value => logs += value); server.stderr.on("data", value => logs += value);
 server.on("error", error => { spawnError = String(error); });
 async function focused(locator) {
@@ -88,6 +97,90 @@ await withFixtureCleanup(async () => {
     await seededCustomer.waitFor();
     assert((await seededCustomer.innerText()).includes("Meera Sharma"), "Seeded customer content must render before capture");
     await screenshot(`${name}-customers`);
+    await seededCustomer.click(); await page.waitForURL(`**/customers/${fixture.customerId}`);
+    const identity = page.getByRole("region", { name: "Customer record", exact: true });
+    await identity.getByRole("heading", { name: "Meera Sharma", exact: true }).waitFor();
+    assert((await identity.innerText()).includes("meera@example.test"), "Actual customer identity email must render");
+    assert((await identity.innerText()).includes("+919812345678"), "Actual customer identity phone must render");
+    await screenshot(`${name}-customer-detail`);
+
+    const reportReads = [];
+    const captureReportRead = request => {
+      const url = new URL(request.url());
+      if (url.origin === base && url.pathname === "/api/reports/accounts" && !url.searchParams.has("options")) reportReads.push(url);
+    };
+    page.on("request", captureReportRead);
+    await identity.getByRole("link", { name: "Customer statement", exact: true }).click();
+    await page.waitForURL("**/reports?**");
+    const customerFilter = page.getByLabel("Customer *", { exact: true });
+    const apply = page.getByRole("button", { name: "Apply report filters", exact: true });
+    await apply.waitFor();
+    await page.waitForFunction(() => {
+      const button = [...document.querySelectorAll("button")].find(button => button.textContent === "Apply report filters");
+      return button && !button.disabled;
+    });
+    assert.equal(await customerFilter.inputValue(), fixture.customerId, "Customer detail link must preserve identity scope");
+    await page.getByRole("button", { name: "Today", exact: true }).click();
+    await customerFilter.selectOption("");
+    // Observe real native validation without calling checkValidity/reportValidity ourselves.
+    await page.locator("#report-filters").evaluate(form => {
+      window.__webkitReportEvents = { invalid: 0, submits: 0 };
+      form.addEventListener("invalid", () => window.__webkitReportEvents.invalid++, true);
+      form.addEventListener("submit", () => window.__webkitReportEvents.submits++);
+    });
+    await apply.click();
+    await focused(customerFilter);
+    assert(await customerFilter.evaluate(node => node.required && node.validity.valueMissing));
+    assert.deepEqual(await page.evaluate(() => window.__webkitReportEvents), { invalid: 1, submits: 0 });
+    await screenshot(`${name}-report-native-validation`);
+    assert.equal(reportReads.length, 0, "Invalid lower Apply must make zero report reads");
+
+    await customerFilter.selectOption(fixture.customerId);
+    const appliedDates = { from: await page.getByLabel("From", { exact: true }).inputValue(), to: await page.getByLabel("Through", { exact: true }).inputValue() };
+    const responsePromise = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === base && url.pathname === "/api/reports/accounts" && url.searchParams.get("report") === "statement" && !url.searchParams.has("options");
+    });
+    await apply.focus(); await apply.press("Enter");
+    const response = await responsePromise; assert(response.ok(), "Scoped statement response must succeed");
+    const statement = await response.json();
+    const applied = page.getByRole("region", { name: "Applied report filters", exact: true });
+    await applied.getByRole("heading", { name: "Meera Sharma", exact: true }).waitFor();
+    assert.equal(statement.party.name, "Meera Sharma");
+    assert.deepEqual(statement.period, appliedDates, "Rendered statement must use the applied India-calendar dates");
+    assert.equal(statement.summary.find(item => item.label === "Closing balance")?.value, 81400, "Fixture: visa 10,000 + flight 40,000 + hotel 48,900 + invoice 2,500 - receipt 20,000");
+    assert.equal(await page.locator(".report-summary section").filter({ has: page.getByRole("heading", { name: "Closing balance", exact: true }) }).locator("p").innerText(), "₹81,400");
+    assert.deepEqual(await page.evaluate(() => window.__webkitReportEvents), { invalid: 1, submits: 1 });
+    assert.equal(reportReads.length, 1, "Valid keyboard activation must issue exactly one report query");
+    assert.equal(reportReads[0].searchParams.get("customerId"), fixture.customerId);
+    assert.equal(reportReads[0].searchParams.get("from"), appliedDates.from);
+    assert.equal(reportReads[0].searchParams.get("to"), appliedDates.to);
+    assert.equal(reportReads[0].searchParams.get("page"), "1");
+    const exports = {};
+    for (const format of ["csv", "xlsx", "pdf"]) {
+      const href = await applied.getByRole("link", { name: `Download ${format.toUpperCase()}`, exact: true }).getAttribute("href");
+      const url = new URL(href, base);
+      const expected = new URLSearchParams(reportReads[0].searchParams); expected.delete("page"); expected.set("format", format);
+      assert.equal(url.origin, base); assert.equal(url.pathname, "/api/reports/accounts");
+      assert.deepEqual([...url.searchParams].sort(), [...expected].sort(), "Export links must reflect applied query, not draft controls");
+      exports[format] = href;
+    }
+    await applied.scrollIntoViewIfNeeded(); await screenshot(`${name}-report-applied`);
+    await page.getByRole("heading", { name: "Closing balance", exact: true }).scrollIntoViewIfNeeded();
+    await screenshot(`${name}-report-closing-balance`);
+    const otherCustomer = await customerFilter.locator("option").evaluateAll(options => options.find(option => option.value && option.textContent.includes("Arjun Mehta"))?.value);
+    assert(otherCustomer && otherCustomer !== fixture.customerId);
+    await customerFilter.selectOption(otherCustomer);
+    await page.getByText("Filter changes not applied. Results, pages and downloads still use the applied filters below.", { exact: true }).waitFor();
+    assert.equal(await applied.getByRole("heading").innerText(), "Meera Sharma");
+    for (const [format, href] of Object.entries(exports)) assert.equal(await applied.getByRole("link", { name: `Download ${format.toUpperCase()}`, exact: true }).getAttribute("href"), href);
+    await page.getByRole("button", { name: "Restore applied filters", exact: true }).scrollIntoViewIfNeeded();
+    await screenshot(`${name}-report-unapplied`);
+    await page.getByRole("button", { name: "Restore applied filters", exact: true }).click();
+    assert.equal(await customerFilter.inputValue(), fixture.customerId);
+    assert.equal(reportReads.length, 1, "Draft changes and restore must not query reports");
+    page.off("request", captureReportRead);
+    const reportProof = { nativeInvalidEvents: 1, invalidReportReads: 0, validKeyboardReportReads: reportReads.length, customerId: fixture.customerId, closingBalance: statement.summary.find(item => item.label === "Closing balance").value, appliedDates, exports, draftPreservedAppliedExports: true };
     const menu = mobile ? await openMobileDrawer() : navigation;
     const manage = menu.getByRole("button", { name: "Catalogue", exact: true });
     if (await manage.getAttribute("aria-expanded") === "false") await manage.click();
@@ -104,7 +197,7 @@ await withFixtureCleanup(async () => {
       return { heading: box(heading), firstField: box(title), width: innerWidth, height: innerHeight, headingFocused: document.activeElement === heading, userAgent: navigator.userAgent };
     });
     for (const target of [geometry.heading, geometry.firstField]) assert(target && target.top >= 64 && target.bottom <= geometry.height, "Editor heading and first field must be visible without test scrolling");
-    assert(geometry.headingFocused); report.scenarios.push({ name, geometry, navigation: reachable, settledFixtureContent: { dashboardBooking: true, customer: true } });
+    assert(geometry.headingFocused); report.scenarios.push({ name, geometry, navigation: reachable, settledFixtureContent: { dashboardBooking: true, customer: true, customerIdentity: true }, reportProof });
     await screenshot(`${name}-package-editor`);
     await page.getByLabel("Package title", { exact: true }).fill("Synthetic WebKit draft; not published");
     page.once("dialog", dialog => dialog.dismiss()); await page.getByRole("button", { name: "Close editor", exact: true }).click();
@@ -117,7 +210,7 @@ await withFixtureCleanup(async () => {
   assert.deepEqual(report.errors, [], "No client runtime errors");
   assert.deepEqual(report.blockedRequests, [], "No unexpected external browser traffic");
   if (!report.failure) report.passed = true;
-  console.log("Linux WebKit desktop + iPhone emulation: synthetic auth, real navigation, editor handoff and discard guards passed.");
+  console.log("Linux WebKit desktop + iPhone emulation: synthetic auth, real customer identity, native report validation, scoped statement/export filters, editor handoff and discard guards passed.");
   })(), 240000, "complete WebKit fixture smoke");
  } catch (error) {
   report.failure = String(error);
