@@ -51,42 +51,122 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
         run: node tests/money-complete-journey-browser.mjs
+      - name: Preserve money-complete-journey evidence immediately
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: money-complete-journey-${{ github.sha }}-${{ github.run_id }}
+          path: test-artifacts/money-complete-journey/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Customer import consolidation and public document approval UI lifecycles
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
         run: node tests/customer-data-complete-journey-browser.mjs
+      - name: Preserve customer-data-complete-journey evidence immediately
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-data-complete-journey-${{ github.sha }}-${{ github.run_id }}
+          path: test-artifacts/customer-data-complete-journey/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Tasks and operational settings complete UI lifecycles
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
         run: node tests/operations-complete-journey-browser.mjs
+      - name: Preserve operations-complete-journey evidence immediately
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: operations-complete-journey-${{ github.sha }}-${{ github.run_id }}
+          path: test-artifacts/operations-complete-journey/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Invoice credit traveller and visa checklist UI lifecycles
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
         run: node tests/records-complete-journey-browser.mjs
+      - name: Preserve records-complete-journey evidence immediately
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: records-complete-journey-${{ github.sha }}-${{ github.run_id }}
+          path: test-artifacts/records-complete-journey/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Synthetic staff MFA session and account recovery UI lifecycles
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
         run: node tests/auth-complete-journey-browser.mjs
+      - name: Preserve auth-complete-journey evidence immediately
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-complete-journey-${{ github.sha }}-${{ github.run_id }}
+          path: test-artifacts/auth-complete-journey/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Local provider fixture incoming document UI lifecycle
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
         run: node tests/incoming-media-complete-journey-browser.mjs
+      - name: Preserve incoming-media-complete-journey evidence immediately
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: incoming-media-complete-journey-${{ github.sha }}-${{ github.run_id }}
+          path: test-artifacts/incoming-media-complete-journey/
+          if-no-files-found: warn
+          retention-days: 14
       - name: CSV replacement invalidates stale preview before reading or rejection
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
         run: node tests/customer-import-race-browser.mjs
+      - name: Preserve customer-import-race evidence immediately
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-import-race-${{ github.sha }}-${{ github.run_id }}
+          path: test-artifacts/customer-import-race/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Pending customer import locks consolidation until exact retry resolves
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
         run: node tests/customer-import-pending-browser.mjs
+      - name: Preserve customer-import-pending evidence immediately
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-import-pending-${{ github.sha }}-${{ github.run_id }}
+          path: test-artifacts/customer-import-pending/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Financial documents mobile layout and actual A4 PDF output
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
         run: node tests/financial-document-layout-browser.mjs
+      - name: Preserve financial-document-layout evidence immediately
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: financial-document-layout-${{ github.sha }}-${{ github.run_id }}
+          path: test-artifacts/financial-document-layout/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Empty database first-owner setup and replay protection UI
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
         run: node tests/fresh-setup-complete-journey-browser.mjs
+      - name: Preserve fresh-setup-complete-journey evidence immediately
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: fresh-setup-complete-journey-${{ github.sha }}-${{ github.run_id }}
+          path: test-artifacts/fresh-setup-complete-journey/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Preserve original failures and exact completed-flow evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -3,7 +3,7 @@
 import { enumLabel } from "@/lib/labels";
 import { dateLabel } from "@/lib/dates";
 import { inrAmount } from "@/lib/money";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Icon from "@/components/Icon";
@@ -27,6 +27,22 @@ export default function SuppliersClient({ suppliers, focus, canManage, canViewBo
   const [notice, setNotice] = useState("");
   const [noticeError, setNoticeError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Acknowledgement and refreshed server props arrive separately. Never open another
+  // money form from the old Due snapshot between those two events.
+  const [pendingBalance, setPendingBalance] = useState<{ dueId: string; paidAmount: number; settlementId: string; reversed: boolean } | null>(null);
+  const mutationInFlight = useRef(false);
+  const awaitingBalance = useRef(false);
+  const moneyLocked = () => mutationInFlight.current || awaitingBalance.current;
+  const moneyBusy = busy || pendingBalance !== null;
+  useEffect(() => {
+    if (!pendingBalance) return;
+    const due = suppliers.flatMap(supplier => supplier.dues).find(item => item.id === pendingBalance.dueId);
+    const settlement = due?.settlements.find(item => item.id === pendingBalance.settlementId);
+    if (due && settlement && Math.round(due.paidAmount * 100) === Math.round(pendingBalance.paidAmount * 100) && Boolean(settlement.reversedOn) === pendingBalance.reversed) {
+      awaitingBalance.current = false;
+      setPendingBalance(null);
+    }
+  }, [suppliers, pendingBalance]);
   const [settleTarget, setSettleTarget] = useState<Due | null>(null);
   const [reverseTarget, setReverseTarget] = useState<{ due: Due; settlement: Settlement } | null>(null);
   const report = (message: string, error = false) => { setNotice(error ? "" : message); setNoticeError(error ? message : ""); };
@@ -34,30 +50,38 @@ export default function SuppliersClient({ suppliers, focus, canManage, canViewBo
   const overdue = dues.filter((due) => new Date(due.dueDate).getTime() < Date.now());
 
   async function recordSettlement(payload: { dueId: string; amount: number; method: string; settledOn: string; reference: string; note: string; requestKey: string }) {
+    if (moneyLocked()) return false;
+    mutationInFlight.current = true;
     setBusy(true);
     try {
       const response = await fetch("/api/suppliers/dues", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) { report(data.error ?? "Could not record the supplier payment.", true); return false; }
+      const expectedBalance = { dueId: payload.dueId, paidAmount: data.due.paidAmount, settlementId: data.settlement.id, reversed: Boolean(data.settlement.reversedOn) };
+      awaitingBalance.current = true;
+      setPendingBalance(expectedBalance);
       report("Payment recorded against the payable. No funds were transferred.");
       router.refresh();
       return true;
     } catch { report("Connection failed. Please try again.", true); return false; }
-    finally { setBusy(false); }
+    finally { mutationInFlight.current = false; setBusy(false); }
   }
 
   async function reverseSettlement(reason: string) {
-    if (!reverseTarget) return;
+    if (!reverseTarget || moneyLocked()) return;
+    mutationInFlight.current = true;
     setBusy(true);
     try {
       const response = await fetch("/api/suppliers/dues", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reverse", dueId: reverseTarget.due.id, settlementId: reverseTarget.settlement.id, reason }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) { report(data.error ?? "Could not reverse the settlement.", true); return; }
+      awaitingBalance.current = true;
+      setPendingBalance({ dueId: reverseTarget.due.id, paidAmount: data.paidAmount, settlementId: reverseTarget.settlement.id, reversed: true });
       setReverseTarget(null);
       report("Settlement reversed. The original payment record remains in the audit history.");
       router.refresh();
     } catch { report("Connection failed. Please try again.", true); }
-    finally { setBusy(false); }
+    finally { mutationInFlight.current = false; setBusy(false); }
   }
 
   function openForm(kind: "supplier" | "due" | "edit", due?: Due) { setEditingDue(due ?? null); setFormType(kind); }
@@ -66,6 +90,7 @@ export default function SuppliersClient({ suppliers, focus, canManage, canViewBo
     <PageHeader title="Suppliers & payables" description="Track airline, hotel, platform and service partners, with booking-linked obligations and a complete settlement history." actions={canManage ? <><button className="btn-secondary" disabled={!suppliers.length} onClick={() => openForm("due")}>Add payable</button><button className={suppliers.length ? "btn-primary" : "btn-secondary"} onClick={() => openForm("supplier")}><Icon name="plus" size={16} />New supplier</button></> : undefined} />
     <div className="summary-strip"><StatCard label="Suppliers" value={suppliers.length} icon="suppliers" /><StatCard label="Open payables" value={money(dues.reduce((sum, due) => sum + due.amount - due.paidAmount, 0))} icon="wallet" note="Remaining balance on open payables" /><StatCard label="Overdue payables" value={overdue.length} icon="clock" tone={overdue.length ? "rose" : "neutral"} /></div>
     {notice && <div role="status" className="form-success mb-4">{notice}</div>}{noticeError && <div role="alert" className="form-error mb-4">{noticeError}</div>}
+    {pendingBalance && <div role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">Updating payable balances and payment history. Money actions are paused until the saved change is confirmed on this page. If this takes too long, <button type="button" className="font-semibold underline" onClick={() => window.location.reload()}>Reload balances</button>. Reloading does not record another payment.</div>}
     <div className="mb-5"><SearchInput label="Filter suppliers" placeholder="Search suppliers…" value={q} onChange={setQ} /></div>
     {!suppliers.length ? <EmptyState icon="suppliers" title="No suppliers yet" description="Add real suppliers so your bookings, visa cases and payables stay connected." action={canManage ? "Add your first supplier" : undefined} onAction={() => openForm("supplier")} /> : <div className="space-y-4">
       {suppliers.filter((supplier) => `${supplier.name} ${supplier.city ?? ""}`.toLowerCase().includes(q.toLowerCase())).map((supplier) => {
@@ -75,8 +100,8 @@ export default function SuppliersClient({ suppliers, focus, canManage, canViewBo
         return <article key={supplier.id} className={`panel p-5 ${focus === supplier.id ? "ring-2 ring-teal-200" : ""}`}>
           <div className="flex flex-wrap items-start justify-between gap-4"><div className="flex gap-3"><span className="rounded-xl bg-teal-50 p-3 text-teal-700"><Icon name="suppliers" /></span><div><h2 className="font-semibold">{supplier.name}</h2><p className="mt-1 text-xs text-slate-500">{enumLabel(supplier.type)} · {supplier.city ?? "City not set"}</p><p className="mt-2 text-xs text-slate-500">{supplier.phone ?? "Phone not set"} · Payment terms {supplier.paymentDueDays} days</p></div></div><Status tone={open.length ? "warning" : "neutral"}>{open.length ? `${money(openBalance)} open` : "No open payables"}</Status></div>
           {canManage && <div className="mt-4"><RecordEditor title={`Edit ${supplier.name}`} buttonLabel="Edit supplier" endpoint={`/api/suppliers/${supplier.id}`} values={{ name: supplier.name, type: supplier.type, phone: supplier.phone ?? "", city: supplier.city ?? "", paymentDueDays: String(supplier.paymentDueDays) }} fields={[{ key: "name", label: "Supplier name", required: true }, { key: "type", label: "Supplier type", type: "select", options: TYPES.map((value) => ({ value, label: enumLabel(value) })) }, { key: "phone", label: "Phone", type: "tel" }, { key: "city", label: "City" }, { key: "paymentDueDays", label: "Payment terms (days)", type: "number" }]} /></div>}
-          {!!open.length && <div className="mt-5 space-y-3 border-t border-slate-100 pt-4"><h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Open payables</h3>{open.map((due) => <PayableCard canViewBookings={canViewBookings} key={due.id} due={due} canManage={canManage} busy={busy} onPay={() => setSettleTarget(due)} onEdit={() => openForm("edit", due)} onReverse={(settlement) => setReverseTarget({ due, settlement })} />)}</div>}
-          {!!paid.length && <details className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500"><summary className="cursor-pointer font-medium">Paid history ({paid.length})</summary><div className="mt-3 space-y-3">{paid.map((due) => <PayableCard canViewBookings={canViewBookings} key={due.id} due={due} canManage={canManage} busy={busy} onPay={() => setSettleTarget(due)} onEdit={() => openForm("edit", due)} onReverse={(settlement) => setReverseTarget({ due, settlement })} />)}</div></details>}
+          {!!open.length && <div className="mt-5 space-y-3 border-t border-slate-100 pt-4"><h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Open payables</h3>{open.map((due) => <PayableCard canViewBookings={canViewBookings} key={due.id} due={due} canManage={canManage} busy={moneyBusy} onPay={() => { if (!moneyLocked()) setSettleTarget(due); }} onEdit={() => { if (!moneyLocked()) openForm("edit", due); }} onReverse={(settlement) => { if (!moneyLocked()) setReverseTarget({ due, settlement }); }} />)}</div>}
+          {!!paid.length && <details className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500"><summary className="cursor-pointer font-medium">Paid history ({paid.length})</summary><div className="mt-3 space-y-3">{paid.map((due) => <PayableCard canViewBookings={canViewBookings} key={due.id} due={due} canManage={canManage} busy={moneyBusy} onPay={() => { if (!moneyLocked()) setSettleTarget(due); }} onEdit={() => { if (!moneyLocked()) openForm("edit", due); }} onReverse={(settlement) => { if (!moneyLocked()) setReverseTarget({ due, settlement }); }} />)}</div></details>}
         </article>;
       })}
     </div>}

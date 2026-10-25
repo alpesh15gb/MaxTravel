@@ -288,7 +288,7 @@ async function run() {
     ])
       assert(!moduleHtml.includes(mark), `marketing copy ${mark}`);
     for (const plain of [
-      "Create and track bookings, passengers, PNRs and ticketing deadlines.",
+      "Track flight bookings and manual hotel stays, guests, supplier references and flight ticketing deadlines.",
       "Track applicants, destination requirements, documents and stages.",
       "Document requirements and uploaded files for each traveller.",
       "Invoices, receipts and outstanding balances.",

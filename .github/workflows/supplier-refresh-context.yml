@@ -1,0 +1,68 @@
+name: Supplier acknowledged-write refresh regression
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+    paths:
+      - '.github/workflows/supplier-refresh-context.yml'
+      - 'tests/supplier-refresh-context-browser.mjs'
+      - 'src/app/(app)/suppliers/**'
+      - 'src/app/api/suppliers/**'
+      - 'tests/synthetic-ui-journey-fixture.mjs'
+      - 'tests/visual-review-server.mjs'
+      - 'tests/fixture-lifecycle.mjs'
+      - 'tests/money-complete-journey-browser.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: supplier-refresh-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [baseline, fixed]
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      DATABASE_URL: 'file:./ci.db'
+      JWT_SECRET: 'ci-only-supplier-refresh-no-real-secret-0123456789abcdef'
+      WA_PROVIDER: manual
+      SUPPLIER_REFRESH_BASELINE: ${{ matrix.version == 'baseline' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Reproduce exact pre-fix supplier component with identical fixture
+        if: matrix.version == 'baseline'
+        run: |
+          git show '9bb6fee6ba6fc18911838ee9cc10b91d716c5255:src/app/(app)/suppliers/SuppliersClient.tsx' > "$RUNNER_TEMP/SuppliersClient.tsx"
+          cp "$RUNNER_TEMP/SuppliersClient.tsx" 'src/app/(app)/suppliers/SuppliersClient.tsx'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Held refresh supplier UI proof
+        timeout-minutes: 7
+        run: node tests/supplier-refresh-context-browser.mjs
+      - name: Original complete money lifecycle regression
+        if: matrix.version == 'fixed'
+        timeout-minutes: 7
+        run: node tests/money-complete-journey-browser.mjs
+      - name: Preserve original evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplier-refresh-${{ matrix.version }}-evidence
+          path: |
+            test-artifacts/supplier-refresh-*/
+            test-artifacts/money-complete-journey/
+          if-no-files-found: error
+          retention-days: 14

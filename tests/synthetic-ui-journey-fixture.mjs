@@ -28,7 +28,19 @@ export async function runSyntheticJourney(name,port,work){
    if(login){await page.goto(base+'/login');await page.getByLabel('Work email',{exact:true}).fill('review@visual.test');await page.getByLabel('Password',{exact:true}).fill('Review-Visual-2026!');await page.getByRole('button',{name:'Sign in to workspace',exact:true}).click();await page.waitForURL('**/dashboard');}return {page,context};
   }
   async function capture(page,label){currentPage=page;await page.evaluate(()=>document.fonts.ready);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),label+' overflow');await page.screenshot({path:path.join(out,label+'.png'),fullPage:true,animations:'disabled'});persist();}
-  async function postResult(page,pathname,click,predicate=()=>true){const ready=page.waitForResponse(r=>new URL(r.url()).pathname===pathname&&r.request().method()==='POST'&&predicate((r.request().headers()['content-type']??'').includes('application/json')?r.request().postDataJSON():null));await click();const r=await ready;assert(r.ok(),`${pathname}: ${r.status()} ${await r.text()}`);return r.json();}
+  function observePage(page,phase){currentPage=page;report.phase=phase;persist();}
+  async function postResult(page,pathname,click,predicate=()=>true){
+   const safePath=pathname.replace(/^(\/api\/upload\/)[^/]+$/,'$1[private-capability]');currentPage=page;
+   report.observer={path:safePath,stage:'awaiting UI action and POST response'};persist();
+   // Read once as soon as headers arrive, before a successful UI action navigates.
+   // Handle rejection immediately; a click failure must not leave an orphan waiter.
+   const ready=page.waitForResponse(r=>new URL(r.url()).pathname===pathname&&r.request().method()==='POST'&&predicate((r.request().headers()['content-type']??'').includes('application/json')?r.request().postDataJSON():null),{timeout:20000}).then(async r=>{
+    report.observer={path:safePath,stage:'reading response body',status:r.status()};persist();
+    const body=await within(r.text(),10000,`${safePath} response body`);assert(r.ok(),`${safePath}: ${r.status()} ${body}`);
+    const value=JSON.parse(body);report.observer={path:safePath,stage:'response complete',status:r.status()};persist();return {value};
+   }).catch(error=>({error}));
+   await click();const result=await ready;if(result.error)throw result.error;return result.value;
+  }
   // First request really commits, then loses its acknowledgement. Staff explicitly retries the unchanged form.
   async function lostResponseRetry(page,pathname,button,alert,identity='requestKey'){
    let original,key,calls=0;
@@ -36,8 +48,8 @@ export async function runSyntheticJourney(name,port,work){
    await page.route('**'+pathname,handler);await button.click();await alert.waitFor();assert.equal(calls,1,'No automatic replay');await page.unroute('**'+pathname,handler);
    const result=await postResult(page,pathname,()=>button.click(),body=>{assert.equal(body[identity],key,'Explicit retry uses original identity');return true;});return {original,result,key};
   }
-  await work({base,out,report,db,fixture,session,capture,postResult,lostResponseRetry,check:(label)=>{report.checks.push(label);persist();}});
+  await work({base,out,report,db,fixture,session,capture,postResult,lostResponseRetry,observePage,check:(label)=>{report.checks.push(label);persist();}});
   assert.deepEqual(report.errors,[]);assert.deepEqual(report.blocked,[]);report.passed=true;persist();console.log(`PASS ${name}: ${report.checks.length} complete UI groups`);
- })(),360000,name);}catch(e){report.failure=String(e);persist();if(currentPage)await currentPage.screenshot({path:path.join(out,'failure.png'),timeout:3000,...(/\/(account-security|recover)(?:[?#]|$)/.test(currentPage.url())?{mask:[currentPage.locator('main')]}:{})}).catch(()=>{});throw e;}
+ })(),360000,name);}catch(e){report.failure=String(e);persist();if(currentPage)await currentPage.screenshot({path:path.join(out,'failure.png'),timeout:3000,mask:[currentPage.locator('input[type="password"], code, pre'),...(/\/(account-security|recover)(?:[?#]|$)/.test(currentPage.url())?[currentPage.locator('main')]:[])]}).catch(()=>{});throw e;}
  },async()=>{persist();const errors=[];if(browser)try{await within(browser.close(),3000,'browser close');}catch(e){errors.push(e);}if(db)try{await db.$disconnect();}catch(e){errors.push(e);}if(server.pid){const signal=s=>{try{process.kill(-server.pid,s);return true;}catch(e){if(e.code==='ESRCH')return false;throw e;}};const gone=async ms=>{const end=Date.now()+ms;while(Date.now()<end){if(!signal(0))return;await new Promise(r=>setTimeout(r,100));}if(signal(0))throw Error('Owned fixture still alive');};try{if(signal('SIGTERM'))try{await gone(3000);}catch{signal('SIGKILL');await gone(2000);}}catch(e){errors.push(e);}}if(errors.length)throw new AggregateError(errors,'Fixture cleanup incomplete');process.removeListener('exit',stopOwnedOnExit);},e=>{report.passed=false;report.cleanupFailure=String(e);persist();});
 }
