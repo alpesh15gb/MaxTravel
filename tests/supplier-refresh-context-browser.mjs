@@ -24,7 +24,7 @@ await runSyntheticJourney(`supplier-refresh-${baseline?'baseline':'fixed'}`,3404
     }})();completions.push(completed);await completed;
    };
    await page.route('**/suppliers?*',handler);
-   return {started:()=>within(started,10000,'post-write supplier RSC read must start'),expectReload:()=>{expectReloadCancellation=true;},release:async()=>{release();await page.unroute('**/suppliers?*',handler);await Promise.all(completions);},count:()=>held};
+   return {started:()=>within(started,10000,'post-write supplier RSC read must start'),expectReload:()=>{expectReloadCancellation=true;},release:async()=>{release();await within(Promise.all(completions),10000,'held supplier read continuation');await page.unroute('**/suppliers?*',handler);},count:()=>held};
   }
   await card.getByRole('button',{name:'Record payment',exact:true}).click();dialog=page.getByRole('dialog',{name:'Record a supplier payment',exact:true});await dialog.getByRole('spinbutton',{name:/^Amount \(INR\)/}).fill('100.25');
   const partialHold=await holdRefresh();await postResult(page,'/api/suppliers/dues',()=>dialog.getByRole('button',{name:'Record payment',exact:true}).click());await dialog.waitFor({state:'hidden'});await partialHold.started();

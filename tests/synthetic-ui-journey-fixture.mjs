@@ -29,12 +29,13 @@ export async function runSyntheticJourney(name,port,work){
   }
   async function capture(page,label){currentPage=page;await page.evaluate(()=>document.fonts.ready);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),label+' overflow');await page.screenshot({path:path.join(out,label+'.png'),fullPage:true,animations:'disabled'});persist();}
   function observePage(page,phase){currentPage=page;report.phase=phase;persist();}
-  async function postResult(page,pathname,click,predicate=()=>true){
+  async function postResult(page,pathname,click,predicate=()=>true,readBody=true){
    const safePath=pathname.replace(/^(\/api\/upload\/)[^/]+$/,'$1[private-capability]');currentPage=page;
    report.observer={path:safePath,stage:'awaiting UI action and POST response'};persist();
    // Read once as soon as headers arrive, before a successful UI action navigates.
    // Handle rejection immediately; a click failure must not leave an orphan waiter.
    const ready=page.waitForResponse(r=>new URL(r.url()).pathname===pathname&&r.request().method()==='POST'&&predicate((r.request().headers()['content-type']??'').includes('application/json')?r.request().postDataJSON():null),{timeout:20000}).then(async r=>{
+    if(!readBody){assert(r.ok(),`${safePath}: ${r.status()}`);report.observer={path:safePath,stage:'response complete (status-only; UI and DB assertions follow)',status:r.status()};persist();return {value:null};}
     report.observer={path:safePath,stage:'reading response body',status:r.status()};persist();
     const body=await within(r.text(),10000,`${safePath} response body`);assert(r.ok(),`${safePath}: ${r.status()} ${body}`);
     const value=JSON.parse(body);report.observer={path:safePath,stage:'response complete',status:r.status()};persist();return {value};
