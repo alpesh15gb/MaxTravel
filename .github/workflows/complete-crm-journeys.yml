@@ -39,6 +39,14 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
         run: node tests/money-complete-journey-browser.mjs
+      - name: Customer import consolidation and public document approval UI lifecycles
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 7
+        run: node tests/customer-data-complete-journey-browser.mjs
+      - name: Tasks and operational settings complete UI lifecycles
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 7
+        run: node tests/operations-complete-journey-browser.mjs
       - name: Preserve original failures and exact completed-flow evidence
         if: always()
         uses: actions/upload-artifact@v4
