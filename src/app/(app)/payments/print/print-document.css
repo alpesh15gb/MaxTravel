@@ -24,6 +24,9 @@ main .financial-document-header > div { min-width: 0; }
      issuer heading must not be split across sheets. Repeated table headers help
      invoices with multiple recorded receipts continue onto another page. */
   main .financial-document table { table-layout: auto; }
+  /* Long references may wrap, but must not squeeze paper field labels into
+     single syllables. This does not alter multi-column receipt history. */
+  main .financial-document-details td:first-child { width: 32%; overflow-wrap: normal; }
   main .financial-document-header,
   main .financial-document tr { break-inside: avoid; }
   main .financial-document thead { display: table-header-group; }
