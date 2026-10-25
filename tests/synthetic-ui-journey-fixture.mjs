@@ -12,15 +12,17 @@ export async function runSyntheticJourney(name,port,work){
  const report={scope:'Synthetic real UI and disposable SQLite; no provider delivery, real money or production data',checks:[],errors:[],blocked:[],passed:false};
  let logs='',spawnError='',browser,db,fixture,currentPage;
  const server=spawn(process.execPath,['tests/visual-review-server.mjs'],{detached:true,stdio:['ignore','pipe','pipe'],env:{...process.env,REVIEW_PORT:String(port),REVIEW_DEV:'0',APP_ORIGIN:base,WA_PROVIDER:'manual'}});
+ // Exit hook is synchronous and targets only this detached process group; errors still fail normally.
+ const stopOwnedOnExit=()=>{if(server.pid)try{process.kill(-server.pid,'SIGKILL');}catch{}};process.once('exit',stopOwnedOnExit);
  server.stdout.on('data',v=>logs+=v);server.stderr.on('data',v=>logs+=v);server.on('error',e=>spawnError=String(e));
- const persist=()=>{fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2));fs.writeFileSync(path.join(out,'server.log'),logs);};
+ const persist=()=>{fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2));fs.writeFileSync(path.join(out,'server.log'),logs.replace(/^Review login:.*$/gm,'Review login: [synthetic credentials redacted]'));};
  await withFixtureCleanup(async()=>{try{await within((async()=>{
   for(let i=0;i<160;i++){assert(!spawnError&&server.exitCode===null&&server.signalCode===null,`Fixture exited ${spawnError}\n${logs}`);if(logs.includes('VISUAL REVIEW READY')&&fs.existsSync(metadata)){fixture=JSON.parse(fs.readFileSync(metadata,'utf8'));break;}await new Promise(r=>setTimeout(r,500));}
   assert(fixture&&fixture.base===base&&fixture.runtime.startsWith(path.resolve('tests/.runtime')+path.sep));db=new PrismaClient({datasources:{db:{url:`file:${path.join(fixture.runtime,'test.db')}`}}});
   browser=await chromium.launch({headless:true,timeout:30000});report.engine=browser.browserType().name();report.version=browser.version();
   async function session(width,login=true){
    const context=await browser.newContext({viewport:{width,height:width===1440?1000:844},timezoneId:'Asia/Kolkata',locale:'en-IN',serviceWorkers:'block'});context.setDefaultTimeout(15000);context.setDefaultNavigationTimeout(30000);
-   await context.route('**/*',r=>{const u=new URL(r.request().url());if(u.origin===base)return r.continue();report.blocked.push({origin:u.origin,path:u.pathname});return r.abort('blockedbyclient');});
+   await context.route(url=>url.origin!==base,r=>{const u=new URL(r.request().url());report.blocked.push({origin:u.origin,path:u.pathname});return r.abort('blockedbyclient');});
    await context.routeWebSocket('**/*',s=>{report.blocked.push({transport:'websocket'});return s.close({code:1008,reason:'Isolated fixture'});});
    const page=await context.newPage();currentPage=page;page.on('pageerror',e=>report.errors.push(e.message));
    if(login){await page.goto(base+'/login');await page.getByLabel('Work email',{exact:true}).fill('review@visual.test');await page.getByLabel('Password',{exact:true}).fill('Review-Visual-2026!');await page.getByRole('button',{name:'Sign in to workspace',exact:true}).click();await page.waitForURL('**/dashboard');}return {page,context};
@@ -36,6 +38,6 @@ export async function runSyntheticJourney(name,port,work){
   }
   await work({base,out,report,db,fixture,session,capture,postResult,lostResponseRetry,check:(label)=>{report.checks.push(label);persist();}});
   assert.deepEqual(report.errors,[]);assert.deepEqual(report.blocked,[]);report.passed=true;persist();console.log(`PASS ${name}: ${report.checks.length} complete UI groups`);
- })(),360000,name);}catch(e){report.failure=String(e);persist();if(currentPage)await currentPage.screenshot({path:path.join(out,'failure.png'),timeout:3000}).catch(()=>{});throw e;}
- },async()=>{persist();const errors=[];if(browser)try{await within(browser.close(),3000,'browser close');}catch(e){errors.push(e);}if(db)try{await db.$disconnect();}catch(e){errors.push(e);}if(server.pid){const signal=s=>{try{process.kill(-server.pid,s);return true;}catch(e){if(e.code==='ESRCH')return false;throw e;}};const gone=async ms=>{const end=Date.now()+ms;while(Date.now()<end){if(!signal(0))return;await new Promise(r=>setTimeout(r,100));}if(signal(0))throw Error('Owned fixture still alive');};try{if(signal('SIGTERM'))try{await gone(3000);}catch{signal('SIGKILL');await gone(2000);}}catch(e){errors.push(e);}}if(errors.length)throw new AggregateError(errors,'Fixture cleanup incomplete');},e=>{report.passed=false;report.cleanupFailure=String(e);persist();});
+ })(),360000,name);}catch(e){report.failure=String(e);persist();if(currentPage)await currentPage.screenshot({path:path.join(out,'failure.png'),timeout:3000,...(/\/(account-security|recover)(?:[?#]|$)/.test(currentPage.url())?{mask:[currentPage.locator('main')]}:{})}).catch(()=>{});throw e;}
+ },async()=>{persist();const errors=[];if(browser)try{await within(browser.close(),3000,'browser close');}catch(e){errors.push(e);}if(db)try{await db.$disconnect();}catch(e){errors.push(e);}if(server.pid){const signal=s=>{try{process.kill(-server.pid,s);return true;}catch(e){if(e.code==='ESRCH')return false;throw e;}};const gone=async ms=>{const end=Date.now()+ms;while(Date.now()<end){if(!signal(0))return;await new Promise(r=>setTimeout(r,100));}if(signal(0))throw Error('Owned fixture still alive');};try{if(signal('SIGTERM'))try{await gone(3000);}catch{signal('SIGKILL');await gone(2000);}}catch(e){errors.push(e);}}if(errors.length)throw new AggregateError(errors,'Fixture cleanup incomplete');process.removeListener('exit',stopOwnedOnExit);},e=>{report.passed=false;report.cleanupFailure=String(e);persist();});
 }

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import {runSyntheticJourney} from './synthetic-ui-journey-fixture.mjs';
-await runSyntheticJourney('customer-data-complete-journey',3383,async({base,db,fixture,session,capture,postResult,lostResponseRetry,check})=>{
+await runSyntheticJourney('customer-data-complete-journey',3393,async({base,db,fixture,session,capture,postResult,lostResponseRetry,check})=>{
  for(const width of [1440,390]){
   const {page,context}=await session(width);await page.goto(base+'/customer-tools');
-  await page.getByLabel('CSV content',{exact:true}).fill('wrong,headers\ninvalid,row');await page.getByRole('button',{name:'Validate & preview',exact:true}).click();await page.getByRole('alert').waitFor();assert.equal(await page.getByRole('button',{name:'Import these customers',exact:true}).count(),0);
+  await page.getByLabel('CSV content',{exact:true}).fill('wrong,headers\ninvalid,row');const invalid=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/customers/import'&&r.request().method()==='POST');await page.getByRole('button',{name:'Validate & preview',exact:true}).click();assert.equal((await invalid).status(),400);await page.getByRole('alert').waitFor();assert.equal(await page.getByRole('button',{name:'Import these customers',exact:true}).count(),0);
   const sourceName=`Synthetic import source ${width}`,targetName=`Synthetic import retained ${width}`;
   const csv=`name,phone,email,city\n${sourceName},+91980000${String(width).padStart(4,'0')},source-${width}@example.test,Test\n${targetName},+91990000${String(width).padStart(4,'0')},target-${width}@example.test,Test`;
   await page.getByLabel('CSV file',{exact:true}).setInputFiles({name:'synthetic-customers.csv',mimeType:'text/csv',buffer:Buffer.from(csv)});
+  await page.waitForFunction(expected=>document.querySelector('textarea')?.value===expected,csv);
   await postResult(page,'/api/customers/import',()=>page.getByRole('button',{name:'Validate & preview',exact:true}).click(),b=>b.action==='preview');await page.getByText('2 valid rows · 0 contact duplicates',{exact:true}).waitFor();assert.equal(await db.customer.count({where:{name:{in:[sourceName,targetName]}}}),0,'Preview must not create');
   const imported=await lostResponseRetry(page,'/api/customers/import',page.getByRole('button',{name:'Import these customers',exact:true}),page.getByRole('alert'),'requestId');assert.equal(imported.result.replayed,true);assert.equal(await db.customer.count({where:{name:{in:[sourceName,targetName]}}}),2);await page.getByRole('status').getByText('Imported 2 customers. Automatic WhatsApp consent is off for imported records.',{exact:true}).waitFor();
   const source=await db.customer.findFirstOrThrow({where:{name:sourceName}}),target=await db.customer.findFirstOrThrow({where:{name:targetName}});assert.equal(source.whatsappOptIn,false);assert.equal(target.whatsappOptIn,false);const movedIds=(await db.traveller.findMany({where:{customerId:source.id}})).map(t=>t.id);assert(movedIds.length);

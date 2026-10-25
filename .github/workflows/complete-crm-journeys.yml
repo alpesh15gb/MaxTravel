@@ -8,7 +8,13 @@ on:
       - 'tests/synthetic-ui-journey-fixture.mjs'
       - 'tests/money-complete-journey-browser.mjs'
       - 'tests/customer-data-complete-journey-browser.mjs'
+      - 'tests/customer-import-race-browser.mjs'
+      - 'tests/customer-import-pending-browser.mjs'
       - 'tests/operations-complete-journey-browser.mjs'
+      - 'tests/records-complete-journey-browser.mjs'
+      - 'tests/auth-complete-journey-browser.mjs'
+      - 'tests/incoming-media-complete-journey-browser.mjs'
+      - 'tests/incoming-media-provider-preload.mjs'
 permissions:
   contents: read
 concurrency:
@@ -17,7 +23,7 @@ concurrency:
 jobs:
   journeys:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
     env:
       NEXT_TELEMETRY_DISABLED: '1'
       DATABASE_URL: 'file:./ci.db'
@@ -47,6 +53,26 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
         run: node tests/operations-complete-journey-browser.mjs
+      - name: Invoice credit traveller and visa checklist UI lifecycles
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 7
+        run: node tests/records-complete-journey-browser.mjs
+      - name: Synthetic staff MFA session and account recovery UI lifecycles
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 7
+        run: node tests/auth-complete-journey-browser.mjs
+      - name: Local provider fixture incoming document UI lifecycle
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 7
+        run: node tests/incoming-media-complete-journey-browser.mjs
+      - name: CSV replacement invalidates stale preview before reading or rejection
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 7
+        run: node tests/customer-import-race-browser.mjs
+      - name: Pending customer import locks consolidation until exact retry resolves
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 7
+        run: node tests/customer-import-pending-browser.mjs
       - name: Preserve original failures and exact completed-flow evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -55,6 +81,11 @@ jobs:
           path: |
             test-artifacts/money-complete-journey/
             test-artifacts/customer-data-complete-journey/
+            test-artifacts/customer-import-race/
+            test-artifacts/customer-import-pending/
             test-artifacts/operations-complete-journey/
+            test-artifacts/records-complete-journey/
+            test-artifacts/auth-complete-journey/
+            test-artifacts/incoming-media-complete-journey/
           if-no-files-found: warn
           retention-days: 14
