@@ -1,30 +1,79 @@
 import type { AccountReport } from "./account-reports";
 import path from "node:path";
+import { enumLabel } from "./labels";
+import { csvDocument } from "./csv-export";
 
 const PDF_COLORS:Record<"ink"|"muted"|"surface"|"line",[number,number,number]>={ink:[24,45,59],muted:[83,100,116],surface:[237,243,245],line:[220,229,232]};
+const exportValue=(row:AccountReport["rows"][number],key:string)=>{
+ const value=row[key];
+ return key==="status"&&typeof value==="string"&&/^[A-Z]+(?:_[A-Z]+)*$/.test(value)?enumLabel(value):value;
+};
 const money=(v:number)=>`INR ${v.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-const csvCell=(value:unknown)=>{let text=String(value??"");if(typeof value==="string"&&/^\s*[=+\-@\t\r]/.test(text))text="'"+text;return '"'+text.replaceAll('"','""')+'"';};
 export function accountCsv(r:AccountReport){
- const rows:unknown[][]=[[r.agency,r.title],["Basis",r.description],["Date basis",r.metadata.dateBasis],["Calendar","Asia/Kolkata (UTC+05:30); inclusive end day"],["Period",r.period.from,r.period.to],["Account",r.party?.name??r.metadata.account],["Currency",r.metadata.currency],["Scope",r.metadata.scope],...r.metadata.filters.map(f=>[f.label,f.value]),["Generated",r.generatedAt],...[...r.summary].map(s=>[s.label,s.value]),[],r.columns.map(c=>c.label),...r.rows.map(row=>r.columns.map(c=>row[c.key])),[],["Definitions"],...r.warnings.map(w=>[w])];
- return "\uFEFF"+rows.map(row=>row.map(csvCell).join(",")).join("\r\n");
+ completeReport(r);
+ const rows:unknown[][]=[[r.agency,r.title],["Basis",r.description],["Date basis",r.metadata.dateBasis],["Calendar","Asia/Kolkata (UTC+05:30); inclusive end day"],["Period",r.period.from,r.period.to],["Account",r.metadata.account],["Currency",r.metadata.currency],["Scope",r.metadata.scope],...r.metadata.filters.map(f=>[f.label,f.value]),["Generated (UTC)",r.generatedAt],["Exported rows",r.rows.length],...[...r.summary].map(s=>[s.label,s.value]),[],r.columns.map(c=>c.label),...r.rows.map(row=>r.columns.map(c=>exportValue(row,c.key))),[],["Definitions"],...r.warnings.map(w=>[w])];
+ return csvDocument(rows);
 }
+const EXCEL_MONEY = '"INR "#,##0.00;[Red]-"INR "#,##0.00';
+const DATE_KEYS = new Set(["date", "due", "booked", "travel", "deadline", "supplierReceived"]);
+// Report dates are already India-calendar days. Excel stores a calendar date without a timezone.
+function excelDay(value: unknown): Date | null {
+ if(typeof value!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(value))return null;
+ const date=new Date(`${value}T00:00:00.000Z`);
+ return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===value?date:null;
+}
+function completeReport(r:AccountReport){
+ if(r.rows.length!==r.totalRows)throw new Error("Export requires the full report, not a preview page. Reload the report and try again.");
+}
+
 export async function accountWorkbook(r:AccountReport){
- const {default:ExcelJS}=await import("exceljs");const book=new ExcelJS.Workbook();book.creator=r.agency;
- const summary=book.addWorksheet("Report details");
- summary.columns=[{width:38},{width:95}];summary.addRows([[r.agency,r.title],["Basis",r.description],["Date basis",r.metadata.dateBasis],["Calendar","Asia/Kolkata (UTC+05:30); inclusive end day"],["From",r.period.from],["Through",r.period.to],["Account",r.party?.name??r.metadata.account],["Currency",r.metadata.currency],["Scope",r.metadata.scope],...r.metadata.filters.map(f=>[f.label,f.value]),["Generated",r.generatedAt],...r.summary.map(s=>[s.label,s.value]),[],...r.warnings.map(w=>["Definition",w])]);
- summary.eachRow(row=>{row.alignment={vertical:"top",wrapText:true};});
- const sheet=book.addWorksheet("Transactions",{views:[{state:"frozen",ySplit:1}]});
- sheet.columns=r.columns.map(c=>({header:c.label,key:c.key,width:c.money?22:c.key==="description"?65:28}));
- for(const row of r.rows)sheet.addRow(r.columns.map(c=>row[c.key]??null));
+ completeReport(r);
+ const {default:ExcelJS}=await import("exceljs");
+ const book=new ExcelJS.Workbook();book.creator=r.agency;book.title=r.title;
+ book.created=new Date(r.generatedAt);book.modified=new Date(r.generatedAt);
+ const summary=book.addWorksheet("Report details",{views:[{state:"normal",showGridLines:false}]});
+ summary.columns=[{width:42},{width:95}];
+ summary.addRows([[r.agency,r.title],["Basis",r.description],["Date basis",r.metadata.dateBasis],["Calendar","Asia/Kolkata (UTC+05:30); inclusive end day"],["From",excelDay(r.period.from)??r.period.from],["Through",excelDay(r.period.to)??r.period.to],["Account",r.metadata.account],["Currency",r.metadata.currency],["Scope",r.metadata.scope],...r.metadata.filters.map(f=>[f.label,f.value]),["Generated (UTC)",new Date(r.generatedAt)],["Exported rows",r.rows.length],["Coverage",r.rows.length?"All matching rows in the permitted scope, not only the screen page.":"No matching rows in the permitted scope."],...(r.columns.some(c=>c.money)?[["Blank monetary cells","Not recorded or not applicable; not zero. See coverage and definitions."]]:[]),[],["Summary","Value"]]);
+ for(const item of r.summary){const row=summary.addRow([item.label,item.value]);row.getCell(2).numFmt=item.money?EXCEL_MONEY:"#,##0";}
+ summary.addRow([]);
+ for(const warning of r.warnings)summary.addRow(["Definition",warning]);
+ summary.eachRow(row=>{
+  row.font={name:"Arial",size:10,color:{argb:"FF182D3B"}};
+  row.alignment={vertical:"top",wrapText:true};
+  row.getCell(1).font={...row.font,bold:true};
+  row.height=Math.max(24,...(Array.isArray(row.values)?row.values.map((v,i)=>Math.ceil(String(v??"").length/(i===1?37:88))*15+10):[24]));
+  row.eachCell(cell=>{if(cell.value instanceof Date)cell.numFmt=String(row.getCell(1).value).startsWith("Generated")?'yyyy-mm-dd hh:mm:ss "UTC"':"dd mmm yyyy";});
+  if(row.getCell(1).value==="Summary"){row.eachCell(cell=>{cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFEDF3F5"}};});row.font={name:"Arial",size:10,bold:true};}
+ });
+ summary.getRow(1).font={name:"Arial",size:14,bold:true,color:{argb:"FF123647"}};summary.getRow(1).height=32;
+ summary.pageSetup={paperSize:9,orientation:"portrait",fitToPage:true,fitToWidth:1,fitToHeight:0};
+ const sheet=book.addWorksheet("Transactions",{views:[{state:"frozen",ySplit:1,xSplit:Math.min(2,r.columns.length),showGridLines:false}]});
+ sheet.columns=r.columns.map(c=>({header:c.label,key:c.key,width:c.money?24:c.key==="description"?65:DATE_KEYS.has(c.key)?19:30}));
+ for(const row of r.rows)sheet.addRow(r.columns.map(c=>DATE_KEYS.has(c.key)?excelDay(row[c.key])??row[c.key]??null:exportValue(row,c.key)??null));
  sheet.autoFilter={from:{row:1,column:1},to:{row:Math.max(1,sheet.rowCount),column:r.columns.length}};
- sheet.getRow(1).font={bold:true,color:{argb:"FFFFFFFF"}};sheet.getRow(1).fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF123647"}};
- r.columns.forEach((c,i)=>{if(c.money)sheet.getColumn(i+1).numFmt='"INR "#,##0.00;[Red]-"INR "#,##0.00';});
- sheet.eachRow(row=>{row.alignment={vertical:"top",wrapText:true};});
+ r.columns.forEach((c,i)=>{sheet.getColumn(i+1).numFmt=c.money?EXCEL_MONEY:DATE_KEYS.has(c.key)?"dd mmm yyyy":"General";});
+ sheet.eachRow((row,n)=>{
+  row.font={name:"Arial",size:10,color:{argb:"FF182D3B"}};
+  row.alignment={vertical:"top",wrapText:true};
+  let lines=1;
+  row.eachCell((cell,i)=>{
+   cell.alignment={vertical:"top",wrapText:true,horizontal:r.columns[i-1].money?"right":"left",indent:1};
+   if(typeof cell.value==="string")lines=Math.max(lines,...cell.value.split(/\r?\n/).map(line=>Math.ceil(line.length/((sheet.getColumn(i).width??28)-3))));
+  });
+  row.height=Math.min(409,Math.max(26,lines*15+10));
+  if(n>1&&n%2===0)row.eachCell({includeEmpty:true},cell=>{cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF3F6F8"}};});
+ });
+ const header=sheet.getRow(1);header.height=44;
+ header.font={name:"Arial",size:10,bold:true,color:{argb:"FFFFFFFF"}};
+ header.eachCell(cell=>{cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF123647"}};cell.alignment={vertical:"middle",horizontal:"center",wrapText:true};});
+ sheet.pageSetup={paperSize:9,orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:"1:1"};
+ sheet.headerFooter={oddFooter:"&L"+r.title.replaceAll("&","&&")+"&RPage &P of &N"};
  return Buffer.from(await book.xlsx.writeBuffer());
 }
 
 /** A4 statement with measured rows, repeated headings, page numbers and carried balance. */
 export async function accountPdf(r:AccountReport):Promise<Buffer>{
+ completeReport(r);
  const {default:PDFDocument}=await import("pdfkit");
  const doc=new PDFDocument({size:"A4",margin:38,bufferPages:true,info:{Title:r.title,Author:r.agency}});
  const chunks:Buffer[]=[];const done=new Promise<Buffer>((resolve,reject)=>{doc.on("data",c=>chunks.push(c));doc.on("end",()=>resolve(Buffer.concat(chunks)));doc.on("error",reject);});

@@ -9,7 +9,7 @@ import { dateLabel, dateTimeLabel } from "@/lib/dates";
 import { enumLabel } from "@/lib/labels";
 import EnquiryCustomerPicker from "./EnquiryCustomerPicker";
 import {
-  SALES_STAGES, quoteExplanation, canPublishQuote, canStartQuote, hasPublishedShare, privateLinkGuidance, replacementQuoteAction,
+  SALES_STAGES, hasConflictingAcceptedQuotes, enquiryNextStep, quoteExpiryLabel, quoteExplanation, canPublishQuote, canStartQuote, hasPublishedShare, privateLinkGuidance, replacementQuoteAction,
   type SalesLead, type SalesCustomer,
 } from "./sales-workspace";
 
@@ -94,6 +94,7 @@ export default function SalesClient({ initialLeadId }: { initialLeadId?: string 
   const shareInput = useRef<HTMLInputElement>(null);
   const shareHeading = useRef<HTMLHeadingElement>(null);
   const selected = data?.leads.find(lead => lead.id === selectedId);
+  const nextStep = selected ? enquiryNextStep(selected) : null;
   const locked = busy || customerPending || uncertain || loading || recoveryBusy || Boolean(retainedDraft && retainedDraft.phase !== "editing");
   // Every sales POST also requires customer:edit. Do not offer an action the API forbids.
   const canQuote = Boolean(data?.canEdit && data.canQuote);
@@ -598,19 +599,28 @@ export default function SalesClient({ initialLeadId }: { initialLeadId?: string 
           {view !== "new" && view !== "list" && !selected && <p>This enquiry is no longer in the loaded view. Return to the enquiry list or refresh your permitted records.</p>}
           {selected && view === "lead" && <>
             <div className="sales-record-header space-y-3"><div className="flex flex-wrap items-center gap-2"><span className="pill">{enumLabel(selected.stage)}</span><span className="text-sm">{enumLabel(selected.product)}</span></div>
-              <h2 {...headingProps}>{selected.title}</h2><p className="text-sm text-slate-600">{customerName(selected.customerId)} · {selected.source}</p>
+              <h2 {...headingProps}>{selected.title}</h2><p className="text-sm text-slate-600">{customerName(selected.customerId)} · {data.customers.find(customer => customer.id === selected.customerId)?.code ?? "Customer code unavailable"} · {selected.source}</p>
               <div className="sales-actions flex flex-wrap gap-2">{canQuote && canStartQuote(selected) && <button className={selected.quotes.length ? "btn" : "btn btn-primary"} disabled={locked} onClick={() => open("quote")}>New quote version</button>}<Link className="btn" href={`/customers/${selected.customerId}`}>Open customer</Link></div>
             </div>
+            {nextStep && <section className="mt-5 rounded-xl border bg-slate-50 p-4 space-y-2" aria-label="Enquiry next step">
+              <p className="sales-eyebrow text-sm font-semibold">Next step · based on the loaded record</p>
+              <h3 className="font-semibold">{nextStep.title}</h3><p className="text-sm text-slate-600">{nextStep.detail}</p>
+              {selected.stage === "LOST" && <p className="text-sm whitespace-pre-wrap break-words">Lost reason: {selected.lostReason || "Not recorded"}</p>}
+              {nextStep.quoteId && <button type="button" className="btn" disabled={locked} onClick={() => {
+                const target = document.getElementById(`sales-quote-${nextStep.quoteId}`);
+                target?.focus({ preventScroll: true }); target?.scrollIntoView({ block: "start", behavior: "instant" });
+              }}>Review quote v{nextStep.version}</button>}
+            </section>}
             <dl className="sales-summary grid gap-4 py-5 sm:grid-cols-2"><div><dt className="text-sm text-slate-600">Destination / route</dt><dd className="font-medium">{selected.destination || "Not recorded"}</dd></div><div><dt className="text-sm text-slate-600">Next follow-up</dt><dd className="font-medium">{selected.followUpAt ? dateTimeLabel(selected.followUpAt) : "Not set"}</dd></div><div><dt className="text-sm text-slate-600">Travel date</dt><dd className="font-medium">{selected.travelDate ? dateLabel(selected.travelDate) : "Not recorded"}</dd></div>{selected.budgetMinor !== null && selected.budgetMinor !== undefined && <div><dt className="text-sm text-slate-600">Customer budget</dt><dd className="font-medium">{money(selected.budgetMinor)}</dd></div>}</dl>{selected.notes && <section className="mb-5 space-y-2"><h3 className="font-semibold">Enquiry notes</h3><p className="whitespace-pre-wrap break-words text-sm">{selected.notes}</p></section>}
             {data.canEdit && selected.stage !== "WON" && <details className="border-y py-4"><summary className="cursor-pointer font-semibold">Update stage / follow-up</summary><form key={`${selected.id}:${selected.stage}:${selected.followUpAt}:${focusRequest}:${stageFormRevision}`} className="mt-4 space-y-4" onChange={() => setDirty(true)} onSubmit={async event => {
               event.preventDefault(); const form = new FormData(event.currentTarget); const follow = String(form.get("follow") ?? "");
-              await action({ action: "stage", leadId: selected.id, stage: form.get("stage"), lostReason: form.get("reason"), followUpAt: follow ? new Date(follow).toISOString() : null });
+              await action({ action: "stage", leadId: selected.id, baseRevision: selected.baseRevision, stage: form.get("stage"), lostReason: form.get("reason"), followUpAt: follow ? new Date(follow).toISOString() : null });
             }}><fieldset disabled={locked} className="sales-editor-grid grid gap-4 sm:grid-cols-2"><div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-stage">Enquiry stage</label><select id="sales-stage" className="control mt-1" name="stage" defaultValue={selected.stage}>{SALES_STAGES.filter(stage => stage !== "WON").map(stage => <option key={stage} value={stage}>{enumLabel(stage)}</option>)}</select></div><div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-next-follow-up">Next follow-up</label><input id="sales-next-follow-up" className="control mt-1" name="follow" type="datetime-local" defaultValue={localDateTime(selected.followUpAt)} /></div><div className="field text-sm font-medium sm:col-span-2"><label className="field-label" htmlFor="sales-lost-reason">Lost reason (required for Lost)</label><input id="sales-lost-reason" className="control mt-1" name="reason" maxLength={500} defaultValue={selected.lostReason ?? ""} /></div><button className="btn justify-self-start">Save stage / follow-up</button></fieldset></form></details>}
             <div className="mt-6 mb-4"><h3 className="text-lg font-semibold">Quotation history</h3><p className="text-sm text-slate-600">Drafts stay private. Publishing creates a private customer proposal, not a public package.</p></div>
             {!selected.quotes.length && <p className="py-4 text-slate-600">No quotations yet. Prepare the first version when the request is ready.</p>}
             <div className="sales-quote-list space-y-4">{selected.quotes.map(quote => <article key={quote.id} className="sales-quote rounded-xl border p-4 space-y-3">
               <div className="flex flex-wrap justify-between gap-2"><h4 id={`sales-quote-${quote.id}`} tabIndex={-1} className="font-semibold scroll-mt-24">Quote v{quote.version} · {enumLabel(quote.state)}</h4><span className="font-semibold tabular-nums">{money(quote.totalMinor)}</span></div>
-              <p className="text-sm">{quoteExplanation(quote)}</p><p className="text-sm text-slate-600">Valid until {dateTimeLabel(quote.expiresAt)}{new Date(quote.expiresAt).getTime() <= Date.now() ? " · Expired" : ""}</p>
+              <p className="text-sm">{quoteExplanation(quote)}</p><p className="text-sm text-slate-600">{quoteExpiryLabel(quote)} {dateTimeLabel(quote.expiresAt)}</p>
               {canQuote && <p className="text-sm text-slate-600">Cost {money(quote.costMinor)} · Margin {money(quote.totalMinor !== null && quote.costMinor !== null ? quote.totalMinor - quote.costMinor : null)}</p>}
               {(!share || shareQuoteId !== quote.id) && privateLinkGuidance(selected, quote, canQuote) && <aside className="rounded-lg bg-slate-50 p-3 space-y-2" aria-label={`Private link guidance for quote v${quote.version}`}>
                 <h5 className="font-semibold">Need the private proposal link?</h5><p className="text-sm">Earlier links cannot be retrieved. Losing a link does not withdraw the proposal.</p>
@@ -626,11 +636,11 @@ export default function SalesClient({ initialLeadId }: { initialLeadId?: string 
               <div className="sales-actions flex flex-wrap gap-2">{canQuote && quote.state === "DRAFT" && <button className="btn btn-primary" disabled={locked || !canPublishQuote(selected, quote)} onClick={() => {
                 if (window.confirm("Publish this private proposal? Any earlier published proposal link will stop working.")) void action({ action: "publish", leadId: selected.id, quoteId: quote.id });
               }}>Publish private proposal</button>}
-                {canQuote && data.canConvert && quote.state === "ACCEPTED" && !quote.bookingId && <button className="btn btn-primary" disabled={locked || ["WON", "LOST"].includes(selected.stage)} onClick={() => void action({ action: "convert", leadId: selected.id, quoteId: quote.id })}>Create CRM booking from accepted quote</button>}
+                {canQuote && data.canConvert && quote.state === "ACCEPTED" && !quote.bookingId && <button className="btn btn-primary" disabled={locked || hasConflictingAcceptedQuotes(selected) || ["WON", "LOST"].includes(selected.stage)} onClick={() => void action({ action: "convert", leadId: selected.id, quoteId: quote.id })}>Create CRM booking from accepted quote</button>}
                 {quote.state === "ACCEPTED" && !quote.bookingId && selected.stage === "LOST" && <p className="text-sm">Reopen this enquiry before creating a CRM booking.</p>}
                 {quote.state === "ACCEPTED" && !quote.bookingId && selected.stage === "WON" && <p className="text-sm">This enquiry is already won. Review its recorded booking before proceeding.</p>}
                 {quote.bookingId && <Link className="btn btn-primary" href={`/ticketing/${quote.bookingId}`}>Open linked booking</Link>}
-                {canQuote && !quote.bookingId && !["WITHDRAWN", "SUPERSEDED"].includes(quote.state) && <button className="btn" disabled={locked} onClick={() => { if (window.confirm("Withdraw this quotation and invalidate its customer link?")) void action({ action: "withdraw", leadId: selected.id, quoteId: quote.id }); }}>Withdraw quote</button>}
+                {canQuote && !quote.bookingId && !["WITHDRAWN", "SUPERSEDED"].includes(quote.state) && <button className="btn" disabled={locked} onClick={() => { if (window.confirm(`Withdraw quote v${quote.version} (${enumLabel(quote.state)}) for ${selected.title}? This invalidates its customer link.${quote.state === "ACCEPTED" ? " The customer has accepted this version. Review their agreement before withdrawing; the acceptance evidence remains recorded." : ""}`)) void action({ action: "withdraw", leadId: selected.id, quoteId: quote.id, baseRevision: selected.baseRevision }); }}>Withdraw quote</button>}
               </div>{quote.state === "DRAFT" && !canPublishQuote(selected, quote) && <p className="text-sm">Publishing requires the latest, unexpired draft and an open enquiry.</p>}
             </article>)}</div>
           </>}

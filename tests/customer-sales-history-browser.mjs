@@ -60,8 +60,24 @@ export async function checkCustomerSalesHistory(page, base, fixture) {
     assert.equal(new URL(page.url()).pathname, `/customers/${customerId}`);
     await exact.waitFor({ state: "visible" });
 
-    for (const width of [390, 320]) {
+    for (const width of [1440, 390, 320]) {
       await page.setViewportSize({ width, height: 844 });
+      await page.evaluate(()=>scrollTo(0,0));
+      const identity=page.getByRole("heading",{name:"Synthetic same-name customer",exact:true});
+      const links=page.locator('[aria-label="Customer record links"]');
+      const audit=links.getByRole("link",{name:"Customer record audit history",exact:true});
+      const statement=links.getByRole("link",{name:"Customer statement",exact:true});
+      assert.equal(await audit.count(),1);
+      assert.equal(await statement.getAttribute("href"),`/reports?report=statement&customerId=${encodeURIComponent(customerId)}`);
+      const identityBox=await identity.boundingBox(), linkBox=await links.boundingBox();
+      assert(identityBox && linkBox && identityBox.y < linkBox.y,"Identity must precede secondary links");
+      assert(identityBox.y+identityBox.height<844,"Customer identity visible in first viewport");
+      await page.getByRole("link",{name:"All customers",exact:true}).focus();
+      assert.equal(await page.getByRole("link",{name:"All customers",exact:true}).evaluate(el=>el===document.activeElement),true);
+      await audit.focus();await page.keyboard.press("Tab");
+      assert.equal(await statement.evaluate(el=>el===document.activeElement),true,"Secondary links retain keyboard order");
+      await page.evaluate(()=>scrollTo(0,0));
+      await page.screenshot({path:path.join(shots,`identity-first-${width}.png`),fullPage:false});
       await history.scrollIntoViewIfNeeded();
       const metrics = await history.evaluate(section => {
         const box = section.getBoundingClientRect();
@@ -82,12 +98,26 @@ export async function checkCustomerSalesHistory(page, base, fixture) {
     assert.equal(await history.getByText(/not available with your current access/).count(), 0);
     await history.screenshot({ path: path.join(shots, "empty-320.png") });
 
+    // A permitted customer reader without finance/audit access must still see identity,
+    // but neither newly positioned secondary link.
+    const visaRole=await db.role.findUniqueOrThrow({where:{key:"VISA_EXECUTIVE"}});
+    await db.user.update({where:{id:owner.id},data:{roleId:visaRole.id}});
+    await page.goto(customerUrl,{waitUntil:"networkidle"});
+    await page.getByRole("heading",{name:"Synthetic same-name customer",exact:true}).waitFor();
+    assert.equal(await page.getByRole("link",{name:"Customer record audit history",exact:true}).count(),0);
+    assert.equal(await page.getByRole("link",{name:"Customer statement",exact:true}).count(),0);
+    assert.equal(await page.locator('[aria-label="Customer record links"]').count(),0,"No empty secondary action band for reader");
+    await page.screenshot({path:path.join(shots,"identity-reader-no-finance-320.png"),fullPage:false});
+    await db.user.update({where:{id:owner.id},data:{roleId:owner.roleId}});
+
     // The existing fail-closed unknown-role fallback grants no permissions. This changes only
     // the disposable review user's fixture role, and restores it even when the assertion fails.
     deniedRole = await db.role.create({ data: { key: `${prefix}-DENIED`, name: "Synthetic no-access role", desc: "Browser fixture only" } });
     await db.user.update({ where: { id: owner.id }, data: { roleId: deniedRole.id } });
     await page.goto(customerUrl, { waitUntil: "networkidle" });
     await page.getByText("You do not have permission to view customers.", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("link",{name:"Customer record audit history",exact:true}).count(),0);
+    assert.equal(await page.getByRole("link",{name:"Customer statement",exact:true}).count(),0);
     assert.equal(await history.count(), 0, "Denied page must not masquerade as an empty sales history");
     assert.equal(await page.getByText(/No enquiries visible for this customer/).count(), 0);
     await page.screenshot({ path: path.join(shots, "denied-320.png"), fullPage: true });

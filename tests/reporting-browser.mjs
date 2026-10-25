@@ -63,10 +63,26 @@ try{
   assert(bounds&&bounds.y>=64&&bounds.y+bounds.height<=844,`${width}px: initial Generate action is visible without autoscroll`);
   await capture(page,`catalogue-${width}-viewport`,false);
  }
+ for(const width of [320,390,1440]){
+  await viewport(page,width,width===1440?1000:844);
+  const apply=page.getByRole("button",{name:"Apply report filters",exact:true});
+  await apply.scrollIntoViewIfNeeded();
+  const geometry=await apply.evaluate(el=>{const r=el.getBoundingClientRect();const date=Array.from(document.querySelectorAll('#report-filters input[type=date]')).at(-1);return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,height:r.height,width:innerWidth,viewportHeight:innerHeight,afterDate:!date||Boolean(date.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING)};});
+  assert(geometry.left>=0&&geometry.right<=width+1&&geometry.height>=44&&geometry.top>=0&&geometry.bottom<=geometry.viewportHeight+1,JSON.stringify(geometry));
+  assert(geometry.afterDate,"Lower apply follows date fields in document/keyboard order");
+  await capture(page,`lower-apply-${width}-viewport`,false);
+ }
  await viewport(page,1440,1000);
-
- await page.getByRole("button",{name:"Generate report",exact:true}).click();
+ const reads=[];
+ const track=request=>{const url=new URL(request.url());if(request.method()==="GET"&&url.pathname==="/api/reports/accounts"&&!url.searchParams.has("options"))reads.push(url);};
+ page.on("request",track);
+ const apply=page.getByRole("button",{name:"Apply report filters",exact:true});
+ await apply.focus();await page.keyboard.press("Enter");
  await page.getByRole("table",{name:"Customer statement",exact:true}).waitFor();
+ page.off("request",track);
+ assert.equal(reads.length,1,"Lower keyboard submit performs exactly one report read");
+ assert.equal(reads[0].searchParams.get("customerId"),fixture.customerId);
+ assert.equal(reads[0].searchParams.get("report"),"statement");
  assert(await page.getByText("₹81,400",{exact:true}).count()>=1,"Customer closing balance should be 81400");
  await capture(page,"statement-desktop");
  const pdfResponse=await context.request.get(base+`/api/reports/accounts?report=statement&customerId=${fixture.customerId}&format=pdf`);assert.equal(pdfResponse.status(),200);writeFileSync(path.join(artifactDir,"customer-statement.pdf"),await pdfResponse.body());

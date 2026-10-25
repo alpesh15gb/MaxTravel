@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {
-  matchingEnquiries, canPublishQuote, canStartQuote, quoteExplanation, hasPublishedShare, privateLinkGuidance, customerPrerequisite, replacementQuoteAction,
+  hasConflictingAcceptedQuotes, enquiryNextStep, quoteExpiryLabel, matchingEnquiries, canPublishQuote, canStartQuote, quoteExplanation, hasPublishedShare, privateLinkGuidance, customerPrerequisite, replacementQuoteAction,
   type SalesLead, type SalesQuote,
 } from "../src/app/(app)/sales/sales-workspace";
 
@@ -75,3 +75,27 @@ for (const stage of ["LOST", "WON"]) assert.equal(replacementQuoteAction({ ...pu
 assert.equal(replacementQuoteAction({ ...publishedLead, quotes: [{ ...quote, state: "ACCEPTED" }, published] }, published, true, now), null);
 assert.equal(replacementQuoteAction(lead, quote, true, now), null);
 console.log("Flow clarity guidance passed: no raw-link retrieval, permission-aware replacement and customer prerequisite.");
+
+const olderAccepted = { ...quote, id: "accepted-old", version: 1, state: "ACCEPTED", expiresAt: "2020-01-01T00:00:00Z" };
+const newerDraftWithAccepted = { ...lead, quotes: [quote, olderAccepted] };
+assert.equal(canStartQuote(newerDraftWithAccepted), false, "An older accepted quote also blocks new drafts");
+assert.equal(canPublishQuote(newerDraftWithAccepted, quote, now), false, "A newer draft must not replace an older accepted proposal");
+assert.equal(enquiryNextStep(newerDraftWithAccepted, now).quoteId, olderAccepted.id);
+assert.match(enquiryNextStep(newerDraftWithAccepted, now).detail, /No supplier reservation, invoice or payment/);
+assert.equal(quoteExpiryLabel(olderAccepted, now), "Offer acceptance deadline", "Passing the deadline must not relabel a recorded acceptance as expired");
+assert.match(quoteExpiryLabel({ ...olderAccepted, state: "PUBLISHED" }, now), /^Expired offer/);
+assert.equal(quoteExpiryLabel({ ...quote, expiresAt: "invalid" }, now), "Offer acceptance deadline");
+assert.match(enquiryNextStep({ ...lead, quotes: [] }, now).title, /first quotation/);
+assert.equal(enquiryNextStep({ ...lead, stage: "LOST" }, now).quoteId, undefined);
+assert.match(enquiryNextStep({ ...lead, stage: "WON" }, now).detail, /do not create a second booking/);
+assert.equal(enquiryNextStep({ ...lead, quotes: [{ ...olderAccepted, bookingId: "booking-1" }] }, now).quoteId, olderAccepted.id);
+assert.match(enquiryNextStep({ ...lead, quotes: [published] }, now).detail, /publication does not prove delivery/);
+assert.match(enquiryNextStep({ ...lead, quotes: [{ ...published, expiresAt: "2020-01-01" }] }, now).detail, /deadline has passed/);
+assert.match(enquiryNextStep({ ...lead, quotes: [{ ...quote, state: "UNKNOWN" }] }, now).title, /Review quotation history/);
+console.log("Enquiry orientation passed: exact version priority, accepted history, expiry and honest handoffs.");
+
+const conflicting = { ...lead, quotes: [{ ...quote, state: "ACCEPTED" }, olderAccepted] };
+assert.equal(hasConflictingAcceptedQuotes(conflicting), true);
+assert.equal(enquiryNextStep(conflicting, now).quoteId, undefined);
+assert.match(enquiryNextStep(conflicting, now).title, /conflicting/);
+assert.equal(hasConflictingAcceptedQuotes({ ...lead, quotes: [{ ...olderAccepted, bookingId: "one-booking" }, quote] }), false);

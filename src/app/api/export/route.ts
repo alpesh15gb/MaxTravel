@@ -5,6 +5,8 @@ import { balanceOf } from "@/lib/receivables";
 import type { Permission } from "@/lib/permissions";
 import { audit } from "@/lib/audit";
 import { auditFilters, auditWhere } from "@/lib/audit-query";
+import { csvDocument } from "@/lib/csv-export";
+import { indiaDay } from "@/lib/report-workspace";
 import { readInvoiceTaxSnapshot } from "@/lib/invoice-config";
 
 export const dynamic = "force-dynamic";
@@ -15,16 +17,19 @@ const ENTITY_PERM: Record<string, Permission> = {
   tasks: "task:view", documents: "document:view", audit: "audit:view",
 };
 
-function csv(rows: Record<string, unknown>[]): string {
-  if (!rows.length) return "no data\n";
-  const headers = Object.keys(rows[0]);
-  const esc = (v: unknown) => {
-    const raw = v == null ? "" : String(v);
-    const s = /^[=+@\-\t\r]/.test(raw) ? "'" + raw : raw;
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  return [headers.join(","), ...rows.map((r) => headers.map((h) => esc(r[h])).join(","))].join("\n") + "\n";
-}
+// Keep the machine-readable column contract even for an empty export.
+const MAX_LEDGER_EXPORT_ROWS = 50_000;
+const EXPORT_COLUMNS: Record<string,string[]> = {
+ customers:["code","name","type","phone","email","city","status","branch","manager","created"],
+ visa:["caseNo","customer","destination","visaType","stage","travelDate","sellingPrice","received","outstanding","owner","created"],
+ ticketing:["bookingNo","pnr","customer","airline","sector","status","travelDate","sellingPrice","currency","owner"],
+ payments:["receiptNo","customer","amount","mode","receivedOn"],
+ invoices:["invoiceNo","documentKind","customer","description","taxableSubtotal","taxAmount","taxProfile","sellerGSTIN","buyerGSTIN","placeOfSupply","amount","amountPaid","status","creditNoteNo","creditedAmount","creditReason","dueDate"],
+ refunds:["refundNo","customer","amount","status","requestedOn","paidOn"],
+ tasks:["title","status","priority","owner","dueAt"],
+ documents:["docNo","docType","customer","traveller","status","uploadedAt","verified"],
+ audit:["at","user","action","entity","entityId","detail"],
+};
 
 export async function GET(req: Request) {
   try {
@@ -48,7 +53,7 @@ export async function GET(req: Request) {
       rows = data.map((c) => ({
         code: c.code, name: c.name, type: c.type, phone: c.phone, email: c.email ?? "",
         city: c.city, status: c.status, branch: c.branch.name, manager: c.assignedTo?.name ?? "",
-        created: c.createdAt.toISOString().slice(0, 10),
+        created: indiaDay(c.createdAt),
       }));
     } else if (entity === "visa") {
       const where: Record<string, unknown> = {};
@@ -60,11 +65,11 @@ export async function GET(req: Request) {
       });
       rows = data.map((v) => ({
         caseNo: v.caseNo, customer: v.customer.name, destination: v.destination, visaType: v.visaType,
-        stage: v.stage.name, travelDate: v.travelDate?.toISOString().slice(0, 10) ?? "",
+        stage: v.stage.name, travelDate: v.travelDate ? indiaDay(v.travelDate) : "",
         // balanceOf, not raw subtraction: a negative outstanding is the one number receivables.ts
         // deliberately refuses to publish, and the export must not invent a second version of it.
         ...(showMoney ? { sellingPrice: v.sellingPrice, received: v.amountReceived, outstanding: balanceOf(v.sellingPrice, v.amountReceived) } : {}),
-        owner: v.owner.name, created: v.createdAt.toISOString().slice(0, 10),
+        owner: v.owner.name, created: indiaDay(v.createdAt),
       }));
     } else if (entity === "ticketing") {
       const where: Record<string, unknown> = {};
@@ -76,37 +81,37 @@ export async function GET(req: Request) {
       });
       rows = data.map((bk) => ({
         bookingNo: bk.bookingNo, pnr: bk.pnr ?? "", customer: bk.customer.name, airline: bk.airline ?? "",
-        sector: bk.sector ?? "", status: bk.status, travelDate: bk.travelDate?.toISOString().slice(0, 10) ?? "",
-        ...(showMoney ? { sellingPrice: bk.sellingPrice } : {}),
+        sector: bk.sector ?? "", status: bk.status, travelDate: bk.travelDate ? indiaDay(bk.travelDate) : "",
+        ...(showMoney ? { sellingPrice: bk.sellingPrice, currency: bk.currency } : {}),
         owner: bk.owner.name,
       }));
     } else if (entity === "payments") {
-      const data = await prisma.payment.findMany({ where: { customer: { is: scopeWhere(user, null, undefined, "assignedToId") } }, include: { customer: true }, orderBy: { receivedOn: "desc" }, take: 5000 });
-      rows = data.map((p) => ({ receiptNo: p.receiptNo, customer: p.customer.name, amount: p.amount, mode: p.mode, receivedOn: p.receivedOn.toISOString().slice(0, 10) }));
+      const data = await prisma.payment.findMany({ where: { customer: { is: scopeWhere(user, null, undefined, "assignedToId") } }, include: { customer: true }, orderBy: [{ receivedOn: "desc" }, { id: "desc" }], take: MAX_LEDGER_EXPORT_ROWS + 1 });
+      rows = data.map((p) => ({ receiptNo: p.receiptNo, customer: p.customer.name, amount: p.amount, mode: p.mode, receivedOn: indiaDay(p.receivedOn) }));
     } else if (entity === "invoices") {
       const data = await prisma.invoice.findMany({ where: { customer: { is: scopeWhere(user, null, undefined, "assignedToId") } }, include: { customer: true, creditNote: true }, orderBy: { invoiceNo: "asc" } });
       rows = data.map((i) => {
         const tax = readInvoiceTaxSnapshot(i.taxSnapshot);
-        return { invoiceNo: i.invoiceNo, documentKind: i.documentKind, customer: i.customer.name, description: i.description ?? "", taxableSubtotal: tax ? tax.subtotalMinor / 100 : i.amount, taxAmount: tax ? tax.taxMinor / 100 : 0, taxProfile: tax?.profile.label ?? "", sellerGSTIN: tax?.issuer.gstin ?? "", buyerGSTIN: tax?.buyer.gstin ?? "", placeOfSupply: tax?.placeOfSupply ?? "", amount: i.amount, amountPaid: i.amountPaid, status: i.status, creditNoteNo: i.creditNote?.creditNoteNo ?? "", creditedAmount: i.creditNote?.amount ?? 0, creditReason: i.creditNote?.reason ?? "", dueDate: i.dueDate?.toISOString().slice(0, 10) ?? "" };
+        return { invoiceNo: i.invoiceNo, documentKind: i.documentKind, customer: i.customer.name, description: i.description ?? "", taxableSubtotal: tax ? tax.subtotalMinor / 100 : i.amount, taxAmount: tax ? tax.taxMinor / 100 : 0, taxProfile: tax?.profile.label ?? "", sellerGSTIN: tax?.issuer.gstin ?? "", buyerGSTIN: tax?.buyer.gstin ?? "", placeOfSupply: tax?.placeOfSupply ?? "", amount: i.amount, amountPaid: i.amountPaid, status: i.status, creditNoteNo: i.creditNote?.creditNoteNo ?? "", creditedAmount: i.creditNote?.amount ?? 0, creditReason: i.creditNote?.reason ?? "", dueDate: i.dueDate ? indiaDay(i.dueDate) : "" };
       });
     } else if (entity === "refunds") {
       const data = await prisma.refund.findMany({ where: { customer: { is: scopeWhere(user, null, undefined, "assignedToId") } }, include: { customer: true }, orderBy: { refundNo: "asc" } });
-      rows = data.map((r) => ({ refundNo: r.refundNo, customer: r.customer.name, amount: r.amount, status: r.status, requestedOn: r.requestedOn.toISOString().slice(0, 10), paidOn: r.paidOn?.toISOString().slice(0, 10) ?? "" }));
+      rows = data.map((r) => ({ refundNo: r.refundNo, customer: r.customer.name, amount: r.amount, status: r.status, requestedOn: indiaDay(r.requestedOn), paidOn: r.paidOn ? indiaDay(r.paidOn) : "" }));
     } else if (entity === "tasks") {
       const where: Record<string, unknown> = {};
       if (user.accessMode === "BRANCH") where.branchId = user.branchId;
       if (user.accessMode === "ASSIGNED") where.ownerId = user.id;
       const data = await prisma.task.findMany({ where, include: { owner: true }, orderBy: { createdAt: "desc" } });
-      rows = data.map((t) => ({ title: t.title, status: t.status, priority: t.priority, owner: t.owner.name, dueAt: t.dueAt?.toISOString().slice(0, 10) ?? "" }));
+      rows = data.map((t) => ({ title: t.title, status: t.status, priority: t.priority, owner: t.owner.name, dueAt: t.dueAt ? indiaDay(t.dueAt) : "" }));
     } else if (entity === "documents") {
       const data = await prisma.document.findMany({ where: { customer: { is: scopeWhere(user, null, undefined, "assignedToId") } }, include: { customer: true, traveller: true }, orderBy: { docNo: "asc" } });
-      rows = data.map((d) => ({ docNo: d.docNo, docType: d.docType, customer: d.customer.name, traveller: d.traveller?.fullName ?? "", status: d.status, uploadedAt: d.uploadedAt?.toISOString().slice(0, 10) ?? "", verified: d.verificationStatus }));
+      rows = data.map((d) => ({ docNo: d.docNo, docType: d.docType, customer: d.customer.name, traveller: d.traveller?.fullName ?? "", status: d.status, uploadedAt: d.uploadedAt ? indiaDay(d.uploadedAt) : "", verified: d.verificationStatus }));
     } else if (entity === "audit") {
       // The audit trail is the one report a manager most often needs outside the app, and exporting it
       // is the same action as the other modules': a scoped CSV plus its own EXPORT audit entry below.
       const data = await prisma.auditLog.findMany({
         where: await auditWhere(prisma, user, auditFilters(new URL(req.url).searchParams)),
-        orderBy: [{ at: "desc" }, { id: "desc" }], take: 5000,
+        orderBy: [{ at: "desc" }, { id: "desc" }], take: MAX_LEDGER_EXPORT_ROWS + 1,
         include: { user: { select: { name: true, employeeCode: true } } },
       });
       rows = data.map((l) => ({
@@ -115,10 +120,19 @@ export async function GET(req: Request) {
       }));
     }
 
+    if (["payments", "audit"].includes(entity) && rows.length > MAX_LEDGER_EXPORT_ROWS) {
+      throw new ApiError(422, entity === "audit"
+        ? "More than 50,000 audit entries match. Narrow the date, action or record filters in Audit trail and export again. No partial file was generated."
+        : "More than 50,000 payments match. Open Reports → Receipts & refunds, choose a shorter date range and download Excel or CSV. No partial file was generated.");
+    }
     await audit(user, "EXPORT", entity, undefined, `${rows.length} rows`);
-    return new Response(csv(rows), {
+    const headers = EXPORT_COLUMNS[entity].filter(key => showMoney || !["sellingPrice", "received", "outstanding", "currency"].includes(key));
+    return new Response(csvDocument([headers, ...rows.map(row => headers.map(key => row[key]))]), {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Export-Row-Count": String(rows.length),
+        "X-Export-Date-Timezone": "Asia/Kolkata; audit timestamps UTC",
         "Content-Disposition": `attachment; filename="max-travel-crm-${entity}-${new Date().toISOString().slice(0, 10)}.csv"`,
       },
     });

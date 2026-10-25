@@ -212,7 +212,7 @@ await withFixtureCleanup(async()=>{
     const confirmations=[];const acceptDiscard=async dialog=>{confirmations.push(dialog.message());await dialog.accept();};
     page.on('dialog',acceptDiscard);
     try{await page.getByRole('button',{name:'Withdraw quote',exact:true}).click();await page.getByText('Withdrawn. The customer link is no longer valid.',{exact:true}).waitFor();}finally{page.off('dialog',acceptDiscard);}
-    assert.deepEqual(confirmations,['Withdraw this quotation and invalidate its customer link?','Discard unsaved stage or follow-up edits before continuing?']);
+    assert.deepEqual(confirmations,[`Withdraw quote v1 (Draft) for ${title}? This invalidates its customer link.`,'Discard unsaved stage or follow-up edits before continuing?']);
     const refreshedLead=(await json(context,'/api/sales')).leads.find(value=>value.id===lead.id);
     for(const key of ['stage','followUpAt','lostReason'])assert.equal(refreshedLead[key],persistedLead[key],`Withdrawal does not save discarded ${key}`);
     assert.equal(refreshedLead.quotes[0].state,'WITHDRAWN');

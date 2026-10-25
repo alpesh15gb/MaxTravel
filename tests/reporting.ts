@@ -81,7 +81,7 @@ async function run(){
  for(let n=0;n<60;n++)await prisma.$transaction(async tx=>{const p=await tx.payment.create({data:{receiptNo:`ADV-${n}`,customerId:customer.id,amount:1.01}});await journalEntity(tx,"Payment",p.id,owner.id);});
  const full=await report("statement",{customerId:customer.id},true);s=await statement();check("Pagination keeps full totals",()=>{assert.equal(s.rows.length,50);assert(full.rows.length>50);assert.equal(value(s,"Closing balance"),value(full,"Closing balance"));});
  const final=full.rows.at(-1)!;check("Exact paise balance and running totals",()=>{assert.equal(final.balance,-100.6);assert.equal(Math.round(value(full,"Opening balance")*100)+Math.round(value(full,"Period debits")*100)-Math.round(value(full,"Period credits")*100),Math.round(value(full,"Closing balance")*100));});
- const hostile={...full,party:{name:"=HYPERLINK(\"bad\")",code:"C-X",address:null},rows:[{...full.rows[0],description:"=HYPERLINK(\"bad\")"}]};
+ const hostile={...full,totalRows:1,party:{name:"=HYPERLINK(\"bad\")",code:"C-X",address:null},rows:[{...full.rows[0],description:"=HYPERLINK(\"bad\")"}]};
  check("CSV neutralizes formula-like text",()=>assert(accountCsv(hostile).includes("'=HYPERLINK")));
  const xlsx=await accountWorkbook(full);const {default:ExcelJS}=await import("exceljs");const workbook=new ExcelJS.Workbook();await workbook.xlsx.load(xlsx as never);check("Excel contains all movements as numeric amounts",()=>{assert.equal(workbook.getWorksheet("Transactions")!.rowCount,full.rows.length+1);assert.equal(typeof workbook.getWorksheet("Transactions")!.getCell("D2").value,"number");});
  const pdf=await accountPdf(full);writeFileSync(path.join(runtime,"customer-statement.pdf"),pdf);writeFileSync(path.join(runtime,"customer-statement.xlsx"),xlsx);writeFileSync(path.join(runtime,"statement.json"),JSON.stringify(full,null,2));check("PDF export produces a real PDF",()=>assert.equal(pdf.subarray(0,4).toString(),"%PDF"));
@@ -217,6 +217,12 @@ async function run(){
  const currentDated=await buildAccountReport(user,new URLSearchParams({report:"ageing",customerId:datedCustomer.id,from:today,to:today}));
  check("Supported historical ageing excludes later price edits and newly created linked receipts",()=>{assert.equal(value(oldDated,"Total open obligations"),100);assert.equal(value(currentDated,"Total open obligations"),130);});
  execFileSync(process.execPath,["scripts/reconcile-reporting.mjs"],{env:process.env,stdio:"pipe"});passed++;console.log("✓ All journal sources reconcile after mutations");
+ for(const key of ["statement","ageing","receipts","supplier-statement","supplier-payables","refunds","cancellations","sales","operations"]){
+  const output=await report(key,key==="statement"?{customerId:customer.id}:key==="supplier-statement"?{supplierId:supplier.id}:{},true);
+  const bytes=await accountWorkbook(output),roundTrip=new ExcelJS.Workbook();await roundTrip.xlsx.load(bytes as never);
+  check(`${key}: complete workbook round trip preserves money and all rows`,()=>{const tab=roundTrip.getWorksheet("Transactions")!;assert.equal(tab.rowCount,output.totalRows+1);output.columns.forEach((column,c)=>{if(column.money)output.rows.forEach((row,i)=>assert.equal(tab.getRow(i+2).getCell(c+1).value,row[column.key]??null));});});
+  writeFileSync(path.join(runtime,`${key}.xlsx`),bytes);
+ }
  console.log(`${passed} reporting checks passed. Artifacts: ${runtime}`);await prisma.$disconnect();
 }
 // Top-level await is avoided because this repository's tsx mode is CommonJS.

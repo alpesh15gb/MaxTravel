@@ -24,6 +24,7 @@
 // that collected no text nodes, fails the gate rather than being skipped.
 import assert from "node:assert/strict";
 import { checkCustomerSalesHistory } from "./customer-sales-history-browser.mjs";
+import { checkSalesOperationalTrust } from "./sales-operational-trust-browser.mjs";
 import { checkSalesToday } from "./sales-today-browser.mjs";
 import { checkStaffHandoffs } from "./staff-handoff-browser.mjs";
 import fs from "node:fs";
@@ -440,6 +441,7 @@ try {
   }
   await checkStaffHandoffs(page, base, fixture);
   await checkSalesToday(page, base, fixture);
+  await checkSalesOperationalTrust(page, base, fixture);
   await checkCustomerSalesHistory(page, base, fixture);
   await context.close();
 } catch (error) {

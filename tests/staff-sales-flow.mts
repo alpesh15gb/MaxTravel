@@ -53,12 +53,12 @@ try{
  const reopened=await post("/api/tasks/status",{taskId:task.data.task.id,status:"OPEN"},cookie);assert.equal(reopened.data.task.completedAt,null);
  const lostLead=await post("/api/sales",{action:"create",data:{customerId:customer.id,title:"Closed enquiry regression",source:"Fixture",product:"HOTEL",budgetMinor:10000}},cookie);
  const lostQuote=await post("/api/sales",{action:"quote",leadId:lostLead.data.id,baseRevision:(await currentSales(lostLead.data.id,cookie)).lead.baseRevision,items:[{description:"Fixture stay",quantity:1,priceMinor:10000,costMinor:7000}],terms:"No real reservation.",expiresAt:new Date(Date.now()+3600000).toISOString()},cookie);
- assert.equal((await post("/api/sales",{action:"stage",leadId:lostLead.data.id,stage:"LOST",lostReason:"Customer cancelled"},cookie)).response.status,200);
+ assert.equal((await post("/api/sales",{action:"stage",leadId:lostLead.data.id,baseRevision:(await currentSales(lostLead.data.id,cookie)).lead.baseRevision,stage:"LOST",lostReason:"Customer cancelled"},cookie)).response.status,200);
  assert.equal((await post("/api/sales",{action:"publish",leadId:lostLead.data.id,quoteId:lostQuote.data.quoteId},cookie)).response.status,409,"Publishing must not silently reopen lost work");
- assert.equal((await post("/api/sales",{action:"stage",leadId:lostLead.data.id,stage:"QUALIFIED"},cookie)).response.status,200);
+ assert.equal((await post("/api/sales",{action:"stage",leadId:lostLead.data.id,baseRevision:(await currentSales(lostLead.data.id,cookie)).lead.baseRevision,stage:"QUALIFIED"},cookie)).response.status,200);
  const reopenedQuote=await post("/api/sales",{action:"publish",leadId:lostLead.data.id,quoteId:lostQuote.data.quoteId},cookie);assert.equal(reopenedQuote.response.status,200);
  assert.equal((await post("/api/proposals",{action:"accept",token:reopenedQuote.data.sharePath.split("#")[1],name:"Synthetic customer",consent:true})).response.status,200);
- assert.equal((await post("/api/sales",{action:"stage",leadId:lostLead.data.id,stage:"LOST",lostReason:"Customer withdrew accepted quote"},cookie)).response.status,200);
+ assert.equal((await post("/api/sales",{action:"stage",leadId:lostLead.data.id,baseRevision:(await currentSales(lostLead.data.id,cookie)).lead.baseRevision,stage:"LOST",lostReason:"Customer withdrew accepted quote"},cookie)).response.status,200);
  assert.equal((await post("/api/sales",{action:"convert",leadId:lostLead.data.id,quoteId:lostQuote.data.quoteId},cookie)).response.status,409,"Lost accepted quotes need explicit reopening before creating a booking");
  const supplierResult=await post("/api/suppliers",{name:`Ledger supplier ${suffix}`,type:"HOTEL",paymentDueDays:10},cookie);assert.equal(supplierResult.response.status,200,JSON.stringify(supplierResult.data));const supplier=supplierResult.data.supplier;
  await prisma.booking.update({where:{id:booking.id},data:{supplierId:supplier.id}});
@@ -97,15 +97,115 @@ try{
  const historyInput={...quoteInput,leadId:historyLead.data.id};
  const historyFirst=await post("/api/sales",{...historyInput,baseRevision:(await currentSales(historyLead.data.id,cookie)).lead.baseRevision},cookie);assert.equal(historyFirst.response.status,200);
  const historyPublished=await post("/api/sales",{action:"publish",leadId:historyLead.data.id,quoteId:historyFirst.data.quoteId},cookie);assert.equal(historyPublished.response.status,200);
- const historySecond=await post("/api/sales",{...historyInput,baseRevision:(await currentSales(historyLead.data.id,cookie)).lead.baseRevision},cookie);assert.equal(historySecond.response.status,200);
+ const historySecond=await post("/api/sales",{...historyInput,items:[{description:"Different newer draft",quantity:1,priceMinor:33300,costMinor:22200}],baseRevision:(await currentSales(historyLead.data.id,cookie)).lead.baseRevision},cookie);assert.equal(historySecond.response.status,200);
  const beforeOldAcceptance=await currentSales(historyLead.data.id,cookie);
  const olderAccepted=await post("/api/proposals",{action:"accept",token:historyPublished.data.sharePath.split("#")[1],name:"Synthetic customer",consent:true});assert.equal(olderAccepted.response.status,200);
  const afterOldAcceptance=await currentSales(historyLead.data.id,cookie);assert.notEqual(beforeOldAcceptance.lead.baseRevision,afterOldAcceptance.lead.baseRevision);
+ const staleWithdrawal=await post("/api/sales",{action:"withdraw",leadId:historyLead.data.id,quoteId:historyFirst.data.quoteId,baseRevision:beforeOldAcceptance.lead.baseRevision},cookie);
+ assert.equal(staleWithdrawal.response.status,409);assert.equal(staleWithdrawal.data.code,"WITHDRAWAL_REVISION_CONFLICT");
+ assert.equal((await prisma.salesQuote.findUniqueOrThrow({where:{id:historyFirst.data.quoteId}})).state,"ACCEPTED","A stale withdrawal must not erase a newly recorded acceptance");
  const historicalConflict=await post("/api/sales",{...historyInput,baseRevision:beforeOldAcceptance.lead.baseRevision},cookie);assert.equal(historicalConflict.response.status,409);assert.equal(historicalConflict.data.code,"QUOTE_REVISION_CONFLICT");assert.equal(await prisma.salesQuote.count({where:{leadId:historyLead.data.id}}),2);
+ const acceptedHistoryPublish=await post("/api/sales",{action:"publish",leadId:historyLead.data.id,quoteId:historySecond.data.quoteId},cookie);
+ assert.equal(acceptedHistoryPublish.response.status,409,"An older accepted proposal must block publishing a newer draft");
+ const acceptedHistoryDraft=await post("/api/sales",{...historyInput,baseRevision:afterOldAcceptance.lead.baseRevision},cookie);
+ assert.equal(acceptedHistoryDraft.response.status,409,"An older accepted proposal must block creating another draft");
+ const missingStageBase=await post("/api/sales",{action:"stage",leadId:historyLead.data.id,stage:"LOST",lostReason:"Must not apply"},cookie);
+ assert.equal(missingStageBase.response.status,409);assert.equal(missingStageBase.data.code,"STAGE_REVISION_CONFLICT");
+ const stageBefore=await prisma.salesLead.findUniqueOrThrow({where:{id:historyLead.data.id}});
+ const auditBefore=await prisma.auditLog.count({where:{entity:"SalesLead",entityId:historyLead.data.id,action:"STAGE"}});
+ const staleStage=await post("/api/sales",{action:"stage",leadId:historyLead.data.id,baseRevision:beforeOldAcceptance.lead.baseRevision,stage:"LOST",lostReason:"Must not apply",followUpAt:"2099-01-01T12:00:00.000Z"},cookie);
+ assert.equal(staleStage.response.status,409);assert.equal(staleStage.data.code,"STAGE_REVISION_CONFLICT");
+ assert.deepEqual(await prisma.salesLead.findUniqueOrThrow({where:{id:historyLead.data.id}}),stageBefore,"A stale stage request must not change the enquiry or follow-up");
+ assert.equal(await prisma.auditLog.count({where:{entity:"SalesLead",entityId:historyLead.data.id,action:"STAGE"}}),auditBefore,"Rejected writes must not record successful stage audits");
  const beforeStage=afterOldAcceptance.lead.baseRevision;
- assert.equal((await post("/api/sales",{action:"stage",leadId:historyLead.data.id,stage:"QUALIFIED"},cookie)).response.status,200);
+ assert.equal((await post("/api/sales",{action:"stage",leadId:historyLead.data.id,baseRevision:(await currentSales(historyLead.data.id,cookie)).lead.baseRevision,stage:"QUALIFIED"},cookie)).response.status,200);
  assert.notEqual(beforeStage,(await currentSales(historyLead.data.id,cookie)).lead.baseRevision);
  assert.equal((await post("/api/sales",{...historyInput,baseRevision:beforeStage},cookie)).data.code,"QUOTE_REVISION_CONFLICT");
+ // Historical acceptance remains immutable and converts the exact accepted values, not the newer draft.
+ const acceptedEvidence=await prisma.salesQuote.findUniqueOrThrow({where:{id:historyFirst.data.quoteId}});
+ await prisma.salesQuote.update({where:{id:acceptedEvidence.id},data:{expiresAt:new Date("2020-01-01")}});
+ const acceptedReplay=await post("/api/proposals",{action:"accept",token:historyPublished.data.sharePath.split("#")[1],name:"Different replay name",consent:true});
+ assert.equal(acceptedReplay.response.status,200);assert.equal(acceptedReplay.data.acceptedName,acceptedEvidence.acceptedName);assert.equal(acceptedReplay.data.acceptedAt,acceptedEvidence.acceptedAt!.toISOString());
+ assert.equal(await prisma.auditLog.count({where:{entityId:acceptedEvidence.id,action:"CUSTOMER_ACCEPTED_QUOTE"}}),1);
+ const historicalConversion=await post("/api/sales",{action:"convert",leadId:historyLead.data.id,quoteId:acceptedEvidence.id},cookie);
+ assert.equal(historicalConversion.response.status,200,JSON.stringify(historicalConversion.data));
+ const historicalBooking=await prisma.booking.findUniqueOrThrow({where:{id:historicalConversion.data.bookingId}});
+ assert.equal(historicalBooking.sellingPrice,acceptedEvidence.totalMinor/100);assert.equal(historicalBooking.supplierCost,acceptedEvidence.costMinor/100);
+ assert.equal(historicalBooking.status,"ENQUIRY");assert.equal((await prisma.salesQuote.findUniqueOrThrow({where:{id:historySecond.data.quoteId}})).bookingId,null);
+ const repeatedConversion=await post("/api/sales",{action:"convert",leadId:historyLead.data.id,quoteId:acceptedEvidence.id},cookie);
+ assert.equal(repeatedConversion.data.bookingId,historicalBooking.id);
+ // Pre-existing inconsistent data must require staff review, not silently pick newest consent.
+ const conflictLead=await prisma.salesLead.create({data:{title:"Conflicting historical fixture",source:"Fixture",customerId:customer.id,branchId:branch.id,ownerId:user.id,stage:"QUOTED"}});
+ const conflictBase={leadId:conflictLead.id,items:JSON.stringify(quoteInput.items),terms:quoteInput.terms,totalMinor:10000,costMinor:7000,expiresAt:new Date("2099-01-01"),createdBy:user.id};
+ const conflictFirst=await prisma.salesQuote.create({data:{...conflictBase,version:1,state:"ACCEPTED",acceptedName:"First evidence",acceptedAt:new Date()}});
+ await prisma.salesQuote.create({data:{...conflictBase,version:2,state:"ACCEPTED",acceptedName:"Second evidence",acceptedAt:new Date()}});
+ const conflictToken=randomBytes(32).toString("hex");
+ const conflictPending=await prisma.salesQuote.create({data:{...conflictBase,version:3,state:"PUBLISHED",shareHash:hashToken(conflictToken)}});
+ const conflictConversion=await post("/api/sales",{action:"convert",leadId:conflictLead.id,quoteId:conflictFirst.id},cookie);
+ assert.equal(conflictConversion.response.status,409);assert.match(conflictConversion.data.error,/another accepted or linked/);
+ assert.equal((await prisma.salesQuote.findUniqueOrThrow({where:{id:conflictFirst.id}})).bookingId,null);
+ assert.equal((await post("/api/proposals",{action:"accept",token:conflictToken,name:"Must not add consent",consent:true})).response.status,409);
+ assert.equal((await prisma.salesQuote.findUniqueOrThrow({where:{id:conflictPending.id}})).acceptedAt,null);
+ // An unaccepted expired offer is still invalid, unlike previously recorded acceptance.
+ await prisma.salesQuote.update({where:{id:conflictPending.id},data:{expiresAt:new Date("2020-01-01")}});
+ assert.equal((await post("/api/proposals",{action:"accept",token:conflictToken,name:"Expired fixture",consent:true})).response.status,410);
+ // Race acceptance against replacement. A transaction failure is not treated as success.
+ const raceLead=await post("/api/sales",{action:"create",data:{customerId:customer.id,title:"Acceptance replacement race",source:"Fixture",product:"HOTEL",budgetMinor:10000}},cookie);
+ const raceInput={...quoteInput,leadId:raceLead.data.id};
+ const raceFirst=await post("/api/sales",{...raceInput,baseRevision:(await currentSales(raceLead.data.id,cookie)).lead.baseRevision},cookie);
+ const racePublished=await post("/api/sales",{action:"publish",leadId:raceLead.data.id,quoteId:raceFirst.data.quoteId},cookie);
+ const raceSecond=await post("/api/sales",{...raceInput,baseRevision:(await currentSales(raceLead.data.id,cookie)).lead.baseRevision},cookie);
+ const raced=await Promise.all([
+   post("/api/proposals",{action:"accept",token:racePublished.data.sharePath.split("#")[1],name:"Race customer",consent:true}),
+   post("/api/sales",{action:"publish",leadId:raceLead.data.id,quoteId:raceSecond.data.quoteId},cookie),
+ ]);
+ assert(!(raced[0].response.ok&&raced[1].response.ok),"Acceptance and replacement cannot both succeed");
+ const raceVersions=await prisma.salesQuote.findMany({where:{leadId:raceLead.data.id},orderBy:{version:"asc"}});
+ assert(!(raceVersions[0].state==="ACCEPTED"&&raceVersions[1].state==="PUBLISHED"));
+ if(raced[0].response.ok)assert.equal(raceVersions[0].state,"ACCEPTED");
+ if(raced[1].response.ok)assert.equal(raceVersions[0].state,"SUPERSEDED");
+ // Regression coverage: exact financial identity, acceptance/withdrawal race and conversion replay.
+ for(let attempt=0;attempt<3;attempt++){
+  const rlead=await prisma.salesLead.create({data:{title:`Synthetic race ${attempt}`,source:"Synthetic regression",customerId:customer.id,branchId:branch.id,ownerId:user.id,stage:"QUOTED"}});
+  const rt=randomBytes(32).toString("hex");
+  const rq=await prisma.salesQuote.create({data:{leadId:rlead.id,version:1,state:"PUBLISHED",shareHash:hashToken(rt),items:JSON.stringify([{description:"Unique regression amount",quantity:2,priceMinor:7654,costMinor:4321}]),terms:"Synthetic regression only",totalMinor:15308,costMinor:8642,expiresAt:new Date("2099-01-01"),createdBy:user.id}});
+  const base=(await currentSales(rlead.id,cookie)).lead.baseRevision;
+  const operations=[()=>post("/api/proposals",{action:"accept",token:rt,name:"Synthetic exact consent",consent:true}),()=>post("/api/sales",{action:"withdraw",leadId:rlead.id,quoteId:rq.id,baseRevision:base},cookie)];
+  const results=await Promise.all((attempt%2?operations.slice().reverse():operations).map(fn=>fn()));
+  const [accept,withdraw]=attempt%2?results.slice().reverse():results;
+  assert(!(accept.response.ok&&withdraw.response.ok),"Old-base withdrawal and acceptance cannot both succeed");
+  let persisted=await prisma.salesQuote.findUniqueOrThrow({where:{id:rq.id}});
+  assert.equal(persisted.totalMinor,15308);assert.equal(persisted.costMinor,8642);assert.equal(persisted.items,rq.items);assert.equal(persisted.terms,rq.terms);
+  if(accept.response.ok){assert.equal(persisted.state,"ACCEPTED");assert.equal(persisted.acceptedName,"Synthetic exact consent");assert(persisted.acceptedAt);}
+  if(withdraw.response.ok){assert.equal(persisted.state,"WITHDRAWN");assert.equal(persisted.acceptedAt,null);assert.equal(persisted.shareHash,null);}
+  console.log("Acceptance-withdraw race",attempt,accept.response.status,withdraw.response.status,persisted.state);
+  // Arrange recorded consent independently when withdrawal won, then test intentional withdrawal evidence.
+  if(persisted.state!=="ACCEPTED") persisted=await prisma.salesQuote.update({where:{id:rq.id},data:{state:"ACCEPTED",acceptedName:"Synthetic exact consent",acceptedAt:new Date()}});
+  const evidence={acceptedAt:persisted.acceptedAt,acceptedName:persisted.acceptedName};
+  if(attempt===0){
+   const wr=await post("/api/sales",{action:"withdraw",leadId:rlead.id,quoteId:rq.id,baseRevision:(await currentSales(rlead.id,cookie)).lead.baseRevision},cookie);assert.equal(wr.response.status,200);
+   const after=await prisma.salesQuote.findUniqueOrThrow({where:{id:rq.id}});assert.equal(after.state,"WITHDRAWN");assert.deepEqual({acceptedAt:after.acceptedAt,acceptedName:after.acceptedName},evidence);assert.equal(after.totalMinor,15308);assert.equal(after.items,rq.items);
+  }else{
+   const convert=()=>post("/api/sales",{action:"convert",leadId:rlead.id,quoteId:rq.id},cookie);
+   const cc=await Promise.all([convert(),convert()]);
+   const after=await prisma.salesQuote.findUniqueOrThrow({where:{id:rq.id}});assert(after.bookingId);
+   for(const result of cc.filter(r=>r.response.ok))assert.equal(result.data.bookingId,after.bookingId);
+   const bk=await prisma.booking.findUniqueOrThrow({where:{id:after.bookingId}});assert.equal(bk.sellingPrice,153.08);assert.equal(bk.supplierCost,86.42);assert.equal(bk.customerId,customer.id);assert.equal(bk.branchId,branch.id);assert.equal(bk.status,"ENQUIRY");
+   const replay=await convert();assert.equal(replay.response.status,200);assert.equal(replay.data.bookingId,bk.id);
+   assert.equal(await prisma.auditLog.count({where:{entity:"Booking",action:"CREATE",entityId:bk.id}}),1);
+   assert.equal(await prisma.booking.count({where:{customerId:customer.id,sellingPrice:153.08}}),attempt);
+   assert.deepEqual({acceptedAt:after.acceptedAt,acceptedName:after.acceptedName},evidence);
+   console.log("Conversion race",attempt,cc.map(r=>r.response.status),bk.id);
+  }
+ }
+ // Deterministic withdrawal-first ordering: the invalidated token cannot record later consent.
+ const withdrawnFirstLead=await prisma.salesLead.create({data:{title:"Withdraw before acceptance",source:"Synthetic regression",customerId:customer.id,branchId:branch.id,ownerId:user.id,stage:"QUOTED"}});
+ const withdrawnFirstToken=randomBytes(32).toString("hex");
+ const withdrawnFirst=await prisma.salesQuote.create({data:{...conflictBase,leadId:withdrawnFirstLead.id,version:1,state:"PUBLISHED",shareHash:hashToken(withdrawnFirstToken)}});
+ assert.equal((await post("/api/sales",{action:"withdraw",leadId:withdrawnFirstLead.id,quoteId:withdrawnFirst.id,baseRevision:(await currentSales(withdrawnFirstLead.id,cookie)).lead.baseRevision},cookie)).response.status,200);
+ assert.equal((await post("/api/proposals",{action:"accept",token:withdrawnFirstToken,name:"Too late",consent:true})).response.status,404);
+ assert.equal((await prisma.salesQuote.findUniqueOrThrow({where:{id:withdrawnFirst.id}})).acceptedAt,null);
+ assert.equal(await prisma.auditLog.count({where:{entityId:withdrawnFirst.id,action:"CUSTOMER_ACCEPTED_QUOTE"}}),0);
  const otherBranch=await prisma.branch.create({data:{code:`OTHER-${suffix}`,name:"Other synthetic branch",city:"Test"}});const managerRole=await prisma.role.upsert({where:{key:"BRANCH_MANAGER"},create:{key:"BRANCH_MANAGER",name:"Branch manager",desc:"Fixture role"},update:{}});const outsider=await prisma.user.create({data:{employeeCode:`OTHER-${suffix}`,name:"Other branch manager",email:`other-${suffix}@example.test`,phone:"",passwordHash:await bcrypt.hash(password,12),roleId:managerRole.id,branchId:otherBranch.id}});const outsideLogin=await post("/api/auth/login",{email:outsider.email,password});assert.equal(outsideLogin.response.status,200);const outsideCookie=outsideLogin.cookie;
  assert.equal((await post("/api/sales",{action:"stage",leadId:lead.data.id,stage:"LOST",lostReason:"Out of scope"},outsideCookie)).response.status,403);
  assert.equal((await post("/api/customers/import",{action:"preview",csv,branchId:branch.id},outsideCookie)).response.status,403);

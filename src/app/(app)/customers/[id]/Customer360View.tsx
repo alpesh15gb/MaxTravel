@@ -3,7 +3,7 @@
 import { enumLabel } from "@/lib/labels";
 import { dateLabel, dateTimeLabel } from "@/lib/dates";
 import { inrAmount } from "@/lib/money";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Customer360 as Data } from "@/lib/customer360";
@@ -43,7 +43,7 @@ const toneOf = (s: string): Tone => {
   return "neutral";
 };
 
-export default function Customer360View({ data, perms, initialTab, permsExtra, owners }: { data: Data; perms: Perms; initialTab?: string; permsExtra?: Partial<Perms>; owners: { id: string; name: string }[] }) {
+export default function Customer360View({ data, perms, initialTab, permsExtra, owners, secondaryActions }: { secondaryActions?: ReactNode; data: Data; perms: Perms; initialTab?: string; permsExtra?: Partial<Perms>; owners: { id: string; name: string }[] }) {
   const p = { ...perms, ...(permsExtra ?? {}) };
   const [tab, setTab] = useState<string>(
     initialTab && TABS.some(([key]) => key === initialTab && (!p.visibleTabs || p.visibleTabs.includes(key)))
@@ -100,6 +100,7 @@ export default function Customer360View({ data, perms, initialTab, permsExtra, o
             </details>}
           </div>
         </div>
+        {secondaryActions && <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200 pt-3" aria-label="Customer record links">{secondaryActions}</div>}
       </section>
 
       {/* Summary tiles */}

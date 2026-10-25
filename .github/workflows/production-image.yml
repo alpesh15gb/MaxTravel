@@ -1,0 +1,39 @@
+name: Production image
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  production-image:
+    name: Production Docker build and non-root artifact smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Deliberately isolated from all test jobs: no generated databases, test
+      # secrets, dependencies or build outputs can enter this build context.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build the actual VPS image from the repository root
+        run: docker build --file Dockerfile --tag crm-production-smoke .
+      - name: Inspect runtime artifacts without starting the application
+        timeout-minutes: 2
+        # No app configuration, port publishing, host mounts or supplied volumes.
+        # Dockerfile VOLUME /data creates only a disposable anonymous volume;
+        # --rm removes it, and the smoke never reads or writes application data.
+        # Override ENTRYPOINT and disable HEALTHCHECK: neither migrations, the
+        # server, the worker nor a health probe may run during this inspection.
+        run: |
+          docker run --rm --interactive --network none --read-only \
+            --cap-drop ALL --security-opt no-new-privileges --no-healthcheck \
+            --entrypoint node crm-production-smoke --input-type=commonjs - \
+            < .github/scripts/production-image-smoke.cjs

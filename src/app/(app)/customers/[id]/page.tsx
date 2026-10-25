@@ -30,9 +30,11 @@ export default async function Customer360Page({
 
   return (
     <>
-    <div className="mb-3 flex justify-end"><AuditTrailLink entity="Customer" entityId={id} allowed={can(user.permissions,"audit:view")} /></div>
-    {can(user.permissions,"payment:view")&&<div className="mb-4 flex justify-end"><a className="btn-secondary" href={`/reports?report=statement&customerId=${encodeURIComponent(id)}`}>Customer statement</a></div>}
     <Customer360View
+      secondaryActions={can(user.permissions,"audit:view")||can(user.permissions,"payment:view")?<>
+        <AuditTrailLink entity="Customer" entityId={id} allowed={can(user.permissions,"audit:view")} />
+        {can(user.permissions,"payment:view")&&<a className="btn-secondary" href={`/reports?report=statement&customerId=${encodeURIComponent(id)}`}>Customer statement</a>}
+      </>:undefined}
       data={data}
       owners={["OWNER", "SUPER_ADMIN", "BRANCH_MANAGER"].includes(user.role) ? await prisma.user.findMany({where:{active:true,branchId:(await prisma.customer.findUniqueOrThrow({where:{id}})).branchId},select:{id:true,name:true},orderBy:{name:"asc"}}) : []}
       perms={{
