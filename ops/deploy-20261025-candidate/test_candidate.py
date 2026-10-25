@@ -85,6 +85,90 @@ class CandidateChecks(unittest.TestCase):
     with self.assertRaises(SystemExit):v.build_baseline(current)
     (release/'deployed-image.txt').write_text(v.PINS['crm']['image']);(release/'app-verified.txt').unlink()
     with self.assertRaises(SystemExit):v.build_baseline(current)
+ def helper_rows(self):
+  rows=self.complete_rows();h=copy.deepcopy(rows[0]);h['Id']='old-helper';h['Config']['Labels']={'maxtravel.cutover.helper':'true'}
+  h['State'].update(Status='exited',ExitCode=0,Running=False,StartedAt='old',FinishedAt='old-finish');h['HostConfig']={'NetworkMode':'none','ReadonlyRootfs':True,'Privileged':False,'CapDrop':['ALL'],'SecurityOpt':['no-new-privileges']};h['Config']['User']='1000:1000';return rows+[h]
+ def test_raw_build_to_phase_projection_preserves_old_helpers(self):
+  rows=self.helper_rows();p.protected_build(rows,copy.deepcopy(rows),'')
+  # Reproduce the original raw-vs-filtered mismatch without changing any runtime.
+  with self.assertRaises(SystemExit):p.protected(rows,p.non_helper_rows(rows),'')
+ def test_old_helpers_cannot_disappear_or_change(self):
+  before=self.helper_rows()
+  with self.assertRaises(SystemExit):p.protected_build(before,before[:-1],'')
+  for field in ['Image','RestartCount','Config','HostConfig','Mounts','NetworkSettings','State']:
+   after=copy.deepcopy(before)
+   if field=='Image':after[-1][field]='different'
+   elif field=='RestartCount':after[-1][field]=1
+   elif field=='Config':after[-1][field]['Env']=['CHANGED=1']
+   elif field=='HostConfig':after[-1][field]['Privileged']=True
+   elif field=='Mounts':after[-1][field]=[{'Source':'/different'}]
+   elif field=='NetworkSettings':after[-1][field]['Networks']={'other':{}}
+   else:after[-1][field]['StartedAt']='restarted'
+   with self.subTest(field=field),self.assertRaises(SystemExit):p.protected_build(before,after,'')
+ def test_only_existing_exact_helper_policy_projects_new_rows(self):
+  before=self.helper_rows()
+  for label,accepted in [('true',True),('false',False),(True,False),(None,False),('TRUE',False)]:
+   after=copy.deepcopy(before);h=copy.deepcopy(after[-1]);h['Id']='new-helper'
+   if label is None:h['Config']['Labels']={}
+   else:h['Config']['Labels']['maxtravel.cutover.helper']=label
+   after.append(h)
+   if accepted:
+    with self.assertRaises(SystemExit):p.protected_build(before,after,'')
+    p.protected_build(before,after,'crm:app,crm:worker',[copy.deepcopy(h)])
+   else:
+    with self.assertRaises(SystemExit):p.protected_build(before,after,'')
+ def test_duplicate_raw_helper_ids_rejected(self):
+  rows=self.helper_rows()
+  with self.assertRaises(SystemExit):p.protected_build(rows+[copy.deepcopy(rows[-1])],rows,'')
+  with self.assertRaises(SystemExit):p.protected_build(rows,rows+[copy.deepcopy(rows[-1])],'')
+  after=copy.deepcopy(rows);h=copy.deepcopy(rows[-1]);h['Id']='new-helper';after.extend([h,copy.deepcopy(h)])
+  with self.assertRaises(SystemExit):p.protected_build(rows,after,'')
+ def test_booking_allows_only_its_preexisting_crm_service_exception(self):
+  before=self.helper_rows();after=copy.deepcopy(before)
+  after[0]['Id']='new-crm-app';after[1]['Id']='new-crm-worker'
+  h=copy.deepcopy(after[-1]);h['Id']='new-crm-backup';after.append(h)
+  p.protected_build(before,after,'crm:app,crm:worker',[copy.deepcopy(h)])
+  with self.assertRaises(SystemExit):p.protected_build(before,after,'')
+  h['Config']['Labels'].update({'com.docker.compose.project':'max-travel-crm','com.docker.compose.service':'app'});h['State']['Running']=True
+  with self.assertRaises(SystemExit):p.protected_build(before,after,'crm:app,crm:worker')
+ def test_new_helper_must_be_completed_and_isolated(self):
+  before=self.helper_rows()
+  for field,value in [('Running',True),('ExitCode',1),('OOMKilled',True),('Status','running')]:
+   after=copy.deepcopy(before);h=copy.deepcopy(after[-1]);h['Id']='new-helper';h['State'][field]=value;after.append(h)
+   with self.subTest(field=field),self.assertRaises(SystemExit):p.protected_build(before,after,'crm:app,crm:worker',[copy.deepcopy(h)])
+  for field,value in [('NetworkMode','bridge'),('ReadonlyRootfs',False),('Privileged',True),('CapDrop',[]),('SecurityOpt',[])]:
+   after=copy.deepcopy(before);h=copy.deepcopy(after[-1]);h['Id']='new-helper';h['HostConfig'][field]=value;after.append(h)
+   with self.subTest(field=field),self.assertRaises(SystemExit):p.protected_build(before,after,'crm:app,crm:worker',[copy.deepcopy(h)])
+ def test_new_peer_helper_complete_records_cannot_drift(self):
+  before=self.helper_rows();after=copy.deepcopy(before);h=copy.deepcopy(after[-1]);h['Id']='new-helper';after.append(h);proof=[copy.deepcopy(h)]
+  h['Mounts']=[{'Source':'/unexpected','RW':True}]
+  with self.assertRaises(SystemExit):p.protected_build(before,after,'crm:app,crm:worker',proof)
+  h['Mounts']=[];h['Image']='unexpected'
+  with self.assertRaises(SystemExit):p.protected_build(before,after,'crm:app,crm:worker',proof)
+ def test_completed_peer_helper_evidence_exact_names_and_images(self):
+  import tempfile,json
+  with tempfile.TemporaryDirectory() as temp:
+   d=pathlib.Path(temp);release=d/'crm-release-target';release.mkdir();stage=d/'final-backup-test';stage.mkdir()
+   (release/'snapshot-stage.txt').write_text(str(stage));(stage/'restore-verified.txt').write_text('verified');(stage/'helper-names.txt').write_text('backup\nrestore\n');(release/'deployed-image.txt').write_text('new-crm-image')
+   a=copy.deepcopy(self.helper_rows()[-1]);a.update(Id='backup',Name='/backup',Image=v.PINS['crm']['image'])
+   b=copy.deepcopy(a);b.update(Id='restore',Name='/restore',Image='new-crm-image')
+   final=release/'all-final.private.json.all.private.json';final.write_text(json.dumps([a,b]))
+   self.assertEqual([r['Id'] for r in p.completed_peer_helpers(release)],['backup','restore'])
+   b['Image']='unexpected';final.write_text(json.dumps([a,b]))
+   with self.assertRaises(SystemExit):p.completed_peer_helpers(release)
+   (stage/'helper-names.txt').write_text('backup\nbackup\n')
+   with self.assertRaises(SystemExit):p.completed_peer_helpers(release)
+ def test_baseline_helper_label_change_rejected(self):
+  before=self.helper_rows();after=copy.deepcopy(before);after[-1]['Config']['Labels']['maxtravel.cutover.helper']='false'
+  with self.assertRaises(SystemExit):p.protected_build(before,after,'')
+ def test_build_projection_keeps_unrelated_config_checks(self):
+  before=self.helper_rows();after=copy.deepcopy(before);after[2]['HostConfig']['Privileged']=True
+  with self.assertRaises(SystemExit):p.protected_build(before,after,'crm:app,crm:worker')
+ def test_freeze_build_compare_uses_preserved_raw_evidence(self):
+  for name in ['freeze-backup-verify-crm.sh','freeze-backup-verify-booking.sh']:
+   s=(HERE/'cutover'/name).read_text()
+   self.assertIn('protected_build_check "$BUILD/after.private.json" "$STAGE/all-before.private.json.all.private.json"',s)
+   self.assertLess(s.index('protected_build_check'),s.index('FROZEN=1'))
  def test_exact_operational_allowlist(self):
   self.assertEqual(set(p.BOOKING_OPERATIONAL_SHA256),{'package.json','package-lock.json','scripts/verify-seo-http.mjs','scripts/crm-worker.mts','scripts/notification-worker.mts'})
   for name in p.BOOKING_OPERATIONAL_SHA256:

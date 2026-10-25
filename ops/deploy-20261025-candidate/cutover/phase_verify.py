@@ -46,6 +46,56 @@ def protected(before,after,allowed):
   for k in ['StartedAt','FinishedAt','Paused','Restarting','Dead','OOMKilled','Running']:
    require(r['State'].get(k)==n['State'].get(k),'Protected lifecycle changed.')
   if r['State'].get('Health',{}).get('Status')=='healthy':require(n['State'].get('Health',{}).get('Status')=='healthy','Protected health changed.')
+def completed_peer_helpers(release):
+ r=pathlib.Path(release);stage=pathlib.Path(regular(r/"snapshot-stage.txt").read_text().strip())
+ require(stage.parent==r.parent and stage.name.startswith("final-backup-"),"Unexpected peer backup evidence path.")
+ require(regular(stage/"restore-verified.txt").read_text().strip()=="verified","Peer isolated restore not verified.")
+ names=regular(stage/"helper-names.txt").read_text().splitlines()
+ require(len(names)==2 and len(set(names))==2 and all(names),"Peer backup helper identities ambiguous.")
+ raw=read(regular(r/"all-final.private.json.all.private.json"))
+ require(len({x["Id"] for x in raw})==len(raw),"Duplicate peer final raw IDs.")
+ rows=[]
+ for name in names:
+  found=[x for x in raw if x.get("Name")=="/"+name]
+  require(len(found)==1 and ((found[0].get("Config") or {}).get("Labels") or {}).get("maxtravel.cutover.helper")=="true","Peer final helper evidence mismatch.")
+  rows.append(found[0])
+ require(rows[0]["Image"]==PINS["crm"]["image"] and rows[1]["Image"]==regular(r/"deployed-image.txt").read_text().strip(),"Peer backup/restore helper image mismatch.")
+ return rows
+def protected_build(before,current_raw,allowed,peer_helpers=None):
+ for rows in (before,current_raw):
+  require(len({r['Id'] for r in rows})==len(rows),'Duplicate raw container IDs in build-to-freeze evidence.')
+ # Build evidence is intentionally raw; phase snapshots also retain raw evidence.
+ # Apply the EXISTING exact helper=true projection symmetrically, then additionally
+ # preserve every pre-existing helper's full identity/configuration/lifecycle.
+ protected(non_helper_rows(before),non_helper_rows(current_raw),allowed)
+ old_helpers=[r for r in before if ((r.get('Config') or {}).get('Labels') or {}).get('maxtravel.cutover.helper')=='true']
+ old_ids={r['Id'] for r in old_helpers}
+ current_helpers=[r for r in current_raw if r['Id'] in old_ids]
+ require({r['Id'] for r in current_helpers}==old_ids,'Pre-existing build helper disappeared; reconcile without cleanup.')
+ protected(old_helpers,current_helpers,'')
+ before_ids={r['Id'] for r in before};allowed_services=set(filter(None,allowed.split(',')))
+ peer_helpers=peer_helpers or []
+ require(len({r['Id'] for r in peer_helpers})==len(peer_helpers),'Duplicate peer helper identities.')
+ require(not peer_helpers or allowed_services=={'crm:app','crm:worker'},'New helper admission is only valid after completed CRM peer cutover.')
+ require(all(r['Id'] not in before_ids for r in peer_helpers),'Peer helper is not newly created since build.')
+ expected_new_ids={r['Id'] for r in peer_helpers}
+ new_helpers=[r for r in current_raw if r['Id'] not in before_ids and ((r.get('Config') or {}).get('Labels') or {}).get('maxtravel.cutover.helper')=='true']
+ require({r['Id'] for r in new_helpers}==expected_new_ids,'New helper inventory differs from exact completed peer backup evidence.')
+ protected(peer_helpers,new_helpers,'')
+ for r in current_raw:
+  is_helper=((r.get('Config') or {}).get('Labels') or {}).get('maxtravel.cutover.helper')=='true'
+  if r['Id'] in before_ids or (not is_helper and service(r) in allowed_services):continue
+  # New helper records can appear between a build and the peer's completed
+  # backup phase. Never admit running, failed, privileged or networked helpers.
+  labels=(r.get('Config') or {}).get('Labels') or {};state=r.get('State') or {};host=r.get('HostConfig') or {}
+  require(labels.get('maxtravel.cutover.helper')=='true'
+          and state.get('Status')=='exited' and state.get('ExitCode')==0
+          and all(state.get(k) is False for k in ('Running','Paused','Restarting','Dead','OOMKilled'))
+          and host.get('NetworkMode')=='none' and host.get('ReadonlyRootfs') is True
+          and host.get('Privileged') is False and host.get('CapDrop')==['ALL']
+          and host.get('SecurityOpt')==['no-new-privileges']
+          and (r.get('Config') or {}).get('User')=='1000:1000',
+          'Unexpected new container; only completed isolated non-root phase helpers qualify.')
 BOOKING_OPERATIONAL_SHA256={'package.json': 'fc3c4e4b8b2fe66fbcce8c33aad73b82d5687fb32f0f021c721195e4b37df8e1', 'package-lock.json': '4f1b04c484bd9129f2124c3b1f1d62d60437c39739145eed17ffd5a0501cc417', 'scripts/verify-seo-http.mjs': '0913aad71525dd7c7ae2040a78f22d5e3ab561c0b4c41b483f41bdecf55fa2ab', 'scripts/crm-worker.mts': '91daca103095781e5929d3f46d5fff7e99ae35416a1d28786bfd22ad17ff8b3d', 'scripts/notification-worker.mts': '49f924954f8485d9c67dc5a622c43d05f9a937682db5c93d353fc2f9648330fc'}
 def exact_booking_operational_bytes(rel,data):
  import hashlib
@@ -112,6 +162,7 @@ if __name__=='__main__':
  elif mode=='runtime-equal':runtime_equal(read(sys.argv[2]),read(sys.argv[3]),sys.argv[4])
  elif mode=='source':source(*sys.argv[2:])
  elif mode=='protected':protected(read(sys.argv[2]),read(sys.argv[3]),sys.argv[4])
+ elif mode=='protected-build':protected_build(read(sys.argv[2]),read(sys.argv[3]),sys.argv[4],completed_peer_helpers(sys.argv[5]) if len(sys.argv)>5 and sys.argv[5] else None)
  elif mode=='image':
   rows=[r for r in read(sys.argv[2]) if service(r)==sys.argv[3]+':'+sys.argv[4]];require(len(rows)==1,'Service image ambiguity.');print(rows[0]['Image'])
  elif mode=='crm-release':

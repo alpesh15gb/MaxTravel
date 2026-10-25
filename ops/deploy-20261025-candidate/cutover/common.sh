@@ -15,6 +15,7 @@ snapshot_all() {
  python3 "$HERE/phase_verify.py" snapshot-filter "$1.all.private.json" > "$1"
 }
 protected_check() { python3 "$HERE/phase_verify.py" protected "$1" "$2" "${3:-}"; }
+protected_build_check() { python3 "$HERE/phase_verify.py" protected-build "$1" "$2" "${3:-}" "${4:-}"; }
 init() {
  python3 "$VERIFY_PY" candidate-execution-gate
  APP_KIND=$1

@@ -35,7 +35,7 @@ done
 STAGE=$(mktemp -d "$BUILD/final-backup-XXXXXX")
 chmod 700 "$STAGE"
 snapshot_all "$STAGE/all-before.private.json"
-protected_check "$BUILD/after.private.json" "$STAGE/all-before.private.json" ""
+protected_build_check "$BUILD/after.private.json" "$STAGE/all-before.private.json.all.private.json" ""
 # Read-only live ledger precheck before generating the no-new-migrations resume escape.
 timeout 120s docker exec "$APP" node -e "$(cat "$HERE/audit-crm.cjs")" > "$STAGE/pre-freeze-audit.private.json" 2> "$STAGE/pre-freeze-audit.private.log"
 FROZEN=0

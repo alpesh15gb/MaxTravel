@@ -23,7 +23,7 @@ STAGE=$(mktemp -d "$BUILD/final-backup-XXXXXX")
 chmod 700 "$STAGE"
 FROZEN=0; VERIFY=''
 snapshot_all "$STAGE/all-before.private.json"
-protected_check "$BUILD/after.private.json" "$STAGE/all-before.private.json" crm:app,crm:worker
+protected_build_check "$BUILD/after.private.json" "$STAGE/all-before.private.json.all.private.json" crm:app,crm:worker "$CRM_RELEASE"
 protected_check "$CRM_RELEASE/all-final.private.json" "$STAGE/all-before.private.json" ""
 trap 'status=$?; if [ -n "$VERIFY" ]; then timeout 30s docker stop --timeout 20 "$VERIFY" > "$STAGE/isolated-stop.private.log" 2>&1 || true; fi; if [ "$status" != 0 ]; then printf "STOPPED: booking freeze started=%s; private evidence %s. Do not rerun or restore into live PostgreSQL. Booking app may remain stopped; CRM and original PostgreSQL were not stopped.\n" "$FROZEN" "$STAGE" >&2; fi' EXIT
 docker inspect "$APP" "$PG" > "$STAGE/booking-before.private.json"
