@@ -70,7 +70,11 @@ try{
   const geometry=await apply.evaluate(el=>{const r=el.getBoundingClientRect();const date=Array.from(document.querySelectorAll('#report-filters input[type=date]')).at(-1);return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,height:r.height,width:innerWidth,viewportHeight:innerHeight,afterDate:!date||Boolean(date.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING)};});
   assert(geometry.left>=0&&geometry.right<=width+1&&geometry.height>=44&&geometry.top>=0&&geometry.bottom<=geometry.viewportHeight+1,JSON.stringify(geometry));
   assert(geometry.afterDate,"Lower apply follows date fields in document/keyboard order");
-  await capture(page,`lower-apply-${width}-viewport`,false);
+  // Keep the same scrolled viewport whose action geometry was checked above.
+  // capture() intentionally resets to page top and cannot prove this lower action.
+  await settleShell(page);
+  await apply.scrollIntoViewIfNeeded();
+  await page.screenshot({path:path.join(artifactDir,`lower-apply-${width}-viewport.png`),fullPage:false});
  }
  await viewport(page,1440,1000);
  const reads=[];

@@ -62,6 +62,14 @@ export async function checkCustomerSalesHistory(page, base, fixture) {
 
     for (const width of [1440, 390, 320]) {
       await page.setViewportSize({ width, height: 844 });
+      await page.evaluate(()=>document.fonts.ready);
+      // Responsive sidebar transitions must finish before measuring/capturing identity.
+      await page.waitForFunction(()=>{
+        const rail=document.querySelector("aside.app-sidebar");
+        if(!rail)return false;
+        const settled=rail.getAnimations().every(a=>!a.pending&&a.playState!=="running");
+        return settled&&(innerWidth>=1024?getComputedStyle(rail).visibility!=="hidden":rail.getAttribute("data-drawer")==="closed"&&getComputedStyle(rail).visibility==="hidden");
+      });
       await page.evaluate(()=>scrollTo(0,0));
       const identity=page.getByRole("heading",{name:"Synthetic same-name customer",exact:true});
       const links=page.locator('[aria-label="Customer record links"]');
