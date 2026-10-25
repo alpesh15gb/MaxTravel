@@ -1,3 +1,4 @@
+import { MANUAL_HOTEL_STATUSES, hotelStayProblem } from "@/lib/manual-hotel";
 import { enumLabel } from "@/lib/labels";
 import { inrAmount } from "@/lib/money";
 import { requireSession, jsonError, ApiError, canTouchRecord } from "@/lib/guard";
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
     if (!bookingId || typeof status !== "string") throw new ApiError(400, "Select a booking and valid status.");
     if (["REISSUE_REQUESTED", "REISSUED"].includes(status)) throw new ApiError(400, "Use the reissue request and completion workflow; reissue states cannot be set by hand.");
     if (REFUND_STATE_MESSAGE[status]) throw new ApiError(400, REFUND_STATE_MESSAGE[status]);
-    if (!MANUAL.includes(status)) throw new ApiError(400, "Select a booking and valid status.");
+    if (![...MANUAL,...MANUAL_HOTEL_STATUSES].includes(status)) throw new ApiError(400, "Select a booking and valid status.");
 
     const result = await prisma.$transaction(async tx => {
       const b = await tx.booking.findUnique({
@@ -45,6 +46,12 @@ export async function POST(req: Request) {
       if (b.gdsSource === "TRIPJACK_API") throw new ApiError(409,"Manage online booking status from the booking platform.");
       if (!canTouchRecord(user, b)) throw new ApiError(403, "Booking is outside your access.");
       if (isWithdrawnBooking(b.status) && status !== b.status) throw new ApiError(400, "A cancelled, void or refunded booking stays closed. Create a new booking or a reissue for further travel.");
+
+      if(b.product==="HOTEL"){
+        if(!MANUAL_HOTEL_STATUSES.includes(status))throw new ApiError(400,"Use hotel stay confirmation; airline ticket states do not apply to hotel bookings.");
+        if(b.status==="CONFIRMED"&&!WITHDRAWING.includes(status)&&status!=="CONFIRMED")throw new ApiError(400,"A recorded hotel confirmation cannot be moved back to an enquiry. Use cancellation terms if the stay is withdrawn.");
+        if(status==="CONFIRMED"){const problem=hotelStayProblem(b,true);if(problem)throw new ApiError(400,problem);const expected={hotelName:b.hotelName,pnr:b.pnr,supplierId:b.supplierId,hotelCheckIn:b.hotelCheckIn?.toISOString()??null,hotelCheckOut:b.hotelCheckOut?.toISOString()??null};if(Object.entries(expected).some(([key,value])=>body.confirmationSnapshot?.[key]!==value))throw new ApiError(409,"Stay details changed. Refresh and review the current supplier confirmation before recording it.");if(body.confirmationRecorded!==true)throw new ApiError(400,"Confirm that the supplier has already confirmed this stay. CRM does not make a hotel reservation.");}
+      }else if(!MANUAL.includes(status))throw new ApiError(400,"Use the airline ticket workflow for flight bookings.");
 
       if (b.status === status) return { booking: { id: b.id, status: b.status }, refundNo: null };
       if (b.status === "REISSUED" && !WITHDRAWING.includes(status)) throw new ApiError(400, "A completed reissue cannot be moved back through booking statuses. Use the replacement booking.");

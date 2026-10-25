@@ -36,7 +36,7 @@ const TABS = [
 
 // One tone per meaning, shared with the rest of the app's status badges.
 const toneOf = (s: string): Tone => {
-  if (["ACTIVE", "PAID", "APPROVED", "TICKETED", "ACCEPTED", "VERIFIED", "DONE"].includes(s)) return "success";
+  if (["ACTIVE", "PAID", "APPROVED", "TICKETED", "CONFIRMED", "ACCEPTED", "VERIFIED", "DONE"].includes(s)) return "success";
   if (["LEAD", "REQUESTED", "RECEIVED", "SUBMITTED", "OPEN", "IN_PROGRESS"].includes(s)) return "info";
   if (["PARTIAL", "UNDER_REVIEW", "PENDING", "HIGH"].includes(s)) return "warning";
   if (["UNPAID", "REJECTED", "REUPLOAD_REQUESTED", "URGENT", "CANCELLED"].includes(s)) return "danger";
@@ -214,7 +214,7 @@ function Overview({ data, onSelect }: { data: Data; onSelect: (tab: string) => v
             <span className="min-w-0"><span className="block text-sm font-semibold">{v.caseNo} <span className="font-normal text-slate-500">· {v.destination}</span></span><span className="mt-0.5 block text-xs text-slate-500">{v.visaType} · {v.travellers}</span></span><Status tone="info">{v.stage}</Status>
           </Link>)}
           {data.bookings.filter(b => !["CANCELLED", "VOID", "REFUNDED"].includes(b.status)).slice(0, 3).map(b => <Link key={b.id} href={`/ticketing/${b.id}`} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0 hover:text-teal-700">
-            <span className="min-w-0"><span className="block text-sm font-semibold">{b.bookingNo} <span className="font-normal text-slate-500">· {b.sector ?? "Route pending"}</span></span><span className="mt-0.5 block text-xs text-slate-500">{b.pnr ?? "Enquiry"}{b.ticketingDeadline ? ` · Deadline ${dt(b.ticketingDeadline)}` : ""}</span></span><Status tone={toneOf(b.status)}>{enumLabel(b.status)}</Status>
+            <span className="min-w-0 [overflow-wrap:anywhere]"><span className="block text-sm font-semibold">{b.bookingNo} <span className="font-normal text-slate-500">· {b.product==="HOTEL"?b.hotelName??"Hotel not entered":b.sector??"Route pending"}</span></span><span className="mt-0.5 block break-words text-xs text-slate-500">{b.product==="HOTEL"?`Supplier confirmation reference: ${b.pnr??"Not entered"} · Check-in ${b.hotelCheckIn?dOnly(b.hotelCheckIn):"not entered"} · Check-out ${b.hotelCheckOut?dOnly(b.hotelCheckOut):"not entered"}`:<>{b.pnr??"Enquiry"}{b.ticketingDeadline?` · Deadline ${dt(b.ticketingDeadline)}`:""}</>}</span></span><Status tone={toneOf(b.status)}>{enumLabel(b.status)}</Status>
           </Link>)}
           {!data.visaCases.some(v => !["CLOSED", "DELIVERED", "REJECTED"].includes(v.stageKey)) && !data.bookings.some(b => !["CANCELLED", "VOID", "REFUNDED"].includes(b.status)) && <p className="customer-overview-empty">No current bookings or visa cases.</p>}
         </div>
@@ -342,16 +342,16 @@ function Trips({ data, finance }: { data: Data; finance: boolean }) {
     <div className="space-y-3">
       {data.bookings.map((b) => (
         <Link key={b.id} href={`/ticketing/${b.id}`} className="panel flex flex-wrap items-center justify-between gap-3 px-5 py-4 transition hover:border-teal-300">
-          <div className="min-w-0">
+          <div className="min-w-0 [overflow-wrap:anywhere]">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium">{b.bookingNo}</span>
-              {b.pnr && <span className="font-mono text-xs text-slate-500">PNR {b.pnr}</span>}
+              <span className="font-medium">{b.bookingNo}{b.product==="HOTEL"?" · Hotel stay":""}</span>
+              {b.product==="HOTEL"?<span className="min-w-0 break-all font-mono text-xs text-slate-500">Supplier confirmation reference: {b.pnr??"Not entered"}</span>:b.pnr&&<span className="font-mono text-xs text-slate-500">PNR {b.pnr}</span>}
             </div>
-            <div className="mt-1 text-xs text-slate-500">{b.airline ?? "—"} · {b.sector ?? "—"} · {b.travellers || "—"}</div>
+            <div className="mt-1 break-words text-xs text-slate-500">{b.product==="HOTEL"?<>{b.hotelName??"Hotel not entered"} · {b.sector??"Destination not entered"} · {b.travellers||"Guest details not entered"}{b.externallyManaged?" · Platform-synced stay":" · Manual agency record"}</>:<>{b.airline??"—"} · {b.sector??"—"} · {b.travellers||"—"}</>}</div>
           </div>
           <div className="text-right">
             <Status tone={toneOf(b.status)}>{enumLabel(b.status)}</Status>
-            <div className="mt-1.5 text-xs text-slate-500">Travel {dOnly(b.travelDate)}</div>{finance&&["CANCELLED","VOID","REFUNDED"].includes(b.status)&&<p className="mt-2 text-xs text-amber-800">{b.cancellationCharge===null?"Cancellation charges not recorded":`Cancellation charges ${money(b.cancellationCharge)} · balance ${money(b.cancellationBalance)}`} · Trip closed</p>}
+            <div className="mt-1.5 text-xs text-slate-500">{b.product==="HOTEL"?<>Check-in {b.hotelCheckIn?dOnly(b.hotelCheckIn):"not entered"} · Check-out {b.hotelCheckOut?dOnly(b.hotelCheckOut):"not entered"}</>:<>Travel {dOnly(b.travelDate)}</>}</div>{finance&&["CANCELLED","VOID","REFUNDED"].includes(b.status)&&<p className="mt-2 text-xs text-amber-800">{b.cancellationCharge===null?"Cancellation charges not recorded":`Cancellation charges ${money(b.cancellationCharge)} · balance ${money(b.cancellationBalance)}`} · Trip closed</p>}
           </div>
         </Link>
       ))}

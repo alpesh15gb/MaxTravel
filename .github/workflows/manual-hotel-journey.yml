@@ -1,0 +1,51 @@
+name: Manual hotel CRM journey
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+    paths:
+      - '.github/workflows/manual-hotel-journey.yml'
+      - 'tests/manual-hotel*'
+      - 'src/lib/manual-hotel.ts'
+      - 'src/lib/booking-deadline.ts'
+      - 'src/lib/pulse.ts'
+      - 'src/lib/whatsapp-queue.ts'
+      - 'src/app/api/whatsapp/send/route.ts'
+      - 'src/lib/customer360.ts'
+      - 'src/app/(app)/customers/**'
+      - 'src/app/(app)/ticketing/**'
+      - 'src/app/api/bookings/**'
+      - 'src/app/api/reissues/route.ts'
+permissions:
+  contents: read
+concurrency:
+  group: manual-hotel-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: file:./ci.db
+      JWT_SECRET: ci-only-manual-hotel-fixture-never-real-0123456789abcdef
+      NEXT_TELEMETRY_DISABLED: '1'
+      WA_PROVIDER: manual
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: node --import tsx tests/manual-hotel.ts
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Accepted quote through recorded hotel confirmation and stay document
+        run: node tests/manual-hotel-journey-browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: manual-hotel-${{ github.sha }}-${{ github.run_id }}
+          path: test-artifacts/manual-hotel-journey/
+          retention-days: 14

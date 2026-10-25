@@ -72,7 +72,7 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
     visaCases: c.visaCases.map((v) => ({ sellingPrice: v.sellingPrice, received: v.amountReceived })),
   }).total;
   const activeVisaCases = c.visaCases.filter((v) => !["CLOSED", "DELIVERED"].includes(v.stage.key)).length;
-  const upcomingTrips = c.bookings.filter((b) => b.travelDate && new Date(b.travelDate).getTime() > Date.now() && !["CANCELLED", "VOID", "REFUNDED"].includes(b.status)).length;
+  const upcomingTrips = c.bookings.filter((b) => {const departure=b.product==="HOTEL"?b.hotelCheckIn:b.travelDate;return departure&&departure.getTime()>Date.now()&&!["CANCELLED", "VOID", "REFUNDED"].includes(b.status);}).length;
   const pendingDocs = c.documents.filter((d) => ["REQUIRED", "REQUESTED", "RECEIVED", "UNDER_REVIEW", "REJECTED", "REUPLOAD_REQUESTED"].includes(d.status)).length;
   const openTasks = c.tasks.filter((t) => ["OPEN", "IN_PROGRESS"].includes(t.status)).length;
   const pendingRefunds = c.refunds.filter((r) => !["PAID", "REJECTED"].includes(r.status)).length;
@@ -121,7 +121,7 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
       travellers: v.travellers.map((ct) => ct.traveller.fullName).join(", "),
     })),
     bookings: c.bookings.map((b) => ({
-      id: b.id, bookingNo: b.bookingNo, pnr: b.pnr, airline: b.airline, sector: b.sector,
+      id: b.id, bookingNo: b.bookingNo, product:b.product, hotelName:b.hotelName, hotelCheckIn:b.hotelCheckIn?.toISOString()??null, hotelCheckOut:b.hotelCheckOut?.toISOString()??null, externallyManaged:b.gdsSource==="TRIPJACK_API", pnr: b.pnr, airline: b.airline, sector: b.sector,
       status: b.status, travelDate: b.travelDate?.toISOString() ?? null,
       ticketingDeadline: b.ticketingDeadline?.toISOString() ?? null,
       sellingPrice: b.sellingPrice,
