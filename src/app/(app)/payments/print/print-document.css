@@ -1,0 +1,30 @@
+/* Paper documents are not horizontally scrolling workspace data tables. Keep the
+   global phone-table minimum out of these invoices, receipts and credit notes. */
+main .financial-document {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+main .financial-document table {
+  min-width: 0;
+  max-width: 100%;
+}
+main .financial-document-header > div { min-width: 0; }
+
+@media screen and (max-width: 640px) {
+  main .financial-document { padding: 24px 16px; }
+  main .financial-document table { table-layout: fixed; }
+  main .financial-document th,
+  main .financial-document td { padding-inline: 8px; }
+  main .financial-document-header { flex-direction: column; gap: 16px; }
+  main .financial-document-header > div { text-align: left; }
+}
+
+@media print {
+  /* Keep the existing paper widths/padding and money alignment; a single row or
+     issuer heading must not be split across sheets. Repeated table headers help
+     invoices with multiple recorded receipts continue onto another page. */
+  main .financial-document table { table-layout: auto; }
+  main .financial-document-header,
+  main .financial-document tr { break-inside: avoid; }
+  main .financial-document thead { display: table-header-group; }
+}

@@ -20,7 +20,7 @@ await runSyntheticJourney('customer-import-race',3398,async({base,db,session,cap
   await page.evaluate(()=>window.releaseSyntheticCsv());await page.waitForFunction(()=>document.querySelector('textarea')?.value.includes('replacement only'));
   await postResult(page,'/api/customers/import',()=>page.getByRole('button',{name:'Validate & preview',exact:true}).click());await page.getByText('1 valid rows · 0 contact duplicates',{exact:true}).waitFor();
   await page.getByLabel('CSV file',{exact:true}).setInputFiles({name:'oversized-replacement.csv',mimeType:'text/csv',buffer:Buffer.alloc(512001,65)});
-  await page.getByRole('alert').getByText('Use a CSV file up to 512 KB.',{exact:true}).waitFor();
+  await page.locator('[role="alert"]:not(#__next-route-announcer__)').getByText('Use a CSV file up to 512 KB.',{exact:true}).waitFor();
   const staleRejected=await importButton.count()&&await importButton.isEnabled();await capture(page,`replacement-rejected-${width}`);
   if(staleRejected)failures.push(`${width}: rejected replacement file leaves previous preview importable`);
   // A response for an earlier CSV must not publish an actionable preview after the text changes.

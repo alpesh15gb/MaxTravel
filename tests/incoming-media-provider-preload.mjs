@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {appendFileSync} from 'node:fs';
 if(process.env.CRM_SYNTHETIC_INCOMING!=='1'||process.env.APP_ORIGIN!=='http://127.0.0.1:3397')throw Error('Incoming provider fixture requires its isolated loopback origin');
-process.env.WA_PROVIDER='meta';process.env.WA_CLOUD_ACCESS_TOKEN='synthetic-local-fixture-token-not-valid-anywhere';process.env.WA_CLOUD_PHONE_NUMBER_ID='123456789';process.env.WA_CLOUD_WABA_ID='987654321';process.env.WA_CLOUD_GRAPH_VERSION='v23.0';process.env.WA_CLOUD_APP_SECRET='synthetic-fixture-app-secret-0123456789abcdef';process.env.WA_CLOUD_VERIFY_TOKEN='synthetic-fixture-verify-token-0123456789abcdef';
+process.env.WA_PROVIDER='meta';process.env.WA_WORKER_SECRET='synthetic-fixture-worker-secret-0123456789abcdef';process.env.WA_CLOUD_ACCESS_TOKEN='synthetic-local-fixture-token-not-valid-anywhere';process.env.WA_CLOUD_PHONE_NUMBER_ID='123456789';process.env.WA_CLOUD_WABA_ID='987654321';process.env.WA_CLOUD_GRAPH_VERSION='v23.0';process.env.WA_CLOUD_APP_SECRET='synthetic-fixture-app-secret-0123456789abcdef';process.env.WA_CLOUD_VERIFY_TOKEN='synthetic-fixture-verify-token-0123456789abcdef';
 const bytes=Buffer.from('%PDF-1.4\nSynthetic incoming document fixture only\n%%EOF'),sha256=createHash('sha256').update(bytes).digest('hex'),original=globalThis.fetch;
 const trace=(event)=>{if(process.env.CRM_INCOMING_TRACE)appendFileSync(process.env.CRM_INCOMING_TRACE,JSON.stringify(event)+'\n');};
 globalThis.fetch=async(input,init={})=>{

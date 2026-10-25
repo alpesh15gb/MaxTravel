@@ -14,7 +14,7 @@ await runSyntheticJourney('records-complete-journey',3395,async({base,db,fixture
     await dialog.getByLabel('03 / Amount (INR) *',{exact:true}).fill('250.75');
     await dialog.getByLabel('Description',{exact:true}).fill(description);
     await dialog.getByLabel(/^Due date/).fill('2099-11-01');
-    const invoiceResult=await lostResponseRetry(page,'/api/invoices',dialog.getByRole('button',{name:'Create invoice',exact:true}),dialog.getByRole('alert'));
+    const invoiceResult=await lostResponseRetry(page,'/api/invoices',dialog.getByRole('button',{name:'Create invoice',exact:true}),dialog.locator('[role="alert"]:not(#__next-route-announcer__)'));
     assert.equal(invoiceResult.result.invoiceId,invoiceResult.original.invoiceId);
     const invoiceId=invoiceResult.result.invoiceId;
     await dialog.waitFor({state:'hidden'});
@@ -40,7 +40,7 @@ await runSyntheticJourney('records-complete-journey',3395,async({base,db,fixture
     const fail=route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic credit service unavailable'})});
     await page.route('**/api/invoices/credit-note',fail);
     await dialog.getByRole('button',{name:'Issue credit note',exact:true}).click();
-    await dialog.getByRole('alert').waitFor();
+    await dialog.locator('[role="alert"]:not(#__next-route-announcer__)').waitFor();
     assert.equal(await dialog.getByRole('textbox',{name:'Reason for credit *',exact:true}).inputValue(),'Synthetic service cancelled before collection');
     assert.equal(await db.invoiceCreditNote.count({where:{invoiceId}}),0);
     await page.unroute('**/api/invoices/credit-note',fail);
@@ -80,7 +80,7 @@ await runSyntheticJourney('records-complete-journey',3395,async({base,db,fixture
     await dialog.getByLabel('City',{exact:true}).fill(`Synthetic City ${width}`);
     const customerFailure=route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic customer update unavailable'})});
     await page.route(`**/api/customers/${fixture.customerId}`,customerFailure);
-    await dialog.getByRole('button',{name:'Save changes',exact:true}).click();await dialog.getByRole('alert').waitFor();
+    await dialog.getByRole('button',{name:'Save changes',exact:true}).click();await dialog.locator('[role="alert"]:not(#__next-route-announcer__)').waitFor();
     assert.equal(await dialog.getByLabel('City',{exact:true}).inputValue(),`Synthetic City ${width}`);
     assert.equal((await db.customer.findUniqueOrThrow({where:{id:fixture.customerId}})).city,originalCustomer.city);
     await page.unroute(`**/api/customers/${fixture.customerId}`,customerFailure);
@@ -99,7 +99,7 @@ await runSyntheticJourney('records-complete-journey',3395,async({base,db,fixture
     await dialog.getByLabel('Place of issue',{exact:true}).fill('Synthetic test location');
     await dialog.getByLabel('Passport issue date',{exact:true}).fill('2020-01-01');
     await dialog.getByLabel('Passport expiry',{exact:true}).fill('2000-01-01');
-    await dialog.getByRole('button',{name:'Add',exact:true}).click();await dialog.getByRole('alert').waitFor();
+    await dialog.getByRole('button',{name:'Add',exact:true}).click();await dialog.locator('[role="alert"]:not(#__next-route-announcer__)').waitFor();
     assert.equal(await db.traveller.count({where:{fullName:travellerName}}),0,'Rejected expired passport must leave no partial traveller');
     assert.equal(await dialog.getByLabel('Full name *',{exact:true}).inputValue(),travellerName);
     await dialog.getByLabel('Passport expiry',{exact:true}).fill('2099-01-01');
@@ -134,7 +134,7 @@ await runSyntheticJourney('records-complete-journey',3395,async({base,db,fixture
       await form.getByLabel('Allowed file types',{exact:true}).fill(invalid?'exe':'pdf');
       await form.getByLabel('Client instructions',{exact:true}).fill('Synthetic test requirement, not real immigration advice.');
       if(invalid){
-        await form.getByRole('button',{name:'Save checklist version',exact:true}).click();await form.getByRole('alert').waitFor();
+        await form.getByRole('button',{name:'Save checklist version',exact:true}).click();await form.locator('[role="alert"]:not(#__next-route-announcer__)').waitFor();
         assert.equal(await db.checklist.count({where:{country:destination,visaType}}),1);
         assert.equal((await db.checklist.findFirstOrThrow({where:{country:destination,visaType,version:1}})).active,true,'Invalid replacement must not deactivate existing master');
         assert.equal(await form.getByLabel('Document name *',{exact:true}).inputValue(),`Synthetic requirement v${version}`);
