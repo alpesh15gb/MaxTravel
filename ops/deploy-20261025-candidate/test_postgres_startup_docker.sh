@@ -33,7 +33,17 @@ if ! timeout 180s docker pull "$IMAGE" > "$STAGE/pull.private.log" 2>&1; then
  tail -20 "$STAGE/pull.private.log" >&2;exit 1
 fi
 PG_IMAGE=$(docker image inspect -f '{{.Id}}' "$IMAGE")
-[[ $PG_IMAGE == sha256:d4bb0a8c1b7bb2e29f976d099e7bfb9a5d8858cffe9e46b35cd302cd1f1f8168 ]] || { printf 'STOP: pulled image identity %s differs from reported VPS image; no fallback.\n' "$PG_IMAGE" >&2;exit 1; }
+[[ $PG_IMAGE =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
+docker image inspect "$PG_IMAGE" > "$STAGE/registry-image.private.json"
+python3 - "$STAGE/registry-image.private.json" "$PG_IMAGE" <<'PYREGISTRY'
+import json,sys
+image=json.load(open(sys.argv[1]));assert len(image)==1;image=image[0]
+digest='sha256:d4bb0a8c1b7bb2e29f976d099e7bfb9a5d8858cffe9e46b35cd302cd1f1f8168'
+assert image['Id']==sys.argv[2] and image['Os']=='linux' and image['Architecture']=='amd64'
+assert set(image.get('RepoDigests',[])) & {'postgres@'+digest,'docker.io/library/postgres@'+digest}
+print('Exact official registry digest verified on linux/amd64; runtime config image ID is distinct:',image['Id'])
+PYREGISTRY
+[[ $(docker run --rm --pull never --network none --read-only --cap-drop ALL --security-opt no-new-privileges --entrypoint postgres "$PG_IMAGE" --version) == 'postgres (PostgreSQL) 17.11' ]] || { echo 'STOP: exact-digest image PostgreSQL version differs.' >&2;exit 1; }
 # Same official image's account; disposable identity lookup has no mounts/network.
 PG_UID=$(docker run --rm --pull never --network none --read-only --cap-drop ALL --security-opt no-new-privileges --entrypoint id "$PG_IMAGE" -u postgres)
 PG_GID=$(docker run --rm --pull never --network none --read-only --cap-drop ALL --security-opt no-new-privileges --entrypoint id "$PG_IMAGE" -g postgres)
@@ -91,8 +101,10 @@ original_regular=phase.regular
 expected_image_path=stage.parent/'deployed-images.private.json'
 def regular(path):
  return original_regular(stage/'shape-image.private.json' if pathlib.Path(path)==expected_image_path else path)
-with patch.object(phase,'FAILED_BOOKING_STAGE',str(stage)),patch.object(phase,'regular',regular):
+# Registry manifest digest is not the Docker config image ID. This fixture-only
+# override validates CI representation and does not change the production pin.
+with patch.object(phase,'FAILED_BOOKING_STAGE',str(stage)),patch.object(phase,'FAILED_POSTGRES_IMAGE',row['Image']),patch.object(phase,'regular',regular):
  phase.failed_booking_helper(stage,ordinary+[row])
 print('Actual stopped Docker inspect shape accepted by retained-helper guard; synthetic incident fixture, not old-failure reproduction.')
 PYSHAPE
-printf 'Official PostgreSQL 17.11 Alpine final startup verified on BOTH Unix sockets; TCP disabled. Actual production startup command exercised. Exact supplied VPS digest; no tag fallback.\n'
+printf 'Official PostgreSQL 17.11 Alpine final startup verified on BOTH Unix sockets; TCP disabled. Actual production startup command exercised. Exact supplied registry digest, linux/amd64 PostgreSQL 17.11; local config ID is not claimed identical to VPS. No tag fallback.\n'

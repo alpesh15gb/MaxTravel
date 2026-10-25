@@ -55,6 +55,6 @@ class FailedHelperTests(unittest.TestCase):
      with self.subTest(change=change),self.assertRaises(SystemExit):p.failed_booking_helper(stage,current)
  def test_actual_startup_smoke_and_final_server_gate(self):
   here=pathlib.Path(__file__).parent;s=(here/'test_postgres_startup_docker.sh').read_text();phase=(here/'cutover/freeze-backup-verify-booking.sh').read_text()
-  self.assertIn('IMAGE=docker.io/library/postgres@sha256:d4bb',s);self.assertIn('eval "$COMMAND"',s);self.assertIn("s.index('docker run -d",s)
+  self.assertIn('IMAGE=docker.io/library/postgres@sha256:d4bb',s);self.assertIn("image.get('RepoDigests',[])",s);self.assertIn("image['Architecture']=='amd64'",s);self.assertIn("postgres (PostgreSQL) 17.11",s);self.assertIn('eval "$COMMAND"',s);self.assertIn("s.index('docker run -d",s)
   self.assertIn('cat /proc/1/comm',s);self.assertIn('cat /proc/1/comm',phase);self.assertIn('unix_socket_directories=/tmp,/var/run/postgresql',phase)
 if __name__=='__main__':unittest.main()
