@@ -1,3 +1,4 @@
+import { airlineDeadlineEligible } from "./booking-deadline";
 import { randomBytes } from "node:crypto";
 import { publicOrigin } from "./config";
 import type { Prisma } from "@prisma/client";
@@ -117,7 +118,7 @@ export async function scheduleReminders(now = new Date()) {
     const cases = await tx.visaCase.findMany({ where: { closedAt: null, appointmentDate: { gt: now, lte: tomorrow }, customer: { whatsappOptIn: true, status: { not: "INACTIVE" } } }, include: { customer: true }, take: 200 });
     for (const vc of cases) await queueAutomation(tx, vc.customerId, "APPOINTMENT_REMINDER", `${vc.id}:${vc.appointmentDate!.toISOString()}`,
       `Hello ${vc.customer.name}, your appointment for ${vc.caseNo} is ${dateTimeLabel(vc.appointmentDate!)}. Please confirm the location and required documents with ${agency}.`,{reference:vc.caseNo,date:dateTimeLabel(vc.appointmentDate!)});
-    const bookings = await tx.booking.findMany({ where: { status: { in: ["PNR_CREATED", "ON_HOLD", "PAYMENT_AWAITED"] }, ticketingDeadline: { gt: now, lte: tomorrow }, customer: { whatsappOptIn: true, status: { not: "INACTIVE" } } }, include: { customer: true }, take: 200 });
+    const bookings = await tx.booking.findMany({ where: { product: { not: "HOTEL" }, status: { in: ["PNR_CREATED", "ON_HOLD", "PAYMENT_AWAITED"] }, ticketingDeadline: { gt: now, lte: tomorrow }, customer: { whatsappOptIn: true, status: { not: "INACTIVE" } } }, include: { customer: true }, take: 200 });
     for (const bk of bookings) await queueAutomation(tx, bk.customerId, "PNR_EXPIRY", `${bk.id}:${bk.ticketingDeadline!.toISOString()}`,
       `Hello ${bk.customer.name}, the ticketing deadline for ${bk.pnr ?? bk.bookingNo} is ${dateTimeLabel(bk.ticketingDeadline!)}. Please contact ${agency} to confirm ticketing.`,{reference:bk.bookingNo,pnr:bk.pnr||bk.bookingNo,deadline:dateTimeLabel(bk.ticketingDeadline!)});
     const invoices = await tx.invoice.findMany({ where: { status: { in: ["UNPAID", "PARTIAL"] }, dueDate: { gte: monthAgo, lte: now }, customer: { whatsappOptIn: true, status: { not: "INACTIVE" } } }, include: { customer: true, booking: true }, take: 200 });
@@ -227,7 +228,7 @@ async function reminderIsCurrent(rule: string, key: string, body: string, attach
   }
   if (rule === "PNR_EXPIRY") {
     const bk = await prisma.booking.findUnique({ where: { id } });
-    return Boolean(bk && ["PNR_CREATED","ON_HOLD","PAYMENT_AWAITED"].includes(bk.status) && bk.ticketingDeadline && bk.ticketingDeadline.toISOString() === when && bk.ticketingDeadline > new Date());
+    return Boolean(bk && airlineDeadlineEligible(bk) && bk.ticketingDeadline && bk.ticketingDeadline.toISOString() === when && bk.ticketingDeadline > new Date());
   }
   if (rule === "PAYMENT_REMINDER") {
     const inv = await prisma.invoice.findUnique({ where: { id }, include: { booking: true } });

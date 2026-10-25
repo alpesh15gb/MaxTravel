@@ -1,5 +1,6 @@
 "use client";
 
+import { MANUAL_HOTEL_STATUSES, hotelStayProblem } from "@/lib/manual-hotel";
 import { enumLabel } from "@/lib/labels";
 import { dateLabel, dateTimeLabel } from "@/lib/dates";
 import { inrAmount } from "@/lib/money";
@@ -19,7 +20,7 @@ const dt = (s: string | null | undefined) => (s ? dateTimeLabel(s) : "—");
 const dOnly = (s: string | null | undefined) => (s ? dateLabel(s) : "—");
 
 type B = {
-  id: string; bookingNo: string;
+  id: string; bookingNo: string; product:string; hotelName:string|null; hotelCheckIn:string|null; hotelCheckOut:string|null; supplierId:string|null;
   customer: { id: string; name: string; code: string; phone: string };
   pnr: string | null; airline: string | null; gdsSource: string | null; supplier: string | null;
   cancellationSupplierCharge: number | null; cancellationAgencyFee: number | null; cancellationReason: string | null;
@@ -48,7 +49,7 @@ const WITHDRAWING = ["CANCELLED", "VOID"];
 const CLOSED = ["TICKETED", "CANCELLED", "VOID", "REFUNDED", "REISSUED"];
 
 const statusTone = (s: string): Tone => {
-  if (s === "TICKETED") return "success";
+  if (s === "TICKETED" || s === "CONFIRMED") return "success";
   if (s === "CANCELLED" || s === "VOID") return "danger";
   if (s.startsWith("REFUND") || s === "REISSUE_REQUESTED") return "warning";
   if (s === "PNR_CREATED" || s === "PAYMENT_AWAITED" || s === "QUOTE_SENT") return "info";
@@ -56,11 +57,13 @@ const statusTone = (s: string): Tone => {
 };
 
 export default function BookingView({ b, perms, suppliers, passengerOptions }: { b: B; perms: Perms; suppliers: SupplierOpt[]; passengerOptions: { id: string; fullName: string }[] }) {
+  const hotel=b.product==="HOTEL",statuses=hotel?MANUAL_HOTEL_STATUSES:STATUSES;
   const router = useRouter();
   const { show, toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [showPassengers, setShowPassengers] = useState(false);
   const [showTickets, setShowTickets] = useState(false);
+  const [showHotelConfirmation,setShowHotelConfirmation]=useState(false);
   const [cancelTo, setCancelTo] = useState<string | null>(null);
   const [extendHrs, setExtendHrs] = useState("24");
   const [showReissue, setShowReissue] = useState(false);
@@ -109,7 +112,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
             <div className="eyebrow">Booking workspace</div>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight">{b.bookingNo}</h1>
-              {b.pnr && <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-xs text-slate-700">PNR {b.pnr}</span>}
+              {b.pnr && <span className="max-w-full break-all rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-xs text-slate-700">{hotel?"Supplier reference":"PNR"} {b.pnr}</span>}
               <Status tone={urgent ? "danger" : warn ? "warning" : statusTone(b.status)}>{enumLabel(b.status)}</Status>
               {refundsInFlight.length > 0
                 ? <Status tone="warning">refund in progress · {money(refundsInFlight.reduce((s, r) => s + r.amount, 0))}</Status>
@@ -118,12 +121,13 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
               <Link href={`/customers/${b.customer.id}`} className="font-medium text-slate-900 hover:text-teal-700">{b.customer.name}</Link>
               <span>({b.customer.code})</span>
-              <span>· {b.airline ?? "—"} {b.sector ? `· ${b.sector}` : ""} · {b.owner} · {b.branch}</span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">· {hotel?b.hotelName??"Hotel not entered":b.airline??"—"} {b.sector ? `· ${b.sector}` : ""} · {b.owner} · {b.branch}</span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
             <AuditTrailLink entity="Booking" entityId={b.id} allowed={perms.audit} />
-            {perms.edit && !withdrawn && <RecordEditor title="Edit booking" buttonLabel="Edit booking" endpoint={`/api/bookings/${b.id}`} values={{pnr:b.pnr,airline:b.airline,sector:b.sector,flightNo:b.flightNo,gdsSource:b.gdsSource,travelDate:b.travelDate?.slice(0,10)??"",ticketingDeadline:b.ticketingDeadline?new Date(new Date(b.ticketingDeadline).getTime()-new Date(b.ticketingDeadline).getTimezoneOffset()*60000).toISOString().slice(0,16):"",fare:b.fare,taxes:b.taxes,markup:b.markup,serviceFee:b.serviceFee,supplierCost:b.supplierCost}} fields={[{key:"pnr",label:"Actual PNR"},{key:"airline",label:"Airline"},{key:"sector",label:"Route / sector"},{key:"flightNo",label:"Flight number"},{key:"gdsSource",label:"Booking source"},{key:"travelDate",label:"Travel date",type:"date"},{key:"ticketingDeadline",label:"Ticketing deadline",type:"datetime-local"},...(perms.record&&!b.tickets.length&&!b.payments.length?[{key:"fare",label:"Base fare",type:"number" as const},{key:"taxes",label:"Taxes",type:"number" as const},{key:"markup",label:"Markup",type:"number" as const},{key:"serviceFee",label:"Service fee",type:"number" as const},{key:"supplierCost",label:"Supplier cost",type:"number" as const}]:[])]}/>}
+            {perms.edit && !withdrawn && (hotel ? <RecordEditor title="Edit hotel stay" buttonLabel="Edit hotel stay" endpoint={`/api/bookings/${b.id}`} values={{hotelName:b.hotelName,hotelCheckIn:b.hotelCheckIn?.slice(0,10)??"",hotelCheckOut:b.hotelCheckOut?.slice(0,10)??"",pnr:b.pnr,sector:b.sector,supplierId:b.supplierId??"",gdsSource:b.gdsSource,...(perms.record&&perms.money&&!b.payments.length?{fare:b.fare,taxes:b.taxes,markup:b.markup,serviceFee:b.serviceFee,supplierCost:b.supplierCost}:{})}} fields={[{key:"hotelName",label:"Hotel name",maxLength:200},{key:"hotelCheckIn",label:"Check-in date",type:"date"},{key:"hotelCheckOut",label:"Check-out date",type:"date"},{key:"pnr",label:"Supplier confirmation reference",maxLength:100},{key:"sector",label:"Destination"},{key:"supplierId",label:"Supplier",type:"select",options:[{value:"",label:"No supplier linked"},...suppliers.map(s=>({value:s.id,label:s.name}))]},{key:"gdsSource",label:"Booking source"},...(perms.record&&perms.money&&!b.payments.length?[{key:"fare",label:"Room charge",type:"number" as const},{key:"taxes",label:"Taxes",type:"number" as const},{key:"markup",label:"Markup",type:"number" as const},{key:"serviceFee",label:"Service fee",type:"number" as const},{key:"supplierCost",label:"Supplier cost",type:"number" as const}]:[])]}/> : <RecordEditor title="Edit booking" buttonLabel="Edit booking" endpoint={`/api/bookings/${b.id}`} values={{pnr:b.pnr,airline:b.airline,sector:b.sector,flightNo:b.flightNo,gdsSource:b.gdsSource,travelDate:b.travelDate?.slice(0,10)??"",ticketingDeadline:b.ticketingDeadline?new Date(new Date(b.ticketingDeadline).getTime()-new Date(b.ticketingDeadline).getTimezoneOffset()*60000).toISOString().slice(0,16):"",fare:b.fare,taxes:b.taxes,markup:b.markup,serviceFee:b.serviceFee,supplierCost:b.supplierCost}} fields={[{key:"pnr",label:"Actual PNR"},{key:"airline",label:"Airline"},{key:"sector",label:"Route / sector"},{key:"flightNo",label:"Flight number"},{key:"gdsSource",label:"Booking source"},{key:"travelDate",label:"Travel date",type:"date"},{key:"ticketingDeadline",label:"Ticketing deadline",type:"datetime-local"},...(perms.record&&!b.tickets.length&&!b.payments.length?[{key:"fare",label:"Base fare",type:"number" as const},{key:"taxes",label:"Taxes",type:"number" as const},{key:"markup",label:"Markup",type:"number" as const},{key:"serviceFee",label:"Service fee",type:"number" as const},{key:"supplierCost",label:"Supplier cost",type:"number" as const}]:[])]}/>)}
+
             {perms.edit && !withdrawn && (
               <select
                 value={b.status}
@@ -133,13 +137,14 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
                   // Cancelling or voiding a booking that still holds customer money raises a refund,
                   // so it is a decision to confirm, not a dropdown tick.
                   if (WITHDRAWING.includes(next)) setCancelTo(next);
+                  else if (hotel && next === "CONFIRMED") setShowHotelConfirmation(true);
                   else if (next === "TICKETED") setShowTickets(true);
                   else post("/api/bookings/status", { bookingId: b.id, status: next }, "Status updated");
                 }}
                 className="control h-9 text-xs"
               >
-                {!STATUSES.includes(b.status) && <option value={b.status}>{enumLabel(b.status)}</option>}
-                {STATUSES.filter(s => !(b.tickets.length && ["ENQUIRY", "QUOTE_SENT", "PNR_CREATED", "ON_HOLD", "PAYMENT_AWAITED"].includes(s))).map((s) => <option key={s} value={s}>{enumLabel(s)}</option>)}
+                {!statuses.includes(b.status) && <option value={b.status}>{enumLabel(b.status)}</option>}
+                {statuses.filter(s => !((b.tickets.length || hotel&&b.status==="CONFIRMED") && ["ENQUIRY", "QUOTE_SENT", "PNR_CREATED", "ON_HOLD", "PAYMENT_AWAITED"].includes(s))).map((s) => <option key={s} value={s}>{enumLabel(s)}</option>)}
               </select>
             )}
           </div>
@@ -150,11 +155,12 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
         {perms.record && outstanding > 0 && <Link className="btn-secondary" href={`/payments?action=record&customer=${b.customer.id}&booking=${b.id}`}>Record payment</Link>}
         {perms.invoice && !withdrawn && <Link className="btn-secondary" href={`/payments?action=invoice&customer=${b.customer.id}&booking=${b.id}`}>Create invoice</Link>}
         {perms.money && <Link className="btn-secondary" href={`/customers/${b.customer.id}?tab=payments`}>View receipts & invoices</Link>}
-        {perms.edit && !withdrawn && !["TICKETED", "REISSUED"].includes(b.status) && <button type="button" disabled={busy} className="btn-primary" onClick={() => setShowTickets(true)}>Record actual tickets</button>}
+        {!hotel && perms.edit && !withdrawn && !["TICKETED", "REISSUED"].includes(b.status) && <button type="button" disabled={busy} className="btn-primary" onClick={() => setShowTickets(true)}>Record actual tickets</button>}
       </div>}
 
+      {hotel && b.gdsSource!=="TRIPJACK_API" && <section className="panel mb-4 space-y-3 p-4"><h2 className="font-semibold">Hotel stay · manual agency record</h2><p className="text-sm text-slate-600">Record details already agreed with the hotel or supplier. This CRM does not reserve a room, issue a voucher or contact the supplier.</p>{perms.edit&&!withdrawn&&b.status!=="CONFIRMED"&&<button className="btn-primary" onClick={()=>setShowHotelConfirmation(true)}>Record supplier confirmation</button>}<Link className="btn-secondary" href={`/ticketing/${b.id}/stay`}>Open stay record</Link></section>}
       {/* Deadline banner */}
-      {b.ticketingDeadline && open && (
+      {!hotel && b.ticketingDeadline && open && (
         <div className={`mb-5 rounded-2xl border px-5 py-4 ${urgent ? "border-rose-200 bg-rose-50/70" : warn ? "border-amber-200 bg-amber-50/70" : "border-sky-200 bg-sky-50/70"}`}>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
             <div className="min-w-0">
@@ -184,13 +190,13 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-5">
-          {perms.reissue && b.tickets.length > 0 && !["CANCELLED", "VOID", "REFUNDED"].includes(b.status) && (
+          {!hotel && perms.reissue && b.tickets.length > 0 && !["CANCELLED", "VOID", "REFUNDED"].includes(b.status) && (
             <button type="button" onClick={() => setShowReissue(true)} className="w-full rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-xs text-slate-500 hover:border-orange-300 hover:text-orange-700">
               + Request Reissue for a ticket on this booking
             </button>
           )}
 
-          <section className="panel p-5">
+          {hotel ? <section className="panel space-y-3 p-5"><h2 className="font-semibold">Stay details</h2><KV k="Hotel" v={b.hotelName??"Not entered"}/><KV k="Check-in" v={dOnly(b.hotelCheckIn)}/><KV k="Check-out" v={dOnly(b.hotelCheckOut)}/><KV k="Supplier confirmation reference" v={b.pnr??"Not entered"}/><p className="text-sm text-slate-600">{b.gdsSource==="TRIPJACK_API"?"Stay details synced from the booking platform. Use Online bookings for supplier status and current documents.":b.status==="CONFIRMED"?"Supplier confirmation recorded by the agency. Verify changes directly with the supplier.":"Current record is not a confirmed hotel reservation. Review its status and supplier evidence."}</p></section> : <section className="panel p-5">
             <h2 className="mb-4 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Tickets</h2>
             {b.tickets.length ? (
               <div className="overflow-x-auto">
@@ -245,7 +251,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
                 ))}
               </div>
             )}
-          </section>
+          </section>}
 
           <section className="panel p-5">
             <h2 className="mb-4 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Payments{perms.money ? ` · ${money(netPaid)} net received against ${money(bookingCharge(b))}${refunded > 0 ? ` · ${money(refunded)} refunded` : ""}` : ""}</h2>
@@ -295,12 +301,12 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
               <KV k="Still to collect" v={money(outstanding)} />
             </>}
             {b.cancellationReason && <p className="text-xs leading-5 text-slate-600">{b.cancellationReason}</p>}
-            <p className="text-small text-slate-500">CRM records only. Airline cancellation and money transfers must be completed in the appropriate external systems.</p>
+            <p className="text-small text-slate-500">CRM records only. Supplier cancellation and money transfers must be completed in the appropriate external systems.</p>
           </section>}
           <section className="panel space-y-2.5 p-5">
             <h2 className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">{withdrawn ? "Original fare breakdown (historical)" : "Fare breakdown"}</h2>
             {perms.money ? <>
-              <KV k="Base fare" v={money(b.fare)} />
+              <KV k={hotel?"Room charge":"Base fare"} v={money(b.fare)} />
               <KV k={b.reissueOf ? "Airline penalty" : "Taxes"} v={money(b.taxes)} />
               <KV k="Markup" v={money(b.markup)} />
               <KV k="Service fee" v={money(b.serviceFee)} />
@@ -315,17 +321,17 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
             <h2 className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Booking facts</h2>
             <KV k="GDS / source" v={b.gdsSource ?? "—"} />
             <KV k="Supplier" v={b.supplier ?? "—"} />
-            <KV k="Flight" v={b.flightNo ?? "—"} />
-            <KV k="Booked" v={dOnly(b.bookingDate)} />
-            <KV k="Ticketing deadline" v={dt(b.ticketingDeadline)} />
-            <KV k="Travel date" v={dOnly(b.travelDate)} />
+            {!hotel&&<KV k="Flight" v={b.flightNo ?? "—"} />}
+            <KV k={hotel?"Record created":"Booked"} v={dOnly(b.bookingDate)} />
+            {!hotel&&<KV k="Ticketing deadline" v={dt(b.ticketingDeadline)} />}
+            {!hotel&&<KV k="Travel date" v={dOnly(b.travelDate)} />}
             <KV k="Owner" v={b.owner} />
             <KV k="Branch" v={b.branch} />
           </section>
           <section className="panel p-5">
-            <h2 className="mb-3 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Passengers</h2>
-            {perms.edit && !withdrawn && !b.tickets.length && <button type="button" className="btn-secondary mb-3" onClick={() => setShowPassengers(true)}>Edit passengers</button>}
-            {!b.travellers.length && <p className="mb-3 text-xs text-amber-800">Add passengers before recording flight tickets.</p>}
+            <h2 className="mb-3 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">{hotel?"Guests":"Passengers"}</h2>
+            {perms.edit && !withdrawn && !b.tickets.length && <button type="button" className="btn-secondary mb-3" onClick={() => setShowPassengers(true)}>{hotel?"Edit guests":"Edit passengers"}</button>}
+            {!b.travellers.length && <p className="mb-3 text-xs text-amber-800">{hotel?"Add guests to keep this stay record complete.":"Add passengers before recording flight tickets."}</p>}
             <div className="space-y-3">
               {b.travellers.map((t) => (
                 <div key={t.id} className="text-xs">
@@ -338,8 +344,9 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
         </aside>
       </div>
 
+      {hotel&&showHotelConfirmation&&<HotelConfirmationForm b={b} onClose={()=>setShowHotelConfirmation(false)}/>}
       {showPassengers && <PassengerForm b={b} options={passengerOptions} onClose={() => setShowPassengers(false)} />}
-      {showTickets && <TicketForm b={b} onClose={() => setShowTickets(false)} />}
+      {!hotel && showTickets && <TicketForm b={b} onClose={() => setShowTickets(false)} />}
       {cancelTo && (
         <CancelForm
           b={b}
@@ -355,6 +362,12 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
       {toast}
     </div>
   );
+}
+
+function HotelConfirmationForm({b,onClose}:{b:B;onClose:()=>void}){
+ const router=useRouter();const [ack,setAck]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState("");
+ const problem=hotelStayProblem({...b,hotelCheckIn:b.hotelCheckIn?new Date(b.hotelCheckIn):null,hotelCheckOut:b.hotelCheckOut?new Date(b.hotelCheckOut):null},true);
+ return <Modal label="Record hotel supplier confirmation" onClose={onClose} busy={busy} width="max-w-lg"><form className="space-y-4" onSubmit={async e=>{e.preventDefault();if(busy||problem||!ack)return;setBusy(true);setError("");try{const response=await fetch("/api/bookings/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({bookingId:b.id,status:"CONFIRMED",confirmationRecorded:true,confirmationSnapshot:{hotelName:b.hotelName,pnr:b.pnr,supplierId:b.supplierId,hotelCheckIn:b.hotelCheckIn,hotelCheckOut:b.hotelCheckOut}})});const data=await response.json();if(!response.ok)throw Error(data.error??"Confirmation was not recorded.");onClose();router.refresh();}catch(e){setError(e instanceof Error?e.message:"Response not received. Refresh to check the recorded stay before retrying.");}finally{setBusy(false);}}}><h2 className="text-xl font-semibold">Record hotel supplier confirmation</h2><p className="text-sm">This records confirmation already received from the hotel or supplier. It does not book a room, charge money, contact the supplier or issue a voucher.</p><div className="space-y-2 text-sm"><KV k="Hotel" v={b.hotelName??"Not entered"}/><KV k="Check-in" v={dOnly(b.hotelCheckIn)}/><KV k="Check-out" v={dOnly(b.hotelCheckOut)}/><KV k="Supplier confirmation reference" v={b.pnr??"Not entered"}/><KV k="Linked supplier" v={b.supplier??"No supplier linked"}/></div>{problem&&<p role="alert" className="form-error">{problem} Close this dialog and use Edit hotel stay.</p>}<label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={ack} onChange={e=>setAck(e.target.checked)}/>I have verified the actual supplier confirmation for this stay.</label>{error&&<p role="alert" className="form-error">{error}</p>}<div className="flex flex-wrap justify-end gap-2"><button type="button" className="btn-secondary" disabled={busy} onClick={onClose}>Cancel</button><button className="btn-primary" disabled={busy||!!problem||!ack}>{busy?"Saving…":"Record confirmed stay"}</button></div></form></Modal>;
 }
 
 function ReissueForm({ b, suppliers, onClose }: { b: B; suppliers: SupplierOpt[]; onClose: () => void }) {
@@ -510,9 +523,9 @@ function CancelForm({ b, status, netPaid, promised, canRefund, onClose, onDone }
 
 function KV({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
   return (
-    <div className="flex justify-between gap-4 text-xs">
+    <div className="flex min-w-0 justify-between gap-4 text-xs">
       <span className="text-slate-500">{k}</span>
-      <span className={strong ? "font-semibold text-slate-900" : "text-right text-slate-700"}>{v}</span>
+      <span className={`min-w-0 [overflow-wrap:anywhere] ${strong ? "font-semibold text-slate-900" : "text-right text-slate-700"}`}>{v}</span>
     </div>
   );
 }
@@ -530,11 +543,11 @@ function PassengerForm({ b, options, onClose }: { b: B; options: { id: string; f
       onClose(); router.refresh();
     } catch { setError("Response not received. Check the passenger list before retrying."); }
     finally { setBusy(false); }
-  }}><h2 id="booking-passengers-title" className="text-lg font-semibold">Booking passengers</h2>
+  }}><h2 id="booking-passengers-title" className="text-lg font-semibold">{b.product==="HOTEL"?"Hotel guests":"Booking passengers"}</h2>
     <p className="text-xs text-slate-600">Select travellers from this customer&rsquo;s profile. Passenger changes do not change the agreed fare.</p>
     {options.map(t => <label key={t.id} className="flex items-center gap-2 rounded border p-3 text-sm"><input type="checkbox" checked={selected.includes(t.id)} onChange={e => setSelected(current => e.target.checked ? [...current, t.id] : current.filter(id => id !== t.id))} />{t.fullName}</label>)}
     <Link className="block text-sm text-teal-700 underline" href={`/customers/${b.customer.id}?tab=travellers`}>Add a missing traveller in the customer&rsquo;s workspace</Link>
     {error && <p role="alert" className="form-error">{error}</p>}
-    <div className="flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={busy || !selected.length}>{busy ? "Saving…" : "Save passengers"}</button></div>
+    <div className="flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={busy || !selected.length}>{busy ? "Saving…" : b.product==="HOTEL"?"Save guests":"Save passengers"}</button></div>
   </form></Modal>;
 }

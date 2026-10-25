@@ -143,6 +143,10 @@ jobs:
         id: agency_journeys
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         run: npm run test:journeys
+      - name: Verify contiguous customer proposal acceptance to CRM booking
+        if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
+        timeout-minutes: 5
+        run: node tests/sales-complete-journey-browser.mjs
       - name: Verify scoped online booking queue and responsive action recovery
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         timeout-minutes: 5
@@ -191,6 +195,7 @@ jobs:
             test-artifacts/ui-gate-server.log
             test-artifacts/reporting/
             test-artifacts/journeys/
+            test-artifacts/sales-complete-journey/
             test-artifacts/mobile-workspace/
             test-artifacts/whatsapp-recipient-context/
             test-artifacts/whatsapp-manual-idempotency/

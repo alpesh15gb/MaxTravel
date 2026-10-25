@@ -42,6 +42,7 @@ export async function POST(req: Request) {
     const result = await prisma.$transaction(async tx => {
       const customer = await customerFor(tx, user, customerId);
       const { booking, visaCase } = await relatedFor(tx, user, customerId, optionalId(b.bookingId), optionalId(b.visaCaseId));
+      if (booking && booking.product === "HOTEL" && b.template === "PNR_EXPIRY") throw new ApiError(400, "Hotel stays do not have airline PNR expiry reminders.");
       const invoiceId = optionalId(b.invoiceId);
       const invoice = invoiceId ? await tx.invoice.findUnique({ where: { id: invoiceId } }) : null;
       if (invoiceId && (!invoice || invoice.customerId !== customerId)) throw new ApiError(400, "Invoice must belong to this customer.");

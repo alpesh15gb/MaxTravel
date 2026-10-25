@@ -1,3 +1,4 @@
+import { airlineDeadlineEligible } from "./booking-deadline";
 import { salesAttention } from "./sales-attention";
 import { enumLabel } from "@/lib/labels";
 import { dateTimeLabel } from "@/lib/dates";
@@ -60,7 +61,7 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
       }
       continue;
     }
-    if(!b.ticketingDeadline||!["PNR_CREATED","ON_HOLD","PAYMENT_AWAITED","QUOTE_SENT"].includes(b.status))continue;
+    if(!airlineDeadlineEligible(b,true)||!b.ticketingDeadline)continue;
     const hours=(b.ticketingDeadline.getTime()-now)/H;if(hours>warn)continue;
     const href=`/ticketing/${b.id}`,balance=bookingCharge(b)-netReceived(b.payments.reduce((s,p)=>s+p.amount,0),b.refunds);
     const actions=[open("Open booking",href)];

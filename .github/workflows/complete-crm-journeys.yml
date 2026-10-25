@@ -8,6 +8,9 @@ on:
       - 'src/app/(app)/customer-tools/CustomerTools.tsx'
       - 'src/app/(app)/payments/print/**'
       - 'tests/financial-document-layout-browser.mjs'
+      - 'tests/fresh-setup-complete-journey-browser.mjs'
+      - 'src/app/setup/**'
+      - 'src/app/api/setup/route.ts'
       - 'tests/synthetic-ui-journey-fixture.mjs'
       - 'tests/money-complete-journey-browser.mjs'
       - 'tests/customer-data-complete-journey-browser.mjs'
@@ -80,6 +83,10 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
         run: node tests/financial-document-layout-browser.mjs
+      - name: Empty database first-owner setup and replay protection UI
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 7
+        run: node tests/fresh-setup-complete-journey-browser.mjs
       - name: Preserve original failures and exact completed-flow evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -91,6 +98,7 @@ jobs:
             test-artifacts/customer-import-race/
             test-artifacts/customer-import-pending/
             test-artifacts/financial-document-layout/
+            test-artifacts/fresh-setup-complete-journey/
             test-artifacts/operations-complete-journey/
             test-artifacts/records-complete-journey/
             test-artifacts/auth-complete-journey/

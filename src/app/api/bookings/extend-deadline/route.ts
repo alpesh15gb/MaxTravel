@@ -13,6 +13,7 @@ export async function POST(req: Request) {
     if (["TICKETED", "REISSUED", "CANCELLED", "VOID", "REFUNDED"].includes(b.status)) throw new ApiError(400, "This booking is no longer awaiting ticketing; its deadline cannot be extended.");
     if (!b.pnr) throw new ApiError(400, "Record the actual PNR before setting a ticketing deadline.");
     if (!canTouchRecord(user, b)) throw new ApiError(403, "Booking is outside your access.");
+    if (b.product!=="FLIGHT")throw new ApiError(400,"Hotel stays do not have airline ticketing deadlines.");
     if (!Number.isFinite(Number(hours)) || Number(hours) <= 0 || Number(hours) > 720) throw new ApiError(400, "Extension must be 1–720 hours.");
     const newDeadline = new Date(Math.max(Date.now(), b.ticketingDeadline?.getTime() ?? Date.now()) + Number(hours) * 3600000);
     await prisma.booking.update({ where: { id: bookingId }, data: { ticketingDeadline: newDeadline } });

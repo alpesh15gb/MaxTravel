@@ -1,0 +1,44 @@
+name: CRM audit and invoice configuration journeys
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+    paths:
+      - '.github/workflows/admin-records-journeys.yml'
+      - 'tests/admin-records-complete-journey-browser.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: crm-admin-records-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  journeys:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      DATABASE_URL: 'file:./ci.db'
+      JWT_SECRET: 'ci-only-admin-records-fixture-no-real-secret-0123456789abcdef'
+      WA_PROVIDER: manual
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx playwright install --with-deps chromium
+      - name: Build exact candidate
+        run: npm run build
+      - name: Actual audit CSV and frozen invoice configuration lifecycles
+        timeout-minutes: 7
+        run: node tests/admin-records-complete-journey-browser.mjs
+      - name: Preserve lifecycle report CSV and desktop/mobile screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-records-journey-evidence
+          path: test-artifacts/admin-records-complete-journey/
+          if-no-files-found: error
+          retention-days: 14
