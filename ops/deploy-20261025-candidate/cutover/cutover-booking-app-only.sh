@@ -11,6 +11,7 @@ case "$BOOKING_BACKUP_STAGE" in "$BUILD"/final-backup-*) ;; *) fail 'Unexpected 
 [ -d "$BOOKING_BACKUP_STAGE" ] && [ ! -L "$BOOKING_BACKUP_STAGE" ] || fail 'Backup stage missing/symlinked.'
 [ "$(cat "$BOOKING_BACKUP_STAGE/restore-verified.txt")" = verified ] && [ "$(cat "$BOOKING_BACKUP_STAGE/verified-source.txt")" = "$TARGET" ] || fail 'Final backup/restore verification missing.'
 sha256sum --check --status "$BOOKING_BACKUP_STAGE/backup.sha256"
+if [[ -e $BOOKING_BACKUP_STAGE/retained-failed-helper.private.json || -L $BOOKING_BACKUP_STAGE/retained-failed-helper.private.json ]]; then RETAINED_FAILED_HELPER_RECORD="$BOOKING_BACKUP_STAGE/retained-failed-helper.private.json"; fi
 cmp -- "$BOOKING_BACKUP_STAGE/source-audit.private.txt" "$BOOKING_BACKUP_STAGE/restored-audit.private.txt"
 [ -f "$POINTER" ] && [ ! -L "$POINTER" ] && [ "$(cat "$POINTER")" = "$OLD_POINTER_RELEASE" ] || fail 'Current booking pointer differs.'
 [ "$(cat "$BUILD/source-commit.txt")" = "$TARGET" ] && [ "$(cat "$BUILD/candidate-image-id.txt")" = "$CANDIDATE" ] || fail 'Build identity differs.'

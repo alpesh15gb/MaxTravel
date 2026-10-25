@@ -13,7 +13,7 @@ After accepted publication: sequential verified new builds precede all downtime.
 Offline checks:
 
 ```sh
-python3 -m unittest test_verify test_revalidate test_candidate
+python3 -m unittest test_verify test_revalidate test_candidate test_failed_booking_helper
 (cd cutover && python3 -m unittest test_phase_offline test_booking_offline)
 sha256sum -c SHA256SUMS
 (cd cutover && sha256sum -c draft.sha256)

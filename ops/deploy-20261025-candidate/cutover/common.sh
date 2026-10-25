@@ -12,10 +12,11 @@ snapshot_all() {
  [[ -n $ids ]] || fail 'Empty container inventory.'
  # Preserve unfiltered private evidence; Docker ps negated-label filters are not portable.
  docker inspect $ids > "$1.all.private.json"
+ if [[ -n ${RETAINED_FAILED_HELPER_RECORD:-} ]]; then python3 "$HERE/phase_verify.py" retained-helper "$RETAINED_FAILED_HELPER_RECORD" "$1.all.private.json"; fi
  python3 "$HERE/phase_verify.py" snapshot-filter "$1.all.private.json" > "$1"
 }
 protected_check() { python3 "$HERE/phase_verify.py" protected "$1" "$2" "${3:-}"; }
-protected_build_check() { python3 "$HERE/phase_verify.py" protected-build "$1" "$2" "${3:-}" "${4:-}"; }
+protected_build_check() { python3 "$HERE/phase_verify.py" protected-build "$1" "$2" "${3:-}" "${4:-}" "${5:-}" "${6:-}"; }
 init() {
  python3 "$VERIFY_PY" candidate-execution-gate
  APP_KIND=$1

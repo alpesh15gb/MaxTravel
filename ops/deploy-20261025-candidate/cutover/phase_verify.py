@@ -61,7 +61,43 @@ def completed_peer_helpers(release):
   rows.append(found[0])
  require(rows[0]["Image"]==PINS["crm"]["image"] and rows[1]["Image"]==regular(r/"deployed-image.txt").read_text().strip(),"Peer backup/restore helper image mismatch.")
  return rows
-def protected_build(before,current_raw,allowed,peer_helpers=None):
+FAILED_BOOKING_STAGE='/root/booking-build-0661540-wvdGUN/final-backup-sQr9dj'
+FAILED_POSTGRES_IMAGE='sha256:d4bb0a8c1b7bb2e29f976d099e7bfb9a5d8858cffe9e46b35cd302cd1f1f8168'
+def failed_booking_helper(stage,current_raw):
+ p=pathlib.Path(stage);require(str(p)==FAILED_BOOKING_STAGE,'Unknown failed booking stage.')
+ for name in ['stop-app.log','database.dump','audit.sql','resume-old.sh','restore-verified.txt','cutover-attempted.txt','resumed-old.txt']:
+  f=p/name;require(not f.exists() and not f.is_symlink(),'Failed stage progressed beyond pre-freeze startup; reconcile.')
+ cid=regular(p/'isolated-container-id.txt').read_text().strip();require(bool(re.fullmatch('[0-9a-f]{64}',cid)),'Invalid failed helper identity.')
+ rows=[r for r in current_raw if r['Id']==cid];require(len(rows)==1,'Exact failed helper missing/ambiguous.')
+ r=rows[0];state=r['State'];host=r['HostConfig'];config=r['Config']
+ require(r.get('Name')=='/booking-restore-final-backup-sqr9dj' and r['Image']==FAILED_POSTGRES_IMAGE,'Failed helper name/image mismatch.')
+ require((config.get('Labels') or {}).get('maxtravel.cutover.helper')=='true' and not any(k.startswith('com.docker.compose.') for k in (config.get('Labels') or {})),'Failed helper labels mismatch.')
+ require(state.get('Status')=='exited' and type(state.get('ExitCode')) is int and 0<=state['ExitCode']<=255
+         and all(state.get(k) is False for k in ('Running','Paused','Restarting','Dead','OOMKilled')),'Failed helper must remain stopped and non-OOM.')
+ require(host.get('NetworkMode')=='none' and host.get('ReadonlyRootfs') is True and host.get('Privileged') is False
+         and host.get('CapDrop')==['ALL'] and host.get('SecurityOpt')==['no-new-privileges']
+         and host.get('Memory')==1073741824 and host.get('NanoCpus')==1000000000 and host.get('PidsLimit')==256
+         and host.get('RestartPolicy')=={'Name':'no','MaximumRetryCount':0},'Failed helper isolation/resources mismatch.')
+ require(bool(re.fullmatch('[1-9][0-9]*:[1-9][0-9]*',config.get('User',''))) and config.get('Cmd')==['-c','listen_addresses=','-c','unix_socket_directories=/tmp'],'Failed helper user/command mismatch.')
+ mounts=r.get('Mounts',[]);destinations=[m.get('Destination') for m in mounts]
+ # Docker versions may expose --tmpfs only in HostConfig.Tmpfs, not Mounts.
+ # Exact Tmpfs is checked below; bind inventory remains mandatory and exclusive.
+ require(len(set(destinations))==len(destinations) and '/var/lib/postgresql/data' in destinations and set(destinations)<={'/tmp','/var/run/postgresql','/var/lib/postgresql/data'},'Failed helper mount inventory differs.')
+ for m in mounts:
+  if m['Destination']=='/var/lib/postgresql/data':require(m.get('Type')=='bind' and m.get('Source')==str(p/'isolated-data') and m.get('RW') is True,'Failed helper data mount differs.')
+  else:require(m.get('Type')=='tmpfs' and m.get('RW') is True,'Failed helper scratch mount differs.')
+ require(host.get('Tmpfs')=={'/tmp':'rw,nosuid,nodev,mode=1777','/var/run/postgresql':'rw,nosuid,nodev,mode=1777'},'Failed helper tmpfs configuration differs.')
+ images=read(regular(p.parent/'deployed-images.private.json'));matches=[x for x in images if x['Id']==FAILED_POSTGRES_IMAGE];require(len(matches)==1,'Failed helper image defaults unavailable.')
+ image=matches[0];expected_env=dict(x.split('=',1) for x in image['Config'].get('Env',[]));expected_env.update({'PGHOST':'/tmp','POSTGRES_USER':'maxtravel','POSTGRES_DB':'maxtravel','POSTGRES_HOST_AUTH_METHOD':'trust'})
+ env=dict(x.split('=',1) for x in config.get('Env',[]) if '=' in x)
+ require(len(env)==len(config.get('Env',[])) and env==expected_env and config.get('Entrypoint')==image['Config'].get('Entrypoint'),'Failed helper full image environment/entrypoint differs.')
+ protected(read(regular(p/'all-before.private.json')),non_helper_rows(current_raw),'')
+ return r
+def retained_helper_unchanged(record,current_raw):
+ rows=read(regular(record));require(isinstance(rows,list) and len(rows)==1,'Retained helper record malformed.')
+ current=[r for r in current_raw if r['Id']==rows[0]['Id']]
+ protected(rows,current,'')
+def protected_build(before,current_raw,allowed,peer_helpers=None,retained=None):
  for rows in (before,current_raw):
   require(len({r['Id'] for r in rows})==len(rows),'Duplicate raw container IDs in build-to-freeze evidence.')
  # Build evidence is intentionally raw; phase snapshots also retain raw evidence.
@@ -74,7 +110,9 @@ def protected_build(before,current_raw,allowed,peer_helpers=None):
  require({r['Id'] for r in current_helpers}==old_ids,'Pre-existing build helper disappeared; reconcile without cleanup.')
  protected(old_helpers,current_helpers,'')
  before_ids={r['Id'] for r in before};allowed_services=set(filter(None,allowed.split(',')))
- peer_helpers=peer_helpers or []
+ retained=retained or []
+ require(not retained or (len(retained)==1 and allowed_services=={'crm:app','crm:worker'}),'Retained incident helper only allowed for booking.')
+ peer_helpers=(peer_helpers or [])+retained
  require(len({r['Id'] for r in peer_helpers})==len(peer_helpers),'Duplicate peer helper identities.')
  require(not peer_helpers or allowed_services=={'crm:app','crm:worker'},'New helper admission is only valid after completed CRM peer cutover.')
  require(all(r['Id'] not in before_ids for r in peer_helpers),'Peer helper is not newly created since build.')
@@ -84,7 +122,7 @@ def protected_build(before,current_raw,allowed,peer_helpers=None):
  protected(peer_helpers,new_helpers,'')
  for r in current_raw:
   is_helper=((r.get('Config') or {}).get('Labels') or {}).get('maxtravel.cutover.helper')=='true'
-  if r['Id'] in before_ids or (not is_helper and service(r) in allowed_services):continue
+  if r['Id'] in before_ids or r['Id'] in {x['Id'] for x in retained} or (not is_helper and service(r) in allowed_services):continue
   # New helper records can appear between a build and the peer's completed
   # backup phase. Never admit running, failed, privileged or networked helpers.
   labels=(r.get('Config') or {}).get('Labels') or {};state=r.get('State') or {};host=r.get('HostConfig') or {}
@@ -162,7 +200,14 @@ if __name__=='__main__':
  elif mode=='runtime-equal':runtime_equal(read(sys.argv[2]),read(sys.argv[3]),sys.argv[4])
  elif mode=='source':source(*sys.argv[2:])
  elif mode=='protected':protected(read(sys.argv[2]),read(sys.argv[3]),sys.argv[4])
- elif mode=='protected-build':protected_build(read(sys.argv[2]),read(sys.argv[3]),sys.argv[4],completed_peer_helpers(sys.argv[5]) if len(sys.argv)>5 and sys.argv[5] else None)
+ elif mode=='protected-build':
+  current=read(sys.argv[3]);retained=[]
+  if len(sys.argv)>6 and sys.argv[6]:retained=[failed_booking_helper(sys.argv[6],current)]
+  protected_build(read(sys.argv[2]),current,sys.argv[4],completed_peer_helpers(sys.argv[5]) if len(sys.argv)>5 and sys.argv[5] else None,retained)
+  if retained:
+   output=pathlib.Path(sys.argv[7]);require(output.name=='retained-failed-helper.private.json' and output.parent.name.startswith('final-backup-') and output.parent.parent==pathlib.Path(FAILED_BOOKING_STAGE).parent and output.parent!=pathlib.Path(FAILED_BOOKING_STAGE),'Unexpected retained evidence destination.')
+   with output.open('x') as f:json.dump(retained,f,sort_keys=True);f.write('\n')
+ elif mode=='retained-helper':retained_helper_unchanged(sys.argv[2],read(sys.argv[3]))
  elif mode=='image':
   rows=[r for r in read(sys.argv[2]) if service(r)==sys.argv[3]+':'+sys.argv[4]];require(len(rows)==1,'Service image ambiguity.');print(rows[0]['Image'])
  elif mode=='crm-release':

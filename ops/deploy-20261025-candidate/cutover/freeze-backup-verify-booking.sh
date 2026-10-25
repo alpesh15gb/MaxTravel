@@ -23,7 +23,8 @@ STAGE=$(mktemp -d "$BUILD/final-backup-XXXXXX")
 chmod 700 "$STAGE"
 FROZEN=0; VERIFY=''
 snapshot_all "$STAGE/all-before.private.json"
-protected_build_check "$BUILD/after.private.json" "$STAGE/all-before.private.json.all.private.json" crm:app,crm:worker "$CRM_RELEASE"
+protected_build_check "$BUILD/after.private.json" "$STAGE/all-before.private.json.all.private.json" crm:app,crm:worker "$CRM_RELEASE" "${FAILED_BOOKING_STAGE:-}" "$STAGE/retained-failed-helper.private.json"
+if [[ -n ${FAILED_BOOKING_STAGE:-} ]]; then RETAINED_FAILED_HELPER_RECORD="$STAGE/retained-failed-helper.private.json"; fi
 protected_check "$CRM_RELEASE/all-final.private.json" "$STAGE/all-before.private.json" ""
 trap 'status=$?; if [ -n "$VERIFY" ]; then timeout 30s docker stop --timeout 20 "$VERIFY" > "$STAGE/isolated-stop.private.log" 2>&1 || true; fi; if [ "$status" != 0 ]; then printf "STOPPED: booking freeze started=%s; private evidence %s. Do not rerun or restore into live PostgreSQL. Booking app may remain stopped; CRM and original PostgreSQL were not stopped.\n" "$FROZEN" "$STAGE" >&2; fi' EXIT
 docker inspect "$APP" "$PG" > "$STAGE/booking-before.private.json"
@@ -57,10 +58,10 @@ docker run -d --label maxtravel.cutover.helper=true --pull never --name "$VERIFY
  --tmpfs /tmp:rw,nosuid,nodev,mode=1777 --tmpfs /var/run/postgresql:rw,nosuid,nodev,mode=1777 \
  --mount "type=bind,src=$STAGE/isolated-data,dst=/var/lib/postgresql/data" \
  -e PGHOST=/tmp -e POSTGRES_USER=maxtravel -e POSTGRES_DB=maxtravel -e POSTGRES_HOST_AUTH_METHOD=trust \
- "$PG_IMAGE" -c listen_addresses= -c unix_socket_directories=/tmp > "$STAGE/isolated-container-id.txt"
+ "$PG_IMAGE" -c listen_addresses= -c unix_socket_directories=/tmp,/var/run/postgresql > "$STAGE/isolated-container-id.txt"
 ready=0
 for attempt in {1..30}; do
- if docker exec "$VERIFY" psql -h /tmp -X -U maxtravel -d maxtravel -Atc 'SELECT 1' > /dev/null 2>&1; then ready=1; break; fi
+ if [[ $(docker exec "$VERIFY" cat /proc/1/comm 2>/dev/null) == postgres ]] && docker exec "$VERIFY" psql -h /tmp -X -U maxtravel -d maxtravel -Atc 'SELECT 1' > /dev/null 2>&1; then ready=1; break; fi
  sleep 2
 done
 [ "$ready" = 1 ] || fail 'Isolated PostgreSQL did not start; booking app has not been stopped.'
@@ -124,6 +125,7 @@ def normalized(file):return '\n'.join(line for line in open(file).read().splitli
 if normalized(sys.argv[1])!=normalized(sys.argv[2]):raise SystemExit('STOP: restored schema differs.')
 PYSCHEMA
 sha256sum "$STAGE/database.dump" "$STAGE/globals-without-passwords.private.sql" "$STAGE/audit.sql" "$STAGE/source-audit.private.txt" "$STAGE/restored-audit.private.txt" "$STAGE/source-schema.private.sql" "$STAGE/restored-schema.private.sql" > "$STAGE/backup.sha256"
+if [[ -n ${RETAINED_FAILED_HELPER_RECORD:-} ]]; then sha256sum "$RETAINED_FAILED_HELPER_RECORD" >> "$STAGE/backup.sha256"; fi
 mapfile -t CRM_AFTER < <(docker ps -q --filter label=com.docker.compose.project=max-travel-crm)
 docker inspect "${CRM_AFTER[@]}" > "$STAGE/crm-after.private.json"
 python3 - "$STAGE/crm-before.private.json" "$STAGE/crm-after.private.json" <<'PYCRM'

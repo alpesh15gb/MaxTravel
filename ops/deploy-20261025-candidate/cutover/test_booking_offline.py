@@ -11,7 +11,8 @@ class BookingDraftTests(unittest.TestCase):
  def test_isolated_socket_contract(self):
   s=(ROOT/'freeze-backup-verify-booking.sh').read_text()
   self.assertIn('-e PGHOST=/tmp',s)
-  self.assertIn('-c unix_socket_directories=/tmp',s)
+  self.assertIn('-c unix_socket_directories=/tmp,/var/run/postgresql',s)
+  self.assertNotIn('-c unix_socket_directories=/tmp >',s)
   for line in s.splitlines():
    if 'docker exec' in line and '"$VERIFY"' in line and any(x in line for x in ('psql ','pg_dump ','pg_restore ')) and '--list' not in line:
     self.assertIn('-h /tmp',line)
