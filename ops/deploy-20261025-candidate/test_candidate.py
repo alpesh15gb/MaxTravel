@@ -7,9 +7,9 @@ import phase_verify as p
 class CandidateChecks(unittest.TestCase):
  def test_exact_target_pins(self):
   self.assertEqual(v.PINS['crm']['commit'],'f59810075a6935c28ea958a3b53e168284be687d')
-  self.assertEqual(v.PINS['booking']['commit'],'ac9d2a3fabefc488df68485d32572b0377efa5a3')
+  self.assertEqual(v.PINS['booking']['commit'],'cc57b4bac4fe3ef0abbede150aab38d91448951a')
   self.assertEqual(v.PINS['crm']['tree'],'90635d1db07dda36527999d737a637bddd11f4d1')
-  self.assertEqual(v.PINS['booking']['tree'],'b65c2321e3136c5cf732144db75490bc97e3ee26')
+  self.assertEqual(v.PINS['booking']['tree'],'7f2e2ee47a19955b9c870c73e4ed6851d4e3a0eb')
  def test_exact_confirmed_baseline_identities(self):
   self.assertEqual(v.EXPECTED_BASELINE_IDS,{
    'crm:app':'d5e5f203357e113401ecadf7dcbc5d09e953925f61243b202e3c2f294af33007',

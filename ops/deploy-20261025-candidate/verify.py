@@ -3,7 +3,7 @@
 import json, pathlib, sys, os, hashlib, re
 PINS = {
  'crm': dict(repo='MaxTravel', commit='f59810075a6935c28ea958a3b53e168284be687d', tree='90635d1db07dda36527999d737a637bddd11f4d1', baseline='0d0c72d24c320d56710f3c640a151b34697dc4e6', image='sha256:0cea593a8f8a2574be6e4f79d531b4e45079944f098ed110b8f1cf5541e812fd', release='/root/crm-build-2ecf810-ERht2Z/crm-release-2ecf810-IMh1AX', live='/opt/max-travel-crm', env='crm.env', files=['compose.vps.yaml','compose.evolution.yaml','image-override.yaml','candidate-image.yaml'], user='node'),
- 'booking': dict(repo='MaxTripJack', commit='ac9d2a3fabefc488df68485d32572b0377efa5a3', tree='b65c2321e3136c5cf732144db75490bc97e3ee26', baseline='06615409f45c5ac9ef3b01b2538b26838ac0c69f', image='sha256:31874edd42ae52985b99a29739d9b57d2f6cc8f5c4e6ac79f0796c5b7e7344d1', release='/root/booking-build-fe14634-qbbdjR/booking-release-fe14634-ZJBWG3', live='/opt/max-travel-booking/booking-platform', env='compose.env', files=['compose.production.yaml','image-override.yaml','candidate-image.yaml'], user='travel'),
+ 'booking': dict(repo='MaxTripJack', commit='cc57b4bac4fe3ef0abbede150aab38d91448951a', tree='7f2e2ee47a19955b9c870c73e4ed6851d4e3a0eb', baseline='06615409f45c5ac9ef3b01b2538b26838ac0c69f', image='sha256:31874edd42ae52985b99a29739d9b57d2f6cc8f5c4e6ac79f0796c5b7e7344d1', release='/root/booking-build-fe14634-qbbdjR/booking-release-fe14634-ZJBWG3', live='/opt/max-travel-booking/booking-platform', env='compose.env', files=['compose.production.yaml','image-override.yaml','candidate-image.yaml'], user='travel'),
 }
 # User-confirmed completed baseline; each build must re-establish private evidence.
 # Original release remains the interpolation/config base; pointer is the overlay.
