@@ -2,6 +2,7 @@
 
 import { MANUAL_HOTEL_STATUSES, hotelStayProblem } from "@/lib/manual-hotel";
 import { enumLabel } from "@/lib/labels";
+import { bookingSourceLabel } from "@/lib/booking-policy";
 import { dateLabel, dateTimeLabel } from "@/lib/dates";
 import { inrAmount } from "@/lib/money";
 import Link from "next/link";
@@ -319,7 +320,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
           </section>
           <section className="panel space-y-2.5 p-5">
             <h2 className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Booking facts</h2>
-            <KV k="GDS / source" v={b.gdsSource ?? "—"} />
+            <KV k="Booking source" v={bookingSourceLabel(b.gdsSource)} />
             <KV k="Supplier" v={b.supplier ?? "—"} />
             {!hotel&&<KV k="Flight" v={b.flightNo ?? "—"} />}
             <KV k={hotel?"Record created":"Booked"} v={dOnly(b.bookingDate)} />

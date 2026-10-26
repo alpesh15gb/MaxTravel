@@ -115,6 +115,6 @@ async function validateBookingLink(tx: Prisma.TransactionClient, user: Awaited<R
   const booking = await tx.booking.findUnique({ where: { id: bookingId } });
   if (!booking) throw new ApiError(404, "Booking not found.");
   await customerFor(tx, user, booking.customerId);
-  if (booking.gdsSource === "TRIPJACK_API") throw new ApiError(409, "TripJack wallet bookings are prepaid; they cannot receive another supplier payable.");
+  if (booking.gdsSource === "TRIPJACK_API") throw new ApiError(409, "Online wallet bookings are prepaid; they cannot receive another supplier payable.");
   if (booking.supplierId !== supplierId) throw new ApiError(400, "Choose a booking already linked to this supplier.");
 }
