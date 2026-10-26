@@ -6,8 +6,8 @@ Local preparation and offline review only, based on helper commit `3702373dbd918
 
 | App | New commit | New tree | Deployed baseline |
 | --- | --- | --- | --- |
-| CRM | d9c4d1b7004ad24dbb127f7113dfdc2670d87785 | c66967079e28c9ad8c10acad0d8150e80996bc4a | 0d0c72d24c320d56710f3c640a151b34697dc4e6 |
-| Booking | 51f1ce578e7b4c0a2e5e124ad0861f13bf0697fa | 732c037f1cb04329fca8ee29efb21ca6e6befd9a | 06615409f45c5ac9ef3b01b2538b26838ac0c69f |
+| CRM | f59810075a6935c28ea958a3b53e168284be687d | 90635d1db07dda36527999d737a637bddd11f4d1 | 0d0c72d24c320d56710f3c640a151b34697dc4e6 |
+| Booking | ac9d2a3fabefc488df68485d32572b0377efa5a3 | b65c2321e3136c5cf732144db75490bc97e3ee26 | 06615409f45c5ac9ef3b01b2538b26838ac0c69f |
 
 Independent Git comparisons from those deployed baselines found no schema/migration, Dockerfile, Compose, lockfile, package.json, entrypoint or operational script changes. Changes are application code, tests, documentation and CI workflows. The existing strict source policy, CRM helper-byte hashes and exact booking operational allowlist remain intact. Both target trees were verified against Git objects locally.
 
