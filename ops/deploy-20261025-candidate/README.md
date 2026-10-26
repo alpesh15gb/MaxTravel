@@ -1,10 +1,10 @@
 # Reviewed-baseline new-main rollout helpers
 
-**Local candidate independently reviewed; awaiting publication and actual CI. Nothing here has built or deployed the new targets.** Read [the current review](ROLLOUT-REVIEW-20261025.md).
+**Local helper update for review only; not published or executed.** Read [the current review](ROLLOUT-REVIEW-20261026.md). Linux CI and Docker smoke results for this revision remain outstanding.
 
-Targets: CRM `0d0c72d24c320d56710f3c640a151b34697dc4e6`; booking `06615409f45c5ac9ef3b01b2538b26838ac0c69f`.
+Targets: CRM `d9c4d1b7004ad24dbb127f7113dfdc2670d87785`; booking `51f1ce578e7b4c0a2e5e124ad0861f13bf0697fa`.
 
-User-reported historical c27 app recovery and worker completion supplies the new baseline. Before either new build, helpers independently require exact four service identities, images, current pointers, historical completion markers and full protected final configuration/lifecycle matching fresh private evidence. CRM requires its original four Compose files plus the exact c27 overlay; booking requires its original three files. No optional-file fallback. Original env/config paths remain separate from pointers.
+The user supplied fresh runtime identities at 2026-10-26 02:31 UTC. Before either new build, helpers independently require both releases' exact completion markers, current pointers, final service evidence and latest booking all-after inventory matching fresh private state. CRM retains its original four Compose files, c27 overlay and deployed 0d0c72d overlay (six files); booking retains its original three files and deployed 0661540 overlay (four files). Original interpolation/runtime env paths remain separate from pointers. The full raw latest booking inventory also preserves all pre-existing helpers, including the historical failed attempt; do not carry FAILED_BOOKING_STAGE into a new release command.
 
 This package does not replace incident recovery. Original `../deploy-20261024` remains byte-identical to `3c6512c6c87e630d402c12e4f234aa4c8b9b612c`. Candidate copies of incident recovery/revalidation refuse execution.
 

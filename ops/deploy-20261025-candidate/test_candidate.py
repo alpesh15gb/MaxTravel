@@ -6,17 +6,28 @@ sys.path.insert(0,str(HERE/'cutover'))
 import phase_verify as p
 class CandidateChecks(unittest.TestCase):
  def test_exact_target_pins(self):
-  self.assertEqual(v.PINS['crm']['commit'],'0d0c72d24c320d56710f3c640a151b34697dc4e6')
-  self.assertEqual(v.PINS['booking']['commit'],'06615409f45c5ac9ef3b01b2538b26838ac0c69f')
+  self.assertEqual(v.PINS['crm']['commit'],'d9c4d1b7004ad24dbb127f7113dfdc2670d87785')
+  self.assertEqual(v.PINS['booking']['commit'],'51f1ce578e7b4c0a2e5e124ad0861f13bf0697fa')
+  self.assertEqual(v.PINS['crm']['tree'],'c66967079e28c9ad8c10acad0d8150e80996bc4a')
+  self.assertEqual(v.PINS['booking']['tree'],'732c037f1cb04329fca8ee29efb21ca6e6befd9a')
+ def test_exact_confirmed_baseline_identities(self):
+  self.assertEqual(v.EXPECTED_BASELINE_IDS,{
+   'crm:app':'d5e5f203357e113401ecadf7dcbc5d09e953925f61243b202e3c2f294af33007',
+   'crm:worker':'4c7264ef92004967821c271a03693183b9826b816fc7a8ad62f4856adc664a43',
+   'booking:app':'da49b4c8abd571a4238017c3ffc90babefd9d5bec6c1f6c31723c35a73052b06',
+   'booking:postgres':'df9fd0fdf66d26b56736a7d2f411e432d172ab9814a8fdb08fac40d81d04e465'})
+  self.assertEqual(v.PINS['crm']['baseline'],'0d0c72d24c320d56710f3c640a151b34697dc4e6')
+  self.assertEqual(v.PINS['booking']['baseline'],'06615409f45c5ac9ef3b01b2538b26838ac0c69f')
  def test_pointer_is_not_env_directory(self):
   c=v.PINS['crm'];self.assertNotEqual(c['release'],c['pointer_release'])
   self.assertEqual(v.compose_paths('crm')[-1],c['pointer_release']+'/candidate-image.yaml')
-  self.assertTrue(all(x.startswith(c['release']+'/') for x in v.compose_paths('crm')[:-1]))
-  self.assertEqual(v.compose_paths('crm')[:-1],[c['release']+'/'+name for name in ['compose.vps.yaml','compose.evolution.yaml','image-override.yaml','candidate-image.yaml']])
-  b=v.PINS['booking'];self.assertEqual(v.compose_paths('booking'),[b['release']+'/'+name for name in ['compose.production.yaml','image-override.yaml','candidate-image.yaml']])
+  self.assertEqual(v.compose_paths('crm'),[c['release']+'/'+name for name in ['compose.vps.yaml','compose.evolution.yaml','image-override.yaml','candidate-image.yaml']]+['/root/crm-build-c27b8e3-p3drk2/crm-release-c27b8e3-2S4iPz/candidate-image.yaml',c['pointer_release']+'/candidate-image.yaml'])
+  b=v.PINS['booking'];self.assertNotEqual(b['release'],b['pointer_release'])
+  self.assertEqual(v.compose_paths('booking'),[b['release']+'/'+name for name in ['compose.production.yaml','image-override.yaml','candidate-image.yaml']]+[b['pointer_release']+'/candidate-image.yaml'])
  def test_missing_or_extra_overlay_rejected(self):
   for app,index in [('crm',0),('booking',2)]:
-   for paths in [v.compose_paths(app)[:-1],v.compose_paths(app)+['/root/unknown.yaml'],[x for x in v.compose_paths(app) if x!=v.PINS[app]['release']+'/candidate-image.yaml']]:
+   expected=v.compose_paths(app)
+   for paths in [expected[:i]+expected[i+1:] for i in range(len(expected))]+[list(reversed(expected)),expected+['/root/unknown.yaml']]:
     rows=test_verify.Checks().fixture();rows[index]['Config']['Labels']['com.docker.compose.project.config_files']=','.join(paths)
     with self.assertRaises(SystemExit):v.runtime(rows)
  def test_old_or_mixed_crm_image_rejected(self):
@@ -69,22 +80,73 @@ class CandidateChecks(unittest.TestCase):
    r['Id']=v.EXPECTED_BASELINE_IDS[key]
    if key=='booking:postgres':r['Image']=v.EXPECTED_POSTGRES_IMAGE
   with tempfile.TemporaryDirectory() as temp:
-   d=pathlib.Path(temp);release=d/'release';release.mkdir();current=d/'current';current.write_text(json.dumps(rows))
-   values={'app-verified.txt':'verified','deployed-source.txt':v.PINS['crm']['baseline'],'deployed-image.txt':v.PINS['crm']['image'],'all-final.private.json':json.dumps(rows),'final-containers.private.json':json.dumps(rows[:2])}
-   for name,value in values.items():(release/name).write_text(value)
+   d=pathlib.Path(temp);releases={app:d/app for app in ('crm','booking')};current=d/'current';current.write_text(json.dumps(rows))
+   # The CRM completion predates the booking replacement: the old booking ID
+   # and config in its full snapshot must not be treated as the current baseline.
+   old=copy.deepcopy(rows);old[2]['Id']='previous-booking-id';old[2]['Image']='previous-booking-image'
+   for app in ('crm','booking'):
+    releases[app].mkdir()
+    values={'deployed-source.txt':v.PINS[app]['baseline'],'deployed-image.txt':v.PINS[app]['image'],'final-containers.private.json':json.dumps(rows[:2] if app=='crm' else rows[2:])}
+    if app=='crm':values.update({'app-verified.txt':'verified','all-final.private.json':json.dumps(old)})
+    else:values.update({'all-after.private.json':json.dumps(rows),'all-after.private.json.all.private.json':json.dumps(rows)})
+    for name,value in values.items():(releases[app]/name).write_text(value)
    for app in ('crm','booking'):(d/(app+'-pointer')).write_text(v.PINS[app]['pointer_release'])
    original_regular=v.regular
    def mapped(path):
-    path=str(path)
-    if path.startswith(v.PINS['crm']['pointer_release']+'/'):path=release/path.rsplit('/',1)[-1]
-    elif path.startswith('/root/maxtravel-revamp-backup-9B5326/'):path=d/(path.rsplit('/',1)[-1].split('-')[0]+'-pointer')
+    path=str(path).replace('\\','/')
+    for app in ('crm','booking'):
+     if path.startswith(v.PINS[app]['pointer_release']+'/'):path=releases[app]/path.rsplit('/',1)[-1];break
+    else:
+     if path.startswith('/root/maxtravel-revamp-backup-9B5326/'):path=d/(path.rsplit('/',1)[-1].split('-')[0]+'-pointer')
     return original_regular(path)
    with patch.object(v,'regular',mapped):
     v.build_baseline(current)
-    (release/'deployed-image.txt').write_text('wrong')
+    for app in ('crm','booking'):
+     pointer=d/(app+'-pointer');pointer.write_text('/root/old-release')
+     with self.assertRaises(SystemExit):v.build_baseline(current)
+     pointer.write_text(v.PINS[app]['pointer_release'])
+     for name in ('deployed-image.txt','deployed-source.txt','final-containers.private.json'):
+      f=releases[app]/name;original=f.read_text();f.write_text('[]' if name.endswith('.json') else 'wrong')
+      with self.subTest(app=app,name=name),self.assertRaises(SystemExit):v.build_baseline(current)
+      f.write_text(original)
+    f=releases['crm']/'app-verified.txt';f.unlink()
     with self.assertRaises(SystemExit):v.build_baseline(current)
-    (release/'deployed-image.txt').write_text(v.PINS['crm']['image']);(release/'app-verified.txt').unlink()
+    f.write_text('verified')
+    f=releases['booking']/'all-after.private.json';f.write_text(json.dumps(old))
     with self.assertRaises(SystemExit):v.build_baseline(current)
+    f.write_text(json.dumps(rows))
+    # Old IDs, environment/security/config changes and lifecycle drift all reject.
+    for index in range(4):
+     for field in ('Id','Env','HostConfig','StartedAt'):
+      changed=copy.deepcopy(rows)
+      if field=='Id':changed[index]['Id']='old-id'
+      elif field=='Env':changed[index]['Config']['Env']=['CHANGED=1']
+      elif field=='HostConfig':changed[index]['HostConfig']['Privileged']=True
+      else:changed[index]['State']['StartedAt']='restarted'
+      current.write_text(json.dumps(changed))
+      with self.subTest(index=index,field=field),self.assertRaises(SystemExit):v.build_baseline(current)
+    current.write_text(json.dumps(rows));v.build_baseline(current)
+    # All historical helpers, including a retained failed attempt, are exact
+    # pre-existing raw inventory. No failed-stage re-admission is necessary.
+    helper=copy.deepcopy(self.helper_rows()[-1]);raw=rows+[helper]
+    raw_file=releases['booking']/'all-after.private.json.all.private.json';raw_file.write_text(json.dumps(raw))
+    current.write_text(json.dumps(raw));v.build_baseline(current)
+    with self.assertRaises(SystemExit):
+     current.write_text(json.dumps(rows));v.build_baseline(current)
+    changed=copy.deepcopy(raw);changed[-1]['Config']['Env']=['CHANGED=1'];current.write_text(json.dumps(changed))
+    with self.assertRaises(SystemExit):v.build_baseline(current)
+    raw_file.write_text(json.dumps(rows));current.write_text(json.dumps(rows))
+    f.unlink()
+    # Even a lookalike all-final must not substitute for booking's actual output.
+    (releases['booking']/'all-final.private.json').write_text(json.dumps(rows))
+    with self.assertRaises(SystemExit):v.build_baseline(current)
+ def test_confirmed_lifecycle_and_restart_policy_required(self):
+  for index in range(4):
+   for field in ('Paused','Restarting','Dead','OOMKilled','RestartPolicy'):
+    rows=self.complete_rows()
+    if field=='RestartPolicy':rows[index]['HostConfig'][field]={'Name':'always','MaximumRetryCount':0}
+    else:rows[index]['State'][field]=True
+    with self.subTest(index=index,field=field),self.assertRaises(SystemExit):v.runtime(rows)
  def helper_rows(self):
   rows=self.complete_rows();h=copy.deepcopy(rows[0]);h['Id']='old-helper';h['Config']['Labels']={'maxtravel.cutover.helper':'true'}
   h['State'].update(Status='exited',ExitCode=0,Running=False,StartedAt='old',FinishedAt='old-finish');h['HostConfig']={'NetworkMode':'none','ReadonlyRootfs':True,'Privileged':False,'CapDrop':['ALL'],'SecurityOpt':['no-new-privileges']};h['Config']['User']='1000:1000';return rows+[h]

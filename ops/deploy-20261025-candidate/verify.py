@@ -2,20 +2,23 @@
 """Offline validators; never contact Docker, a database, or a provider."""
 import json, pathlib, sys, os, hashlib, re
 PINS = {
- 'crm': dict(repo='MaxTravel', commit='0d0c72d24c320d56710f3c640a151b34697dc4e6', tree='d2f370dffb7aec5b5627ff4f2ca6d112de336981', baseline='c27b8e352a9bdaf55f94df9fb3da1376f0f402d6', image='sha256:b10e495f4f8fbaca93153552e6484800670c91fa7e778a759674829b28cc3e0a', release='/root/crm-build-2ecf810-ERht2Z/crm-release-2ecf810-IMh1AX', live='/opt/max-travel-crm', env='crm.env', files=['compose.vps.yaml','compose.evolution.yaml','image-override.yaml','candidate-image.yaml'], user='node'),
- 'booking': dict(repo='MaxTripJack', commit='06615409f45c5ac9ef3b01b2538b26838ac0c69f', tree='c044af7ce510f0d3f23214459ad1ccdec78ff0ac', baseline='fe14634d50568a2fb905e90ed22040557347f162', image='sha256:93b3669a105a5b2520e9ea59d57dde817affde74fa70cc736e43239e8b5fe220', release='/root/booking-build-fe14634-qbbdjR/booking-release-fe14634-ZJBWG3', live='/opt/max-travel-booking/booking-platform', env='compose.env', files=['compose.production.yaml','image-override.yaml','candidate-image.yaml'], user='travel'),
+ 'crm': dict(repo='MaxTravel', commit='d9c4d1b7004ad24dbb127f7113dfdc2670d87785', tree='c66967079e28c9ad8c10acad0d8150e80996bc4a', baseline='0d0c72d24c320d56710f3c640a151b34697dc4e6', image='sha256:0cea593a8f8a2574be6e4f79d531b4e45079944f098ed110b8f1cf5541e812fd', release='/root/crm-build-2ecf810-ERht2Z/crm-release-2ecf810-IMh1AX', live='/opt/max-travel-crm', env='crm.env', files=['compose.vps.yaml','compose.evolution.yaml','image-override.yaml','candidate-image.yaml'], user='node'),
+ 'booking': dict(repo='MaxTripJack', commit='51f1ce578e7b4c0a2e5e124ad0861f13bf0697fa', tree='732c037f1cb04329fca8ee29efb21ca6e6befd9a', baseline='06615409f45c5ac9ef3b01b2538b26838ac0c69f', image='sha256:31874edd42ae52985b99a29739d9b57d2f6cc8f5c4e6ac79f0796c5b7e7344d1', release='/root/booking-build-fe14634-qbbdjR/booking-release-fe14634-ZJBWG3', live='/opt/max-travel-booking/booking-platform', env='compose.env', files=['compose.production.yaml','image-override.yaml','candidate-image.yaml'], user='travel'),
 }
 # User-confirmed completed baseline; each build must re-establish private evidence.
 # Original release remains the interpolation/config base; pointer is the overlay.
-PINS['crm']['pointer_release']='/root/crm-build-c27b8e3-p3drk2/crm-release-c27b8e3-2S4iPz'
-PINS['crm']['overlay']=PINS['crm']['pointer_release']+'/candidate-image.yaml'
-PINS['booking']['pointer_release']=PINS['booking']['release']
+PINS['crm']['pointer_release']='/root/crm-build-0d0c72d-fDcYXw/crm-release-0d0c72d-r02ds6'
+PINS['crm']['overlays']=[
+ '/root/crm-build-c27b8e3-p3drk2/crm-release-c27b8e3-2S4iPz/candidate-image.yaml',
+ PINS['crm']['pointer_release']+'/candidate-image.yaml']
+PINS['booking']['pointer_release']='/root/booking-build-0661540-wvdGUN/booking-release-0661540-nTBepa'
+PINS['booking']['overlays']=[PINS['booking']['pointer_release']+'/candidate-image.yaml']
 def compose_paths(app):
  p=PINS[app]
- return [p['release']+'/'+f for f in p['files']]+([p['overlay']] if app=='crm' else [])
-# User reported successful historical finish at 09:24 UTC; publication still awaits review.
+ return [p['release']+'/'+f for f in p['files']]+p['overlays']
+# User supplied fresh four-service preflight at 2026-10-26 02:31 UTC.
 BUILD_BASELINE_REVIEWED=True
-EXPECTED_BASELINE_IDS={'crm:app':'e7153d4b7464ca74d9583c4ad25b134eb5daff3e9c3d8e35c078ec531630675e','crm:worker':'61b5923a752281a51f252a6f981de4b41342b1e507cc34fc59febd7bcf18e251','booking:app':'5bb3f8f41d6f9d1c7925221106a26285d1a734a112d7291c9771732c76a115a8','booking:postgres':'df9fd0fdf66d26b56736a7d2f411e432d172ab9814a8fdb08fac40d81d04e465'}
+EXPECTED_BASELINE_IDS={'crm:app':'d5e5f203357e113401ecadf7dcbc5d09e953925f61243b202e3c2f294af33007','crm:worker':'4c7264ef92004967821c271a03693183b9826b816fc7a8ad62f4856adc664a43','booking:app':'da49b4c8abd571a4238017c3ffc90babefd9d5bec6c1f6c31723c35a73052b06','booking:postgres':'df9fd0fdf66d26b56736a7d2f411e432d172ab9814a8fdb08fac40d81d04e465'}
 EXPECTED_POSTGRES_IMAGE='sha256:d4bb0a8c1b7bb2e29f976d099e7bfb9a5d8858cffe9e46b35cd302cd1f1f8168'
 def candidate_build_gate():
  require(BUILD_BASELINE_REVIEWED and set(EXPECTED_BASELINE_IDS)=={'crm:app','crm:worker','booking:app','booking:postgres'}
@@ -34,23 +37,34 @@ def check_baseline_rows(reference,current,expected_ids):
  protected(before,after,'')
 def build_baseline(path):
  candidate_build_gate()
- release=pathlib.Path(PINS['crm']['pointer_release'])
- expected={'app-verified.txt':'verified','deployed-source.txt':PINS['crm']['baseline'],'deployed-image.txt':PINS['crm']['image']}
- for name,value in expected.items():
-  require(regular(release/name).read_text().strip()==value,'Historical CRM completion evidence missing or mismatched.')
+ releases={app:pathlib.Path(PINS[app]['pointer_release']) for app in ('crm','booking')}
  for app in ('crm','booking'):
+  expected={'deployed-source.txt':PINS[app]['baseline'],'deployed-image.txt':PINS[app]['image']}
+  if app=='crm':expected['app-verified.txt']='verified'
+  for name,value in expected.items():
+   require(regular(releases[app]/name).read_text().strip()==value,'Completed '+app+' evidence missing or mismatched.')
   pointer=regular('/root/maxtravel-revamp-backup-9B5326/'+app+'-current-cutover-path.txt')
   require(pointer.read_text().strip()==PINS[app]['pointer_release'],'Completed baseline pointer differs.')
- final=read(regular(release/'all-final.private.json'))
- crm=read(regular(release/'final-containers.private.json'))
- from_phase={r['Id']:r for r in crm}
- require(set(from_phase)=={EXPECTED_BASELINE_IDS['crm:app'],EXPECTED_BASELINE_IDS['crm:worker']},'CRM final evidence identities differ.')
- # The final all-inventory snapshot occurs after the final per-service snapshot.
- # Compare stable fields/lifecycle, not timing-dependent healthcheck log arrays.
+ # Booking completed after CRM. Its all-after snapshot is the authoritative full
+ # inventory; the older CRM snapshot still contains the previous booking app.
+ final=read(regular(releases['booking']/'all-after.private.json'))
  sys.path.insert(0,str(pathlib.Path(__file__).parent/'cutover'))
- from phase_verify import protected
- protected(crm,[r for r in final if r['Id'] in from_phase],'')
+ from phase_verify import protected,non_helper_rows
+ raw=read(regular(releases['booking']/'all-after.private.json.all.private.json'))
+ protected(final,non_helper_rows(raw),'')
+ for app,names in [('crm',('app','worker')),('booking',('app','postgres'))]:
+  rows=read(regular(releases[app]/'final-containers.private.json'))
+  ids={EXPECTED_BASELINE_IDS[app+':'+name] for name in names}
+  require(len(rows)==len(ids) and {r['Id'] for r in rows}==ids,'Completed '+app+' final evidence identities differ.')
+  protected(rows,[r for r in final if r['Id'] in ids],'')
+  protected([r for r in final if r['Id'] in ids],rows,'')
+  if app=='crm':
+   crm_final=read(regular(releases[app]/'all-final.private.json'))
+   protected(rows,[r for r in crm_final if r['Id'] in ids],'')
  current=read(path)
+ # The previous failed helper is now pre-existing inventory. Preserve its exact
+ # completed-booking record along with every other helper; never re-admit it.
+ protected(raw,current,'')
  for rows in (final,current):
   postgres=[r for r in rows if r['Id']==EXPECTED_BASELINE_IDS['booking:postgres']]
   require(len(postgres)==1 and postgres[0]['Image']==EXPECTED_POSTGRES_IMAGE,'Confirmed PostgreSQL image differs.')
@@ -90,7 +104,10 @@ def runtime(rows):
   app='crm' if project=='max-travel-crm' else 'booking'; service=labels['com.docker.compose.service']; key=(app,service)
   require(key not in found,'Duplicate protected service.')
   found[key]=r; p=PINS[app]
-  require(r['State']['Running'] and r['RestartCount']==0,'Protected service stopped or restarted; fresh review required.')
+  require(r['State']['Running'] and r['RestartCount']==0
+          and all(r['State'].get(k) is False for k in ('Paused','Restarting','Dead','OOMKilled'))
+          and r.get('HostConfig',{}).get('RestartPolicy')=={'Name':'unless-stopped','MaximumRetryCount':0},
+          'Protected service lifecycle/restart policy differs; fresh review required.')
   require(r['State'].get('Health',{}).get('Status') in (None,'healthy'),'Protected service unhealthy.')
   if service=='postgres':
    require(r['State'].get('Health',{}).get('Status')=='healthy','PostgreSQL healthcheck missing or unhealthy.')

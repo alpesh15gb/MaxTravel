@@ -6,7 +6,7 @@ class Checks(unittest.TestCase):
   for app,names in [('crm',['app','worker']),('booking',['app','postgres'])]:
    p=v.PINS[app]
    for name in names:
-    rows.append({'Id':app+name,'Image':p['image'] if name!='postgres' else 'postgres-image','RestartCount':0,'State':{'Running':True,'Health':{'Status':'healthy'}},'Config':{'Labels':{'com.docker.compose.project':'max-travel-'+app,'com.docker.compose.service':name,'com.docker.compose.project.working_dir':p['live'],'com.docker.compose.project.config_files':','.join(v.compose_paths(app))}},'HostConfig':{},'Mounts':[]})
+    rows.append({'Id':app+name,'Image':p['image'] if name!='postgres' else 'postgres-image','RestartCount':0,'State':{'Running':True,'Paused':False,'Restarting':False,'Dead':False,'OOMKilled':False,'Health':{'Status':'healthy'}},'Config':{'Labels':{'com.docker.compose.project':'max-travel-'+app,'com.docker.compose.service':name,'com.docker.compose.project.working_dir':p['live'],'com.docker.compose.project.config_files':','.join(v.compose_paths(app))}},'HostConfig':{'RestartPolicy':{'Name':'unless-stopped','MaximumRetryCount':0}},'Mounts':[]})
   return rows
  def test_runtime_pass(self): self.assertEqual(len(v.runtime(self.fixture())),4)
  def test_wrong_image(self):

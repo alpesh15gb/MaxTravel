@@ -1,5 +1,5 @@
 # Candidate identity and release gates
 
-See [ROLLOUT-REVIEW-20261025.md](ROLLOUT-REVIEW-20261025.md) for exact pins, source delta, confirmed baseline and scoped sequence.
+See [ROLLOUT-REVIEW-20261026.md](ROLLOUT-REVIEW-20261026.md) for exact pins, source delta, confirmed baseline and scoped sequence. The 25 October review is historical.
 
-The previous unconditional local hold is replaced by an exact reviewed baseline with fresh private proof required before each build. Independent code review accepted; publication and actual helper CI remain outstanding. This does not claim that new images exist or authorize bypassing any build/backup/restore/health gate. Historical incident recovery remains exclusively in unchanged sibling commit 3c6512.
+This local revision updates the exact baseline and target pins, with fresh private proof required before each build. Review, Linux helper CI and Docker smokes remain outstanding. No new image, backup, deployment or publication has been performed. All build/backup/restore/health gates remain mandatory. Historical incident recovery remains exclusively in unchanged sibling commit 3c6512.
