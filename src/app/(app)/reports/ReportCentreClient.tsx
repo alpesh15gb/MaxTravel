@@ -8,18 +8,20 @@ import { inrAmount } from "@/lib/money";
 import type { AccountReport, ReportRow } from "@/lib/account-reports";
 import { REPORT_CATALOGUE, REPORT_GROUPS, REPORT_DATE_PRESETS, indiaDay, isBalanceReport, isStatementReport, isWorkReport, reportCurrency, reportDatePreset, reportDefinition, reportFilterQuery } from "@/lib/report-workspace";
 import { readReportJson } from "@/lib/report-read";
+import type { ReportFilters } from "@/lib/report-workspace";
 import "./reporting-workspace.css";
 
 type Options = { customers: { id: string; name: string; code: string }[]; suppliers: { id: string; name: string }[]; staff: { id: string; name: string }[]; statuses: string[]; cutover: string | null };
-type Props = { canExport: boolean; canSupplier: boolean; canRefund: boolean; canTerms: boolean; initialReport?: string; initialCustomer?: string };
-export default function ReportCentreClient({ canExport, canSupplier, canRefund, canTerms, initialReport, initialCustomer }: Props) {
+type Props = { canExport: boolean; canSupplier: boolean; canRefund: boolean; canTerms: boolean; initialReport?: string; initialCustomer?: string; initialFilters?: Partial<ReportFilters> };
+export default function ReportCentreClient({ canExport, canSupplier, canRefund, canTerms, initialReport, initialCustomer, initialFilters={} }: Props) {
  const available = REPORT_CATALOGUE.filter(r => (!r.key.startsWith("supplier") || canSupplier) && (r.key !== "refunds" || canRefund));
  const [selected, setSelected] = useState(initialReport === "overview" || available.some(r => r.key === initialReport) ? initialReport! : "ageing");
  const [search, setSearch] = useState("");
+ const [library, setLibrary] = useState(false), [linkNotice, setLinkNotice] = useState("");
  const [options, setOptions] = useState<Options | null>(null), [optionsError, setOptionsError] = useState("");
- const [customerId, setCustomer] = useState(initialCustomer || ""), [supplierId, setSupplier] = useState("");
- const [ownerId, setOwner] = useState(""), [status, setStatus] = useState("");
- const [from, setFrom] = useState(""), [to, setTo] = useState("");
+ const [customerId, setCustomer] = useState(initialCustomer || ""), [supplierId, setSupplier] = useState(initialFilters.supplierId||"");
+ const [ownerId, setOwner] = useState(initialFilters.ownerId||""), [status, setStatus] = useState(initialFilters.status||"");
+ const [from, setFrom] = useState(initialFilters.from||""), [to, setTo] = useState(initialFilters.to||"");
  const [data, setData] = useState<AccountReport | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false);
  const [terms, setTerms] = useState(false), [applied, setApplied] = useState("");
  const request = useRef<AbortController | null>(null), optionsRequest = useRef<AbortController | null>(null);
@@ -46,7 +48,8 @@ export default function ReportCentreClient({ canExport, canSupplier, canRefund, 
  const matches = available.filter(r => `${r.label} ${r.hint} ${r.group}`.toLowerCase().includes(search.trim().toLowerCase()));
  const overviewMatches = "Business overview sales cash outstanding workload".toLowerCase().includes(search.trim().toLowerCase());
  function choose(key: string) {
-  ++generation.current; request.current?.abort(); setSelected(key); setData(null); setError(""); setBusy(false); setApplied(""); setTerms(false); lastRequest.current = null;
+  ++generation.current; request.current?.abort(); setSelected(key); setData(null); setError(""); setBusy(false); setApplied(""); setTerms(false); setLibrary(false); setLinkNotice(""); lastRequest.current = null;
+  window.history.replaceState(null,"",`/reports?${new URLSearchParams({report:key})}`);
  }
  async function load(page = 1, query = draftQuery) {
   request.current?.abort(); const c = new AbortController(); request.current = c; const id = ++generation.current;
@@ -56,7 +59,8 @@ export default function ReportCentreClient({ canExport, canSupplier, canRefund, 
    const { response: r, data: d } = await readReportJson<AccountReport & { error?: string }>("/api/reports/accounts?" + p, { signal: c.signal });
    if (c.signal.aborted || id !== generation.current) return;
    if (!r.ok) throw new Error(d.error || "Could not load report.");
-   setData(d); p.delete("page"); setApplied(p.toString());
+   setData(d); p.delete("page"); setApplied(p.toString()); setLinkNotice("");
+   window.history.replaceState(null,"",`/reports?${p}`);
   } catch (e) { if (!c.signal.aborted && id === generation.current) setError(e instanceof Error ? e.message : "Could not load report."); }
   finally { if (!c.signal.aborted && id === generation.current) setBusy(false); }
  }
@@ -65,26 +69,16 @@ export default function ReportCentreClient({ canExport, canSupplier, canRefund, 
  }
  const editableTermsRows = data?.rows.filter(row => row._termsEditable === 1) || [];
  const appliedCustomer = new URLSearchParams(applied).get("customerId");
- return <div className="workspace-page">
-  <section className="panel p-4 mb-5" aria-label="Find a report">
-   <div className="hidden md:flex flex-wrap items-start justify-between gap-4"><div><p className="text-lg font-semibold">Report centre</p><p className="text-sm text-slate-600 mt-1">Choose the question, check its date basis, then apply your filters.</p></div><Field label="Search reports"><input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Accounts, refunds, work…" /></Field></div>
-   <div className="md:hidden"><Field label="Choose a report"><select value={selected} onChange={e => choose(e.target.value)}>
-    {selected !== "overview" && !matches.some(r => r.key === selected) && <option value={selected}>{chosen?.label} (selected)</option>}
-    {REPORT_GROUPS.map(group => <optgroup key={group} label={group}>{matches.filter(r => r.group === group).map(r => <option key={r.key} value={r.key}>{r.label}</option>)}</optgroup>)}
-    {(overviewMatches || selected === "overview") && <option value="overview">Business overview</option>}
-   </select></Field><details className="mt-2"><summary className="text-sm font-semibold cursor-pointer py-3">Search report catalogue</summary><Field label="Search reports"><input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Accounts, refunds, work…" /></Field></details></div>
-   <nav aria-label="Report catalogue" className="hidden md:block mt-4"><div className="grid gap-4 md:grid-cols-3">{REPORT_GROUPS.map(group => {
-    const entries = matches.filter(r => r.group === group);
-    return entries.length > 0 ? <section key={group}><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">{group}</p><div className="flex flex-col items-stretch">{entries.map(r => <button key={r.key} type="button" aria-pressed={selected === r.key} className={`report-choice ${selected === r.key ? "report-choice-selected" : ""}`} onClick={() => choose(r.key)}>{r.label}</button>)}</div></section> : null;
-   })}</div>{overviewMatches && <button type="button" className={`report-choice mt-2 ${selected === "overview" ? "report-choice-selected" : ""}`} aria-pressed={selected === "overview"} onClick={() => choose("overview")}>Business overview</button>}</nav>
-   {matches.length === 0 && !overviewMatches && <p role="status" className="text-sm mt-3">No permitted reports match this search. <button type="button" className="underline" onClick={() => setSearch("")}>Clear search</button></p>}
-  </section>
-  {selected === "overview" ? <ReportsClient canExport={canExport} /> : <>
-   <PageHeader title={chosen?.label || "Reports"} description={chosen?.hint || "Financial reports"} actions={<button className="btn-primary" type="submit" form="report-filters" disabled={busy || !options}>{busy ? "Generating…" : "Generate report"}</button>} />
+ return <div className="workspace-page reporting-desk">
+  <PageHeader eyebrow="Agency reporting" title="Reports & insights" description="Answer a business question, check the source records, and take the next action." actions={<button type="button" className="btn-secondary" onClick={()=>setLibrary(true)}>Browse report library</button>}/>
+  <section className="report-launchbar panel no-print" aria-label="Find a report"><Field label="Choose a report"><select value={selected} onChange={e=>choose(e.target.value)}>{REPORT_GROUPS.map(group=><optgroup key={group} label={group}>{available.filter(report=>report.group===group).map(report=><option key={report.key} value={report.key}>{report.label}</option>)}</optgroup>)}<option value="overview">Business overview</option></select></Field><div><span className="report-mode-label">{selected==="overview"?"Business overview":balance?"As-of balance":statement?"Account movements":"Period activity"}</span><p>{chosen?.hint||"Sales, cash, outstanding work and the records behind them."}</p></div></section>
+  {library&&<Modal labelledBy="report-library-title" width="max-w-4xl" onClose={()=>setLibrary(false)}><div className="report-library"><div className="flex justify-between items-start gap-4"><div><p className="eyebrow">Choose the question</p><h2 id="report-library-title">Report library</h2></div><button type="button" className="btn-secondary" onClick={()=>setLibrary(false)}>Close</button></div><Field label="Search reports"><input autoFocus type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Customer balance, supplier, sales, refunds…"/></Field>{search&&<button type="button" className="report-link-action" onClick={()=>setSearch("")}>Clear search</button>}<nav aria-label="Report catalogue">{REPORT_GROUPS.map(group=>{const entries=matches.filter(report=>report.group===group);return entries.length?<section key={group}><h3>{group}</h3><div className="report-library-grid">{entries.map(report=><button type="button" className="report-library-card" aria-label={report.label} aria-pressed={selected===report.key} key={report.key} onClick={()=>choose(report.key)}><strong>{report.label}</strong><span>{report.hint}</span><small>{report.basis}</small></button>)}</div></section>:null;})}{overviewMatches&&<button className="report-library-card" type="button" aria-label="Business overview" aria-pressed={selected==="overview"} onClick={()=>choose("overview")}><strong>Business overview</strong><span>How are sales, cash, outstanding balances and workload moving?</span></button>}</nav>{!matches.length&&!overviewMatches&&<p role="status">No permitted reports match this search.</p>}</div></Modal>}
+  {selected === "overview" ? <ReportsClient canExport={canExport} embedded initialFrom={initialFilters.from} initialTo={initialFilters.to} /> : <>
+   <div className="report-selection-heading"><h2>{chosen?.label||"Financial report"}</h2><button className="btn-primary" type="submit" form="report-filters" disabled={busy || !options}>{busy ? "Generating…" : "Generate report"}</button></div>
    <div className="report-basis mb-4"><strong>Date basis</strong><span>{chosen?.basis}</span><span>India calendar · {reportCurrency(selected)}</span></div>
    {optionsError && <div role="alert" className="panel p-4 mb-4"><p className="form-error">{optionsError}</p><button type="button" className="btn-secondary mt-2" onClick={() => void loadOptions()}>Retry loading report accounts</button></div>}
    {!options && !optionsError && <p role="status" className="text-sm mb-4">Loading permitted report accounts…</p>}
-   <form id="report-filters" className="panel mb-5 p-5 space-y-4" onSubmit={e => { e.preventDefault(); void load(); }}>
+   <form id="report-filters" className="panel mb-5 p-5 space-y-4 no-print" onSubmit={e => { e.preventDefault(); void load(); }}>
     <div><div className="flex flex-wrap gap-2" role="group" aria-label="Quick dates">{REPORT_DATE_PRESETS.filter(p => !balance || p.key === "today" || p.key === "previousMonth").map(p => {
      const dates = reportDatePreset(p.key, selected, options?.cutover || null);
      return <button key={p.key} type="button" className="btn-secondary" disabled={!options || !dates} title={!dates ? "Before preserved balance history" : undefined} onClick={() => { if (dates) { setFrom(dates.from); setTo(dates.to); } }}>{balance && p.key === "previousMonth" ? "Last month end" : p.label}</button>;
@@ -103,14 +97,16 @@ export default function ReportCentreClient({ canExport, canSupplier, canRefund, 
    {!data && !busy && !error && <EmptyState icon="dashboard" title="Choose your report filters" description="No report generated yet. Generate a report to inspect transactions, balances and export options." />}
    {data && <>
     <p role="status" className="sr-only">{data.title} ready. {data.totalRows} matching records. Page {data.page} of {data.pages}.</p>
-    <section className="panel p-5 mb-5" aria-label="Applied report filters">
+    <section className="panel p-5 mb-5 report-applied-panel" aria-label="Applied report filters">
      <div className="flex flex-wrap justify-between items-start gap-3"><div><h2 className="text-lg font-semibold">{data.party?.name || data.title}</h2><p className="text-sm text-slate-600 mt-1">{data.description}</p></div>{canExport && <div className="flex flex-wrap gap-2">{["csv", "xlsx", ...(statement ? ["pdf"] : [])].map(format => <a key={format} className="btn-secondary" href={`/api/reports/accounts?${applied}&format=${format}`}>Download {format.toUpperCase()}</a>)}</div>}</div>
-     <dl className="report-applied mt-4"><div><dt>Applied dates</dt><dd>{balance ? `As of ${data.period.to}` : `${data.period.from}–${data.period.to}`} · India calendar</dd></div><div><dt>Date basis</dt><dd>{data.metadata.dateBasis}</dd></div><div><dt>Accounts</dt><dd>{data.metadata.account}</dd></div><div><dt>Currency & scope</dt><dd>{data.metadata.currency} · {data.metadata.scope}</dd></div>{data.metadata.filters.filter(f => !["Customer", "Supplier"].includes(f.label)).map(f => <div key={f.label}><dt>{f.label}</dt><dd>{f.displayValue || f.value}</dd></div>)}</dl>
+     <p className="report-applied-line">{balance?`As of ${data.period.to}`:`${data.period.from} – ${data.period.to}`} · {data.metadata.account} · {data.metadata.currency} · {data.metadata.scope}</p>
+     <details className="report-criteria"><summary>Applied criteria & date basis</summary><dl className="report-applied mt-4"><div><dt>Applied dates</dt><dd>{balance ? `As of ${data.period.to}` : `${data.period.from}–${data.period.to}`} · India calendar</dd></div><div><dt>Date basis</dt><dd>{data.metadata.dateBasis}</dd></div><div><dt>Accounts</dt><dd>{data.metadata.account}</dd></div><div><dt>Currency & scope</dt><dd>{data.metadata.currency} · {data.metadata.scope}</dd></div>{data.metadata.filters.filter(f => !["Customer", "Supplier"].includes(f.label)).map(f => <div key={f.label}><dt>{f.label}</dt><dd>{f.displayValue || f.value}</dd></div>)}</dl></details>
      <p className="text-xs text-slate-600 mt-4">Generated {new Date(data.generatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST · {data.totalRows} movements / records. Downloads rerun these applied filters against the latest records and include every matching row.</p>
      {chosen?.cutoff && cutoff && <p className="text-sm mt-3"><strong>Balance coverage:</strong> preserved from {cutoff}; older activity is included in the opening position, not reconstructed transaction history.</p>}
      {selected === "ageing" && <p className="text-sm mt-3"><strong>Historical coverage:</strong> past dates require verifiable receipt allocation history. If unavailable, use today&apos;s balance or a customer statement; an unsupported historical total must not be guessed.</p>}
      {selected === "sales" && <p className="text-sm mt-3"><strong>Margin coverage:</strong> known-cost confirmed bookings only. Uncosted bookings and visa service costs are excluded; this is not net profit.</p>}
      {statement && <p className="text-sm mt-3"><strong>Statement scope:</strong> operational obligations and money movements, not a statutory tax invoice or general ledger. Pending customer refunds are current workflow amounts, separate from period cash.</p>}
+     <div className="mt-3 flex flex-wrap items-center gap-3 no-print"><button type="button" className="report-link-action" onClick={async()=>{try{await navigator.clipboard.writeText(`${window.location.origin}/reports?${applied}`);setLinkNotice("Report filter link copied. Access still follows each signed-in user's permissions.");}catch{setLinkNotice("Copy the report URL from your browser to reuse these filters.");}}}>Copy report filter link</button><button type="button" className="report-link-action" onClick={()=>window.print()}>Print report</button></div>{linkNotice&&<p role="status" className="mt-2 text-sm text-slate-600">{linkNotice}</p>}
     </section>
     <div className="report-summary mb-5">{data.summary.map(s => <section className="panel p-4" key={s.label}><h3 className="text-sm text-slate-600">{s.label}</h3><p className="mt-2 text-xl font-semibold tabular-nums">{s.money ? inrAmount(s.value) : s.value}</p></section>)}</div>
     {selected === "ageing" && canTerms && editableTermsRows.length > 0 && <button type="button" className="btn-secondary mb-4" onClick={() => setTerms(true)}>Set payment terms</button>}

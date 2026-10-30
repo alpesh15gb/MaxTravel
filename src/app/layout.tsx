@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import Script from "next/script";
 import "./globals.css";
+import "./workspace-v2.css";
 
 const geist = localFont({ src: "./fonts/GeistVF.woff", display: "swap", variable: "--font-geist" });
 
@@ -18,9 +20,9 @@ const DENSITY_BOOT = `try{var d=localStorage.getItem("tos.density");document.doc
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-density="comfortable">
+    <html lang="en" data-density="comfortable" suppressHydrationWarning>
       <body className={`${geist.className} antialiased`}>
-        <script dangerouslySetInnerHTML={{ __html: DENSITY_BOOT }} />
+        <Script id="workspace-density" strategy="beforeInteractive">{DENSITY_BOOT}</Script>
         {children}
       </body>
     </html>

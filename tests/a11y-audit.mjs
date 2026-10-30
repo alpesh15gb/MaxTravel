@@ -28,7 +28,7 @@ const add = (kind, detail) => findings.push({ kind, ...detail });
 const coverage = { rules, routes: 0, routeVisits: 0, focusWalks: 0, phoneWalks: 0, dialogs: 0 };
 
 const routes = [
-  ["dashboard", "/dashboard"], ["customers", "/customers"],
+  ["dashboard", "/dashboard"], ["start-work", "/work"], ["sales", "/sales"], ["online-bookings", "/online-bookings"], ["customers", "/customers"],
   ["customer-detail", `/customers/${fixture.customerId}`], ["new-customer", "/customers?action=new"],
   ["visa", "/visa"], ["visa-detail", `/visa/${fixture.visaCaseId}`], ["new-visa", "/visa/new"],
   ["ticketing", "/ticketing"], ["booking-detail", `/ticketing/${fixture.bookingId}`], ["new-booking", "/ticketing/new"],

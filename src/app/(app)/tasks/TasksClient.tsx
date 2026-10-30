@@ -46,7 +46,7 @@ function groupsFor(list: T[], tab: Tab): Group[] {
     .map(([label, items]) => ({ label, tone: label === "Overdue" ? "overdue" as const : "normal" as const, items: [...items].sort((a, b) => (a.dueAt ? new Date(a.dueAt).getTime() : Infinity) - (b.dueAt ? new Date(b.dueAt).getTime() : Infinity)) }));
 }
 
-export default function TasksClient({ tasks, focus, canEdit, canExport, canAudit, canCreate, owners, customers, currentUserId }: { tasks: T[]; focus: string | null; canEdit: boolean; canExport?: boolean; canAudit: boolean; canCreate: boolean; owners: { id: string; name: string }[]; customers: { id: string; name: string }[]; currentUserId: string }) {
+export default function TasksClient({ tasks, focus, canEdit, canExport, canAudit, canCreate, owners, customers, currentUserId, initialCreate=false }: { tasks: T[]; focus: string | null; canEdit: boolean; canExport?: boolean; canAudit: boolean; canCreate: boolean; owners: { id: string; name: string }[]; customers: { id: string; name: string }[]; currentUserId: string; initialCreate?: boolean }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>(() => {
     const focused = tasks.find(t => t.id === focus);
@@ -55,7 +55,8 @@ export default function TasksClient({ tasks, focus, canEdit, canExport, canAudit
     return tasks.some(t => isOpen(t) && t.dueAt && new Date(t.dueAt) <= endToday) ? "TODAY" : "OPEN";
   });
   const [query, setQuery] = useState("");
-  const [show, setShow] = useState(false);
+  const [show, setShow] = useState(initialCreate&&canCreate);
+  useEffect(()=>{if(initialCreate&&canCreate&&new URLSearchParams(window.location.search).get("action")==="new"){setShow(true);window.history.replaceState(null,"","/tasks");}},[initialCreate,canCreate]);
   const [notice, setNotice] = useState("");
   const [noticeFailed, setNoticeFailed] = useState(false);
   const [busy, setBusy] = useState("");

@@ -4,9 +4,9 @@ import NewBooking from "./NewBooking";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewBookingPage({ searchParams }: { searchParams: Promise<{ customer?: string }> }) {
+export default async function NewBookingPage({ searchParams }: { searchParams: Promise<{ customer?: string; product?: string }> }) {
   const user = await requirePage("ticketing:create");
-  const { customer } = await searchParams;
+  const { customer, product } = await searchParams;
 
   const where: Record<string, unknown> = {};
   if (user.accessMode === "BRANCH") where.branchId = user.branchId;
@@ -21,5 +21,5 @@ export default async function NewBookingPage({ searchParams }: { searchParams: P
     prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
 
-  return <NewBooking customers={customers} suppliers={suppliers} defaultCustomerId={customer ?? null} />;
+  return <NewBooking customers={customers} suppliers={suppliers} defaultCustomerId={customer ?? null} defaultProduct={product==="HOTEL"?"HOTEL":"FLIGHT"} />;
 }

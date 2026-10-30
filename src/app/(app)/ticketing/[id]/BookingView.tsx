@@ -6,6 +6,7 @@ import { bookingSourceLabel } from "@/lib/booking-policy";
 import { dateLabel, dateTimeLabel } from "@/lib/dates";
 import { inrAmount } from "@/lib/money";
 import Link from "next/link";
+import RecordSectionNav from "@/components/RecordSectionNav";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
@@ -152,6 +153,8 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
         </div>
       </section>
 
+      <RecordSectionNav label="Booking sections" sections={[{id:"booking-travel",label:hotel?"Stay details":"Flight tickets"},...(perms.money?[{id:"booking-money",label:"Payments & refunds"},{id:"booking-pricing",label:"Price & charges"}]:[]),{id:"booking-facts",label:"Booking facts"},{id:"booking-travellers",label:hotel?"Guests":"Passengers"}]}/>
+      <div className="record-next-step"><span>Next step</span><strong>{b.gdsSource==="TRIPJACK_API"?"Use Online bookings for supplier actions":withdrawn?"Review cancellation settlement and any outstanding refund":hotel&&b.status!=="CONFIRMED"?"Check the stay details before recording supplier confirmation":!hotel&&!b.tickets.length?"Record airline-issued tickets when available":"Review travel details and the current customer balance"}</strong></div>
       {b.gdsSource === "TRIPJACK_API" ? <div className="panel mb-4 p-4 text-sm text-slate-600">This booking is managed by the booking platform. <Link className="font-semibold text-teal-700 underline" href="/online-bookings">Open online bookings for live status, cancellation and refunds</Link>.</div> : <div className="mb-4 flex flex-wrap gap-2">
         {perms.record && outstanding > 0 && <Link className="btn-secondary" href={`/payments?action=record&customer=${b.customer.id}&booking=${b.id}`}>Record payment</Link>}
         {perms.invoice && !withdrawn && <Link className="btn-secondary" href={`/payments?action=invoice&customer=${b.customer.id}&booking=${b.id}`}>Create invoice</Link>}
@@ -197,8 +200,8 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
             </button>
           )}
 
-          {hotel ? <section className="panel space-y-3 p-5"><h2 className="font-semibold">Stay details</h2><KV k="Hotel" v={b.hotelName??"Not entered"}/><KV k="Check-in" v={dOnly(b.hotelCheckIn)}/><KV k="Check-out" v={dOnly(b.hotelCheckOut)}/><KV k="Supplier confirmation reference" v={b.pnr??"Not entered"}/><p className="text-sm text-slate-600">{b.gdsSource==="TRIPJACK_API"?"Stay details synced from the booking platform. Use Online bookings for supplier status and current documents.":b.status==="CONFIRMED"?"Supplier confirmation recorded by the agency. Verify changes directly with the supplier.":"Current record is not a confirmed hotel reservation. Review its status and supplier evidence."}</p></section> : <section className="panel p-5">
-            <h2 className="mb-4 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Tickets</h2>
+          {hotel ? <section className="panel space-y-3 p-5"><h2 id="booking-travel" tabIndex={-1} className="font-semibold">Stay details</h2><KV k="Hotel" v={b.hotelName??"Not entered"}/><KV k="Check-in" v={dOnly(b.hotelCheckIn)}/><KV k="Check-out" v={dOnly(b.hotelCheckOut)}/><KV k="Supplier confirmation reference" v={b.pnr??"Not entered"}/><p className="text-sm text-slate-600">{b.gdsSource==="TRIPJACK_API"?"Stay details synced from the booking platform. Use Online bookings for supplier status and current documents.":b.status==="CONFIRMED"?"Supplier confirmation recorded by the agency. Verify changes directly with the supplier.":"Current record is not a confirmed hotel reservation. Review its status and supplier evidence."}</p></section> : <section className="panel p-5">
+            <h2 id="booking-travel" tabIndex={-1} className="mb-4 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Tickets</h2>
             {b.tickets.length ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -255,7 +258,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
           </section>}
 
           <section className="panel p-5">
-            <h2 className="mb-4 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Payments{perms.money ? ` · ${money(netPaid)} net received against ${money(bookingCharge(b))}${refunded > 0 ? ` · ${money(refunded)} refunded` : ""}` : ""}</h2>
+            <h2 id="booking-money" tabIndex={-1} className="mb-4 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Payments{perms.money ? ` · ${money(netPaid)} net received against ${money(bookingCharge(b))}${refunded > 0 ? ` · ${money(refunded)} refunded` : ""}` : ""}</h2>
             {!perms.money ? <div className="text-sm text-slate-500">Receipts are restricted for your role.</div> : b.payments.length ? (
               <div className="divide-y divide-slate-100">
                 {b.payments.map((p) => (
@@ -305,7 +308,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
             <p className="text-small text-slate-500">CRM records only. Supplier cancellation and money transfers must be completed in the appropriate external systems.</p>
           </section>}
           <section className="panel space-y-2.5 p-5">
-            <h2 className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">{withdrawn ? "Original fare breakdown (historical)" : "Fare breakdown"}</h2>
+            <h2 id="booking-pricing" tabIndex={-1} className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">{withdrawn ? "Original fare breakdown (historical)" : "Fare breakdown"}</h2>
             {perms.money ? <>
               <KV k={hotel?"Room charge":"Base fare"} v={money(b.fare)} />
               <KV k={b.reissueOf ? "Airline penalty" : "Taxes"} v={money(b.taxes)} />
@@ -313,13 +316,13 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
               <KV k="Service fee" v={money(b.serviceFee)} />
               <KV k="Selling price" v={money(b.sellingPrice)} strong />
               <KV k="Supplier cost" v={costKnown ? money(b.supplierCost) : "Not entered"} />
-              {!withdrawn && <KV k={costKnown ? "Margin" : "Margin (set supplier cost)"} v={money(margin)} />}
-              {!withdrawn && !costKnown && <p className="text-small leading-4 text-slate-500">Indicative margin from markup and service fee. Enter the supplier cost for the true margin.</p>}
+              {!withdrawn && <KV k={costKnown ? "Known-cost booking margin" : "Recorded markup & service fee"} v={money(margin)} />}
+              {!withdrawn && !costKnown && <p className="text-small leading-4 text-slate-500">Supplier cost is not recorded. Markup and service fees alone do not establish the booking margin or net profit.</p>}
             </> : <p className="text-xs text-slate-500">Fare and margin figures are restricted for your role.</p>}
             <KV k="Currency" v={b.currency} />
           </section>
           <section className="panel space-y-2.5 p-5">
-            <h2 className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Booking facts</h2>
+            <h2 id="booking-facts" tabIndex={-1} className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Booking facts</h2>
             <KV k="Booking source" v={bookingSourceLabel(b.gdsSource)} />
             <KV k="Supplier" v={b.supplier ?? "—"} />
             {!hotel&&<KV k="Flight" v={b.flightNo ?? "—"} />}
@@ -330,7 +333,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
             <KV k="Branch" v={b.branch} />
           </section>
           <section className="panel p-5">
-            <h2 className="mb-3 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">{hotel?"Guests":"Passengers"}</h2>
+            <h2 id="booking-travellers" tabIndex={-1} className="mb-3 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">{hotel?"Guests":"Passengers"}</h2>
             {perms.edit && !withdrawn && !b.tickets.length && <button type="button" className="btn-secondary mb-3" onClick={() => setShowPassengers(true)}>{hotel?"Edit guests":"Edit passengers"}</button>}
             {!b.travellers.length && <p className="mb-3 text-xs text-amber-800">{hotel?"Add guests to keep this stay record complete.":"Add passengers before recording flight tickets."}</p>}
             <div className="space-y-3">

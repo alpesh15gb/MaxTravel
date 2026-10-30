@@ -30,7 +30,7 @@ const localDateTime = (value: string | null) => {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 };
 
-export default function SalesClient({ initialLeadId }: { initialLeadId?: string }) {
+export default function SalesClient({ initialLeadId, initialCreate=false }: { initialLeadId?: string; initialCreate?: boolean }) {
   const draftMemory = useSalesDraftMemory();
   const customerMemory = useCustomerCreateMemory();
   const customerWrite = useCustomerCreateEntry();
@@ -198,10 +198,11 @@ export default function SalesClient({ initialLeadId }: { initialLeadId?: string 
       }
       const entry = draftMemory.getSnapshot();
       if (active && activation === activationGeneration.current && entry) await checkRecovery(entry);
+      else if (!initialLeadId && initialCreate && latest.canCreate && latest.canEdit && new URLSearchParams(window.location.search).get("action")==="new") { setSelectedId(null); setView("new"); setFocusRequest(value => value + 1); window.history.replaceState(null,"","/sales"); }
     }).catch(error => { if (active && activation === activationGeneration.current) setError(error instanceof Error && error.message.startsWith("Staff session or access changed") ? error.message : "Enquiries could not be loaded. Retry to see the latest records."); })
       .finally(() => { if (active && activation === activationGeneration.current) setLoading(false); });
     return () => { active = false; activationGeneration.current += 1; recoveryCheck.current += 1; readGeneration.current += 1; };
-  }, [load, checkRecovery, draftMemory, initialLeadId]);
+  }, [load, checkRecovery, draftMemory, initialLeadId, initialCreate]);
 
   useEffect(() => {
     if (!recovery) return;

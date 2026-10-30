@@ -11,6 +11,7 @@ import { Field } from "./ui";
 import Modal from "./Modal";
 import DensityControl from "./DensityControl";
 import Brand from "./Brand";
+import WorkspaceGuide from "./WorkspaceGuide";
 export interface ShellUser { name: string; roleName: string; branchName: string | null; employeeCode: string; permissions: string[]; }
 const NAV: { href: string; label: string; icon: IconName; perm: string; group: string }[] = [
   { href:"/dashboard",label:"Today",icon:"dashboard",perm:"dashboard:view",group:"Daily work" },
@@ -18,12 +19,12 @@ const NAV: { href: string; label: string; icon: IconName; perm: string; group: s
   { href:"/customers",label:"Customers",icon:"customers",perm:"customer:view",group:"Sales" },
   { href:"/tasks",label:"Tasks & follow-ups",icon:"tasks",perm:"task:view",group:"Sales" },
   { href:"/visa",label:"Visa cases",icon:"visa",perm:"visa:view",group:"Travel desk" },
-  { href:"/ticketing",label:"Ticketing",icon:"plane",perm:"ticketing:view",group:"Travel desk" },
+  { href:"/ticketing",label:"Bookings & stays",icon:"plane",perm:"ticketing:view",group:"Travel desk" },
   { href:"/online-bookings",label:"Online bookings",icon:"plane",perm:"ticketing:view",group:"Travel desk" },
   { href:"/documents",label:"Documents",icon:"documents",perm:"document:view",group:"Travel desk" },
   { href:"/payments",label:"Money & invoices",icon:"wallet",perm:"payment:view",group:"Finance" },
   { href:"/advances",label:"Customer advances",icon:"wallet",perm:"payment:view",group:"Finance" },
-  { href:"/reports",label:"Reports & insights",icon:"dashboard",perm:"payment:view",group:"Finance" },
+  { href:"/reports",label:"Reports & insights",icon:"dashboard",perm:"payment:view",group:"Daily work" },
   { href:"/refunds",label:"Refunds",icon:"refund",perm:"refund:view",group:"Finance" },
   { href:"/suppliers",label:"Suppliers",icon:"suppliers",perm:"supplier:view",group:"Finance" },
   { href:"/incoming-documents",label:"Incoming documents",icon:"documents",perm:"whatsapp:view",group:"Travel desk" },
@@ -59,8 +60,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
   const [mobile, setMobile] = useState(false); const [pwOpen, setPwOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false); const [userOpen, setUserOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>(() => {
-    const active = NAV.find(n => path === n.href || path.startsWith(n.href + "/"))?.group;
-    return [...new Set(NAV.map(n => n.group))].filter(group => group !== "Daily work" && group !== "Sales" && group !== active);
+    return [];
   });
   useEffect(() => {
     const currentGroup = NAV.find(n => path === n.href || path.startsWith(n.href + "/"))?.group;
@@ -117,7 +117,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
       <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5 pr-2 lg:hidden">
         <Brand compact />
       </Link>
-      <div className="workspace-context hidden xl:flex"><span>{activeModule?.group ?? "Workspace"}</span><Icon name="arrow" size={13}/><strong>{activeModule?.label ?? "Your workspace"}</strong></div>
+      <div className="workspace-context hidden xl:flex"><span>{user.branchName ?? "All branches"}</span><Icon name="arrow" size={13}/><strong>{user.roleName}</strong></div>
       <div className="min-w-0 flex-1 justify-center sm:px-2 flex">{user.permissions.includes("search:use") && <UniversalSearch />}</div>
       <div className="ml-auto flex items-center gap-2">
         {quick.length > 0 && <div ref={quickRef} className="relative hidden sm:block">
@@ -146,7 +146,8 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
     <div className="workspace-shell-body flex min-h-0 flex-1">
       <aside ref={drawerRef} id="workspace-navigation" role={mobile ? "dialog" : undefined} aria-modal={mobile ? true : undefined} aria-label="Workspace navigation" data-drawer={mobile ? "open" : "closed"} className={`app-sidebar no-print ${mobile ? "translate-x-0 top-0" : "-translate-x-full"}`}>
         <div className="studio-brand-row"><Link href="/dashboard" aria-label="Max Travel Today" onClick={() => setMobile(false)}><Brand compact /></Link><button className="icon-button lg:hidden" aria-label="Close navigation" onClick={() => setMobile(false)}><Icon name="close" /></button></div>
-        <div className="studio-workspace-label"><span className="studio-agency-monogram" aria-hidden="true">{initials(agencyName)}</span><span><strong title={agencyName}>{agencyName}</strong><small>Travel clearly · CRM</small></span></div>
+        <div className="studio-workspace-label"><span className="studio-agency-monogram" aria-hidden="true">{initials(agencyName)}</span><span><strong title={agencyName}>{agencyName}</strong><small>Agency operations</small></span></div>
+        <Link href="/work" aria-current={path==="/work"?"page":undefined} className="rail-start" onClick={()=>setMobile(false)}><Icon name="plus" size={18}/>Start work<Icon name="arrow" size={16}/></Link>
         <nav aria-label="Main navigation" className="tos-scroll flex-1 overflow-y-auto px-3 pb-5 pt-1">
           {groups.map(group => {
             const expanded = !collapsedGroups.includes(group);
@@ -166,7 +167,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
         </div>
       </aside>
       <div className="workspace-main-shell flex min-w-0 flex-1 flex-col">
-        <main id="workspace-content" tabIndex={-1} className="min-w-0 flex-1">{children}</main>
+        <main id="workspace-content" tabIndex={-1} data-workspace-area={activeModule?.group??"Daily work"} className="min-w-0 flex-1"><WorkspaceGuide key={path} path={path}/>{children}</main>
         <footer className="no-print flex justify-between gap-3 border-t border-slate-200 px-6 py-3 text-small text-slate-600"><span>{agencyName} · Private agency workspace</span><span>Max Travel CRM</span></footer>
       </div>
     </div>

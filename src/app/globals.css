@@ -882,3 +882,12 @@ main table tbody tr:hover { background:var(--brand-50); }
 /* Financial totals need a readable card width, not the generic two-up phone summary. */
 .summary-strip.payments-summary { grid-template-columns:repeat(auto-fit,minmax(min(100%, 16rem),1fr)); }
 .payments-summary .stat-value { min-width:0; overflow-wrap:anywhere; }
+
+/* Daily-work roles: the shared palette is defined here, never inside a module. */
+:root {
+  --desk-canvas:#f3f6fa; --desk-ink:#172f49; --desk-text:#52677f; --desk-text-strong:#344e68;
+  --desk-line:#dfe6ef; --desk-line-strong:#cfdae7; --desk-line-active:#8caddb;
+  --desk-inset:#f5f8fc; --desk-soft:#edf4fc; --desk-selected:#eaf1ff; --desk-muted-surface:#eaf0f6;
+  --desk-accent:#215cc2; --desk-accent-hover:#174aa3; --desk-link:#2457a7;
+  --desk-navy:#183c64; --desk-navy-hover:#22588c;
+}

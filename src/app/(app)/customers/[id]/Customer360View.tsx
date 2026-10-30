@@ -86,12 +86,10 @@ export default function Customer360View({ data, perms, initialTab, permsExtra, o
           <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
             {p.editCustomer && <RecordEditor title="Edit customer" buttonLabel="Edit customer" endpoint={`/api/customers/${c.id}`} values={{name:c.name,phone:c.phone,email:c.email,city:c.city,address:c.address,companyName:c.companyName,type:c.type,status:c.status,assignedToId:c.manager?.id??"",handoverWork:false}} fields={[{key:"name",label:"Customer name",required:true},{key:"phone",label:"Phone",type:"tel",required:true},{key:"email",label:"Email",type:"email"},{key:"city",label:"City"},{key:"address",label:"Address",type:"textarea"},{key:"companyName",label:"Company"},{key:"type",label:"Customer type",type:"select",options:["INDIVIDUAL","CORPORATE","SUB_AGENT"].map(value=>({value,label:value.replaceAll("_"," ")}))},{key:"status",label:"Relationship status",type:"select",options:["ACTIVE","LEAD","INACTIVE"].map(value=>({value,label:value}))},...(owners.length?[{key:"assignedToId",label:"Relationship manager",type:"select" as const,options:owners.map(o=>({value:o.id,label:o.name}))},{key:"handoverWork",label:"Hand over open enquiries, existing bookings, visa cases and open tasks",type:"checkbox" as const}]:[])]}/>}
             {perms.record && <QuickBtn primary onClick={() => location.assign(`/payments?action=record&customer=${c.id}`)}>Record payment</QuickBtn>}
-            {(perms.send || perms.createVisa || perms.createTicket || perms.createTask || perms.requestDocs || p.invoice) && <details className="customer-tools" onClick={e => { if ((e.target as HTMLElement).closest("button")) e.currentTarget.removeAttribute("open"); }} onKeyDown={e => { if (e.key === "Escape") { e.currentTarget.removeAttribute("open"); e.currentTarget.querySelector("summary")?.focus(); } }}>
+            {(perms.send || perms.createTask || perms.requestDocs || p.invoice) && <details className="customer-tools" onClick={e => { if ((e.target as HTMLElement).closest("button")) e.currentTarget.removeAttribute("open"); }} onKeyDown={e => { if (e.key === "Escape") { e.currentTarget.removeAttribute("open"); e.currentTarget.querySelector("summary")?.focus(); } }}>
               <summary className="btn-secondary">Customer actions<Icon name="chevronDown" size={14} /></summary>
               <div className="customer-tool-list">
                 {perms.send && <QuickBtn onClick={wa}>Open WhatsApp desk</QuickBtn>}
-                {perms.createVisa && <QuickBtn onClick={() => location.assign(`/visa/new?customer=${c.id}`)}>Create Visa Case</QuickBtn>}
-                {perms.createTicket && <QuickBtn onClick={() => location.assign(`/ticketing/new?customer=${c.id}`)}>Create Ticket Booking</QuickBtn>}
                 {perms.createTask && <QuickBtn onClick={() => setModal("task")}>Create Task</QuickBtn>}
                 {perms.requestDocs && <QuickBtn onClick={requestDocs}>Request Documents</QuickBtn>}
                 {perms.requestDocs && <QuickBtn onClick={() => setModal("upload")}>Share upload link</QuickBtn>}
@@ -103,6 +101,7 @@ export default function Customer360View({ data, perms, initialTab, permsExtra, o
         {secondaryActions && <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200 pt-3" aria-label="Customer record links">{secondaryActions}</div>}
       </section>
 
+      {(perms.createTicket||perms.createVisa||p.finance)&&<div className="customer-work-shortcuts no-print" aria-label="Start work for this customer"><span>Start related work</span>{perms.createTicket&&<><Link href={`/ticketing/new?customer=${c.id}`}>Flight booking<Icon name="arrow" size={14}/></Link><Link href={`/ticketing/new?customer=${c.id}&product=HOTEL`}>Hotel stay<Icon name="arrow" size={14}/></Link></>}{perms.createVisa&&<Link href={`/visa/new?customer=${c.id}`}>Visa case<Icon name="arrow" size={14}/></Link>}{p.finance&&<Link href={`/reports?report=statement&customerId=${c.id}`}>Customer statement<Icon name="arrow" size={14}/></Link>}</div>}
       {/* Summary tiles */}
       <div className="customer-summary" aria-label="Customer summary">
         {p.finance && <Card label="Outstanding" value={money(data.summary.outstanding)} tone={data.summary.outstanding > 0 ? "danger" : "ok"} />}

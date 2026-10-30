@@ -13,20 +13,21 @@ function Breakdown({title,rows,money=false}:{title:string;rows:{label:string;val
   const max=Math.max(1,...rows.map(r=>r.value));
   return <section className="panel p-5"><h2 className="text-sm font-semibold mb-5">{title}</h2>{rows.length===0?<p className="text-sm text-slate-500">No records in this period.</p>:<ul className="space-y-4">{rows.map(r=><li key={r.label}><div className="flex justify-between gap-3 text-xs mb-2"><span>{enumLabel(r.label)}</span><strong>{money?inrAmount(r.value):r.value}</strong></div><div className="report-track"><div style={{width:`${r.value/max*100}%`}}/></div></li>)}</ul>}</section>;
 }
-export default function ReportsClient({canExport}:{canExport:boolean}){
+export default function ReportsClient({canExport,embedded=false,initialFrom="",initialTo=""}:{canExport:boolean;embedded?:boolean;initialFrom?:string;initialTo?:string}){
   const [data,setData]=useState<AgencyReport|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(true);
-  const [from,setFrom]=useState(""),[to,setTo]=useState("");
+  const [from,setFrom]=useState(initialFrom),[to,setTo]=useState(initialTo);
   const request=useRef<AbortController|null>(null),generation=useRef(0),lastQuery=useRef("");
   const load=useCallback(async(query="")=>{
     request.current?.abort(); const controller=new AbortController();request.current=controller;const id=++generation.current;lastQuery.current=query;setBusy(true);setError("");setData(null);
-    try{const {response:r,data:result}=await readReportJson<AgencyReport & {error?:string}>("/api/reports"+query,{signal:controller.signal});if(controller.signal.aborted||id!==generation.current)return;if(!r.ok)throw new Error(result.error||"Unable to load reports.");setData(result);setFrom(result.period.from);setTo(result.period.to);}catch(e){if(!controller.signal.aborted&&id===generation.current)setError(e instanceof Error?e.message:"Unable to load reports.");}finally{if(!controller.signal.aborted&&id===generation.current)setBusy(false);}
-  },[]);
-  useEffect(()=>{void load();return()=>{request.current?.abort();};},[load]);
+    try{const {response:r,data:result}=await readReportJson<AgencyReport & {error?:string}>("/api/reports"+query,{signal:controller.signal});if(controller.signal.aborted||id!==generation.current)return;if(!r.ok)throw new Error(result.error||"Unable to load reports.");setData(result);setFrom(result.period.from);setTo(result.period.to);if(embedded)window.history.replaceState(null,"",`/reports?${new URLSearchParams({report:"overview",from:result.period.from,to:result.period.to})}`);}catch(e){if(!controller.signal.aborted&&id===generation.current)setError(e instanceof Error?e.message:"Unable to load reports.");}finally{if(!controller.signal.aborted&&id===generation.current)setBusy(false);}
+  },[embedded]);
+  const initialQuery=initialFrom&&initialTo?"?"+new URLSearchParams({from:initialFrom,to:initialTo}):"";
+  useEffect(()=>{void load(initialQuery);return()=>{request.current?.abort();};},[load,initialQuery]);
   const query=data?new URLSearchParams({...data.period,format:"csv"}).toString():"";
   const unapplied=Boolean(data&&(from!==data.period.from||to!==data.period.to));
   const max=Math.max(1,...(data?.trend.flatMap(r=>[r.sales,r.collections])||[]));
-  return <div className="workspace-page">
-    <PageHeader eyebrow="Business intelligence" title="Reports & insights" description="Understand your sales, collections and the work behind them." actions={canExport&&data?<a className="btn-secondary" href={"/api/reports?"+query}><Icon name="download" size={16}/>Export CSV</a>:undefined}/>
+  return <div className={embedded?"report-overview":"workspace-page"}>
+    {embedded?<div className="report-selection-heading"><h2>Business overview</h2>{canExport&&data&&<a className="btn-secondary" href={"/api/reports?"+query}><Icon name="download" size={16}/>Export CSV</a>}</div>:<PageHeader eyebrow="Business intelligence" title="Reports & insights" description="Understand your sales, collections and the work behind them." actions={canExport&&data?<a className="btn-secondary" href={"/api/reports?"+query}><Icon name="download" size={16}/>Export CSV</a>:undefined}/>}
     <form className="report-filters panel mb-5" onSubmit={e=>{e.preventDefault();void load("?"+new URLSearchParams({from,to}));}}>
       <div><h2 className="text-sm font-semibold">Reporting period</h2><p className="text-xs text-slate-500 mt-1">India time · INR · up to 366 days</p></div>
       <label className="field"><span className="field-label">From</span><input type="date" required disabled={busy} max={to||indiaDay()} value={from} onChange={e=>setFrom(e.target.value)}/></label>

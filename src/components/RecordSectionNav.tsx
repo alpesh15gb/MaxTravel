@@ -1,0 +1,4 @@
+"use client";
+export default function RecordSectionNav({label,sections}:{label:string;sections:{id:string;label:string}[]}) {
+  return <nav className="record-section-nav no-print" aria-label={label}><span className="record-section-label">In this record</span><div className="record-section-links">{sections.map(section=><a href={`#${section.id}`} key={section.id}>{section.label}</a>)}</div><label className="record-section-select"><span className="sr-only">{label}</span><select defaultValue="" onChange={event=>{const target=document.getElementById(event.target.value);target?.scrollIntoView({behavior:"auto",block:"start"});target?.focus({preventScroll:true});event.currentTarget.value="";}}><option value="" disabled>Jump to a section…</option>{sections.map(section=><option key={section.id} value={section.id}>{section.label}</option>)}</select></label></nav>;
+}

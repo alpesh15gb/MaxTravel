@@ -6,6 +6,7 @@ import { dateLabel, dateTimeLabel } from "@/lib/dates";
 import { inrAmount } from "@/lib/money";
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import RecordSectionNav from "@/components/RecordSectionNav";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
 import { Status } from "@/components/ui";
@@ -156,12 +157,14 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
         </div>
       </section>
 
+      <RecordSectionNav label="Visa case sections" sections={[{id:"case-workflow",label:"Application progress"},{id:"case-documents",label:"Documents & applicants"},...(perms.money?[{id:"case-money",label:"Fees & collections"}]:[]),{id:"case-dates",label:"Dates & appointments"}]}/>
+      <div className="record-next-step"><span>Current stage</span><strong>{vc.stage.name}</strong><p>Review each applicant’s requirements and evidence before progressing the application.</p></div>
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-5">
           {/* Workflow stepper */}
           <section className="panel p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Workflow — {stages.length} stages</h2>
+              <h2 id="case-workflow" tabIndex={-1} className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Workflow — {stages.length} stages</h2>
               {perms.edit && <span className="text-small text-slate-500">Select a stage to move this case</span>}
             </div>
             {/* Wraps instead of scrolling: the 16 chips fit in four rows, and a strip that scrolled sideways
@@ -212,7 +215,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
           {/* Documents by applicant */}
           <section className="panel p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Documents & Checklist</h2><a className="text-small text-teal-700" href={`/visa-requirements?case=${vc.id}`}>Manage applicant checklists</a>
+              <h2 id="case-documents" tabIndex={-1} className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Documents & Checklist</h2><a className="text-small text-teal-700" href={`/visa-requirements?case=${vc.id}`}>Manage applicant checklists</a>
               {vc.checklist && (
                 <span className="text-small text-slate-500">Master: {vc.checklist.country} → {vc.checklist.visaType} → {vc.checklist.applicantType} · v{vc.checklist.version}</span>
               )}
@@ -291,7 +294,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
 
         <aside className="min-w-0 space-y-5">
           <section className="panel space-y-2.5 p-5">
-            <h2 className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Money</h2>
+            <h2 id="case-money" tabIndex={-1} className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Money</h2>
             {perms.money ? <>
               <KV k="Visa fee" v={money(vc.visaFee)} />
               <KV k="Service fee" v={money(vc.serviceFee)} />
@@ -306,7 +309,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
             )}
           </section>
           <section className="panel space-y-2.5 p-5">
-            <h2 className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Key dates</h2>
+            <h2 id="case-dates" tabIndex={-1} className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Key dates</h2>
             <KV k="Travel date" v={dOnly(vc.travelDate)} />
             <KV k="Intended stay" v={vc.intendedStay ?? "—"} />
             <KV k="Application" v={dOnly(vc.applicationDate)} />

@@ -144,10 +144,12 @@ await runSyntheticJourney('records-complete-journey',3395,async({base,db,fixture
     }
     const first=await checklist(1);assert.equal(first.version,1);
     await page.goto(base+`/visa/new?customer=${fixture.customerId}`);
-    await page.getByRole('checkbox',{name:new RegExp(`^${travellerName}\\s+group$`)}).check();
+    await page.getByRole('checkbox',{name:travellerName+' group',exact:true}).check();
+    await page.getByRole('button',{name:'Continue',exact:true}).click();
     await page.getByLabel('Destination country *',{exact:true}).fill(destination);await page.getByLabel('Visa type *',{exact:true}).fill(visaType);
     await page.getByRole('combobox',{name:/^Checklist/}).selectOption(first.id);
     await page.getByLabel('Travel date',{exact:true}).fill('2098-01-01');
+    await page.getByRole('button',{name:'Continue',exact:true}).click();
     await page.getByLabel('Visa fee (INR)',{exact:true}).fill('80.25');await page.getByLabel('Service fee (INR)',{exact:true}).fill('20.25');
     const createdCase=await postResult(page,'/api/visa/cases',()=>page.getByRole('button',{name:'Create visa case',exact:true}).click());
     await page.waitForURL(`**/visa/${createdCase.caseId}`);

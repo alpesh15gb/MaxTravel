@@ -5,9 +5,9 @@ import TasksClient from "./TasksClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function TasksPage({ searchParams }: { searchParams: Promise<{ focus?: string }> }) {
+export default async function TasksPage({ searchParams }: { searchParams: Promise<{ focus?: string; action?: string }> }) {
   const user = await requirePage("task:view");
-  const { focus } = await searchParams;
+  const { focus, action } = await searchParams;
 
   const where = scopeWhere(user, null, "ownerId", "creatorId");
 
@@ -27,6 +27,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   ]);
   return (
     <TasksClient
+      initialCreate={action==="new"&&can(user.permissions,"task:create")}
       canAudit={user.permissions.includes("audit:view")}
       owners={owners} customers={customers} currentUserId={user.id} canCreate={can(user.permissions, "task:create")}
       canExport={can(user.permissions, "export:data")}

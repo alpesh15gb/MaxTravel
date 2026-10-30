@@ -50,13 +50,14 @@ try{
  observeReports(page);
  await page.goto(base+`/reports?report=statement&customerId=${fixture.customerId}`);
  await page.getByRole("button",{name:"Generate report",exact:true}).waitFor({state:"visible"});await page.waitForFunction(()=>{const button=Array.from(document.querySelectorAll("button")).find(b=>b.textContent==="Generate report");return button&&!button.disabled;});
+ await page.getByRole("button",{name:"Browse report library",exact:true}).click();
  await page.getByRole("navigation",{name:"Report catalogue",exact:true}).getByText("Customer accounts",{exact:true}).waitFor();
  await page.getByRole("searchbox",{name:"Search reports",exact:true}).fill("supplier");
  assert.equal(await page.getByRole("button",{name:"Sales & margin",exact:true}).count(),0);
  assert.equal(await page.getByRole("button",{name:"Supplier statement",exact:true}).count(),1);
  await page.getByRole("searchbox",{name:"Search reports",exact:true}).fill("no-such-report");
  await page.getByRole("button",{name:"Clear search",exact:true}).click();
- await capture(page,"catalogue-1440");
+ await capture(page,"catalogue-1440"); await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).click();
  for(const width of [390,320]){
   await viewport(page,width,844);await page.evaluate(()=>window.scrollTo(0,0));
   const bounds=await page.getByRole("button",{name:"Generate report",exact:true}).boundingBox();
@@ -100,7 +101,7 @@ try{
  await capture(page,"statement-desktop");
  const pdfResponse=await context.request.get(base+`/api/reports/accounts?report=statement&customerId=${fixture.customerId}&format=pdf`);assert.equal(pdfResponse.status(),200);writeFileSync(path.join(artifactDir,"customer-statement.pdf"),await pdfResponse.body());
  const downloadPromise=page.waitForEvent("download");await page.getByRole("link",{name:"Download XLSX",exact:true}).click();const download=await downloadPromise;await download.saveAs(path.join(root,path.join(artifactDir,"customer-statement.xlsx")));
- await page.getByRole("button",{name:"Outstanding & ageing",exact:true}).click();await page.getByRole("button",{name:"Generate report",exact:true}).click();await page.getByRole("table",{name:"Customer outstanding and ageing",exact:true}).waitFor();
+ await page.getByRole("combobox",{name:"Choose a report",exact:true}).selectOption("ageing");await page.getByRole("button",{name:"Generate report",exact:true}).click();await page.getByRole("table",{name:"Customer outstanding and ageing",exact:true}).waitFor();
  await page.getByRole("button",{name:"Set payment terms",exact:true}).click();await page.getByRole("heading",{name:"Set payment terms",exact:true}).waitFor();
  assert.equal(await page.getByRole("combobox",{name:"Obligation",exact:true}).getByRole("option",{name:/ON-2026-0001/}).count(),0,"Platform-managed terms must not be offered for editing");
  assert.match(await page.getByRole("combobox",{name:"Obligation",exact:true}).locator("option:checked").innerText(),/BK-2026-0001/,"Largest eligible local booking is selected by default");
@@ -111,7 +112,7 @@ try{
  // the final times:1 route triggers Fetch.disable (microsoft/playwright#41802).
  await page.route("**/api/reports/terms",async route=>{if(termsHandled)return route.continue();termsHandled=true;try{diagnostic.mark("held-terms-start");const response=await route.fetch();diagnostic.mark("held-terms-server-response",{status:response.status()});assert(response.ok(),"The real payment-terms write must succeed before testing its pending UI");releaseTerms.finish=async()=>{diagnostic.mark("held-terms-release-start");await route.fulfill({response});diagnostic.mark("held-terms-release-finished");};releaseTerms.ready();}catch(error){diagnostic.mark("held-terms-failed",{name:error?.name||"Error"});releaseTerms.failed(error);await route.abort().catch(()=>{});}});
  await page.getByLabel("Payment due date",{exact:true}).fill(new Date(Date.now()+330*60000-86400000).toISOString().slice(0,10));await page.getByRole("button",{name:"Save payment terms",exact:true}).click();await termsReceived;assert(await page.getByRole("button",{name:"Cancel",exact:true}).isDisabled(),"Pending terms cannot be dismissed and later refresh another report");assert(await page.getByLabel("Payment due date",{exact:true}).isDisabled());await page.keyboard.press("Escape");assert(await page.getByRole("dialog",{name:"Payment terms",exact:true}).isVisible());await releaseTerms.finish();await page.getByRole("heading",{name:"Set payment terms",exact:true}).waitFor({state:"hidden"});diagnostic.mark("terms-modal-closed");writeFileSync(path.join(artifactDir,"after-terms-client-state.json"),JSON.stringify(await page.evaluate(reportClientState),null,2));await page.getByRole("table",{name:"Customer outstanding and ageing",exact:true}).waitFor();assert(await page.getByText("1 days overdue",{exact:true}).count()>=1);
- await page.getByRole("button",{name:"Sales & margin",exact:true}).click();
+ await page.getByRole("combobox",{name:"Choose a report",exact:true}).selectOption("sales");
  await page.getByRole("combobox",{name:"Staff / owner",exact:true}).selectOption({label:"Asha Verma"});
  await page.getByRole("combobox",{name:"Current status / stage",exact:true}).selectOption("CONFIRMED");
  await page.getByRole("button",{name:"Generate report",exact:true}).click();
@@ -121,6 +122,7 @@ try{
  const filteredExport=await page.getByRole("link",{name:"Download CSV",exact:true}).getAttribute("href");
  assert(filteredExport.includes("status=CONFIRMED")&&filteredExport.includes("ownerId="),"Export uses applied staff/status filters");
  const appliedSummary=page.getByRole("region",{name:"Applied report filters",exact:true});
+ await appliedSummary.getByText("Applied criteria & date basis",{exact:true}).click();
  assert.match(await appliedSummary.innerText(),/Asha Verma/);assert.match(await appliedSummary.innerText(),/CONFIRMED/);
  const selectedOwner=await page.getByRole("combobox",{name:"Staff / owner",exact:true}).inputValue();assert(!(await appliedSummary.innerText()).includes(selectedOwner),"Staff summary uses the human name, not the internal identifier");
  assert.equal(await page.getByRole("table",{name:"Sales and cost coverage",exact:true}).getByRole("cell",{name:"Hotel",exact:true}).count(),1,"Online hotel is not mislabeled Ticketing");
@@ -170,23 +172,23 @@ try{
  assert.equal(presetRequests,0);page.off("request",observePreset);
  await page.getByRole("combobox",{name:"Current status / stage",exact:true}).selectOption("");
 
- await page.getByRole("button",{name:"Work & travel",exact:true}).click();
+ await page.getByRole("combobox",{name:"Choose a report",exact:true}).selectOption("operations");
  await page.getByRole("button",{name:"Generate report",exact:true}).click();
  await page.getByRole("table",{name:"Work and travel register",exact:true}).waitFor();
  assert(await page.locator('table a[href^="/visa/"]').count()>0,"Work report links directly to visa workspace");
  const workCsv=await context.request.get(base+await page.getByRole("link",{name:"Download CSV",exact:true}).getAttribute("href"));assert(workCsv.ok());assert((await workCsv.text()).includes('"Currency","All currencies · no monetary totals"'));
- await page.getByRole("button",{name:"Receipts & refunds",exact:true}).click();
+ await page.getByRole("combobox",{name:"Choose a report",exact:true}).selectOption("receipts");
  assert.equal(await page.getByRole("combobox",{name:"Staff / owner",exact:true}).count(),0,"Work-only filters are not applied to receipt accounts");
  await page.getByRole("button",{name:"Generate report",exact:true}).click();
  await page.getByRole("table",{name:"Receipt and refund register",exact:true}).waitFor();
  assert(await page.locator('table a[href*="tab=payments"]').count()>0,"Receipt links open customer payments");
- await page.getByRole("button",{name:"Cancellations",exact:true}).click();
+ await page.getByRole("combobox",{name:"Choose a report",exact:true}).selectOption("cancellations");
  await page.getByRole("button",{name:"Generate report",exact:true}).click();
  await page.getByRole("table",{name:"Cancellation register",exact:true}).waitFor();
  assert(await page.getByText(/Filtered by cancellation date, not booking date/).count()>0);
- await page.getByRole("button",{name:"Supplier statement",exact:true}).click();await page.getByRole("combobox",{name:/Supplier/}).selectOption({label:"Aero consolidator"});
+ await page.getByRole("combobox",{name:"Choose a report",exact:true}).selectOption("supplier-statement");await page.getByRole("combobox",{name:/Supplier/}).selectOption({label:"Aero consolidator"});
  await page.getByRole("button",{name:"Generate report",exact:true}).click();await page.getByRole("table",{name:"Supplier statement",exact:true}).waitFor();
- await page.getByRole("button",{name:"Customer statement",exact:true}).click();await page.getByRole("button",{name:"Generate report",exact:true}).click();await page.getByRole("table",{name:"Customer statement",exact:true}).waitFor();
+ await page.getByRole("combobox",{name:"Choose a report",exact:true}).selectOption("statement");await page.getByRole("button",{name:"Generate report",exact:true}).click();await page.getByRole("table",{name:"Customer statement",exact:true}).waitFor();
  await viewport(page,390,844);await page.locator("aside.app-sidebar[data-drawer='closed']").waitFor({state:"hidden"});await capture(page,"statement-phone");
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),"No phone page overflow outside report table");
  // Delayed JSON from an aborted report must never replace the report chosen later.
@@ -196,7 +198,7 @@ try{
  await page.waitForFunction(()=>{const button=Array.from(document.querySelectorAll("button")).find(b=>b.textContent==="Generate report");return button&&!button.disabled;});
  await page.evaluate(()=>{window.__holdNextReport=true;});await page.getByRole("button",{name:"Generate report",exact:true}).click();
  await page.waitForFunction(()=>typeof window.__releaseReport==="function");
- await page.getByRole("button",{name:"Work & travel",exact:true}).click();await page.getByRole("button",{name:"Generate report",exact:true}).click();
+ await page.getByRole("combobox",{name:"Choose a report",exact:true}).selectOption("operations");await page.getByRole("button",{name:"Generate report",exact:true}).click();
  await page.getByRole("table",{name:"Work and travel register",exact:true}).waitFor();
  const currentExport=await page.getByRole("link",{name:"Download CSV",exact:true}).getAttribute("href");
  await page.evaluate(async()=>{window.__releaseReport();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});
@@ -205,7 +207,7 @@ try{
  // Overview locks dates while applying to avoid silently discarding newer edits.
  let finishOverview;const overviewStarted=new Promise(resolve=>{finishOverview={ready:resolve,finish:null};});
  await page.route("**/api/reports",async route=>{const response=await route.fetch();finishOverview.finish=()=>route.fulfill({response});finishOverview.ready();},{times:1});
- await page.getByRole("button",{name:"Business overview",exact:true}).click();await overviewStarted;
+ await page.getByRole("combobox",{name:"Choose a report",exact:true}).selectOption("overview");await overviewStarted;
  assert(await page.getByLabel("From",{exact:true}).isDisabled());assert(await page.getByLabel("To",{exact:true}).isDisabled());
  await finishOverview.finish();await page.getByRole("region",{name:"Overview coverage",exact:true}).waitFor();
  assert(!(await page.getByLabel("From",{exact:true}).isDisabled()));

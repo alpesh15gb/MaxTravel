@@ -247,8 +247,8 @@ async function run() {
   });
   const bookingPage = await (await get(`/ticketing/${booking.bookingId}`, owner.cookie)).text();
   check("An uncosted booking never shows the selling price as profit", () => {
-    assert(bookingPage.includes("Margin (set supplier cost)"));
-    assert(bookingPage.includes("Indicative margin from markup and service fee"));
+    assert(bookingPage.includes("Recorded markup &amp; service fee"));
+    assert(bookingPage.includes("Supplier cost is not recorded"));
     assert(bookingPage.includes("Not entered"));
   });
   // --- The dashboard date chip must be formatted on the server only ----------------------

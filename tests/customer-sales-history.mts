@@ -1,7 +1,6 @@
 /** Synthetic, disposable SQLite + server-rendered UI fixtures. No application DB or browser. */
 import assert from "node:assert/strict";
-import { mkdtemp, rm, cp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, rm, cp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
@@ -10,7 +9,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { customerSalesHistory, CUSTOMER_ENQUIRY_LIMIT } from "../src/lib/customer-sales-history";
 import { CustomerSalesHistory } from "../src/components/CustomerSalesHistory";
 import type { SessionUser } from "../src/lib/session";
-const dir = await mkdtemp(join(tmpdir(), "customer-sales-history-")), url = `file:${join(dir, "fixture.db")}`;
+await mkdir(join(process.cwd(),"tests/.runtime"),{recursive:true});
+const dir = await mkdtemp(join(process.cwd(), "tests/.runtime/customer-sales-history-")), url = `file:${join(dir, "fixture.db").replaceAll("\\", "/")}`;
+await writeFile(join(dir,"fixture.db"),"");
 await writeFile(join(dir, "schema.prisma"), await readFile(new URL("../prisma/schema.prisma", import.meta.url)));
 await cp(new URL("../prisma/migrations", import.meta.url), join(dir, "migrations"), { recursive: true });
 execFileSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy", "--schema", join(dir, "schema.prisma")], { env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });

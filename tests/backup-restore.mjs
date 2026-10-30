@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -11,10 +11,11 @@ await fs.mkdir(path.join(root, 'tests/.runtime'), {recursive:true});
 const temp = await fs.mkdtemp(path.join(root, 'tests/.runtime/backup-regression-'));
 const database = path.join(temp, 'fixture.db'), uploads = path.join(temp, 'uploads');
 const media = path.join(temp, 'package-media');
-const env = {...process.env, PACKAGE_MEDIA_ROOT:"", DATABASE_URL:`file:${database}`, UPLOAD_ROOT:uploads};
+const env = {...process.env, PACKAGE_MEDIA_ROOT:"", DATABASE_URL:`file:${database.replaceAll("\\","/")}`, UPLOAD_ROOT:uploads};
 const run = (args) => execFileSync(process.execPath, args, {cwd:root, env, encoding:'utf8', stdio:'pipe'});
 let db;
 try {
+  await fs.writeFile(database,"");
   run(['node_modules/prisma/build/index.js', 'migrate', 'deploy']);
   db = new PrismaClient({datasources:{db:{url:env.DATABASE_URL}}});
   await fs.mkdir(uploads); await fs.writeFile(path.join(uploads, 'document.txt'), 'snapshot document');
@@ -27,7 +28,7 @@ try {
   // Interpose only in this test subprocess: staff write after VACUUM, at upload copy.
   const hook = path.join(temp, 'concurrent-write.mjs');
   await fs.writeFile(hook, `import fs from 'node:fs/promises';\nimport {PrismaClient} from '@prisma/client';\nconst read=fs.readFile;fs.readFile=async (file,...args)=>{if(String(file)===process.cwd()+'/.env'||String(file)===process.cwd()+'/.env.local')throw Object.assign(new Error('isolated fixture'),{code:'ENOENT'});return read(file,...args);};const original=fs.cp; fs.cp=async (...args)=>{if(args[0]!==process.env.UPLOAD_ROOT)return original(...args);const db=new PrismaClient();try{await db.supplier.upsert({where:{name:'Concurrent supplier'},create:{name:'Concurrent supplier',type:'OTHER'},update:{}});}finally{await db.$disconnect();}await fs.writeFile(args[0]+'/document.txt','changed live document');await original(...args);};`);
-  run(['--import', hook, 'scripts/backup.mjs', '--out', path.join(temp,'backups')]);
+  run(['--import', pathToFileURL(hook).href, 'scripts/backup.mjs', '--out', path.join(temp,'backups')]);
   const backup = path.join(temp,'backups',(await fs.readdir(path.join(temp,'backups')))[0]);
   const manifest = JSON.parse(await fs.readFile(path.join(backup,'manifest.json'),'utf8'));
   assert.equal(await db.supplier.count(),1);
@@ -48,7 +49,7 @@ try {
   const legacy={...manifest,formatVersion:1,rowCounts:{...manifest.rowCounts}}; delete legacy.packageMedia; delete legacy.rowCounts.PackageMedia;
   const legacyBackup=path.join(temp,'legacy-backup'); await fs.cp(backup,legacyBackup,{recursive:true});
   const legacyDbFile=path.join(legacyBackup,'database/fixture.db');
-  const legacyDb=new PrismaClient({datasources:{db:{url:`file:${legacyDbFile}`}}});
+  const legacyDb=new PrismaClient({datasources:{db:{url:`file:${legacyDbFile.replaceAll("\\","/")}`}}});
   try { await legacyDb.$executeRawUnsafe('DROP TABLE "PackageMedia"'); await legacyDb.$executeRawUnsafe('DELETE FROM "_prisma_migrations" WHERE migration_name = \'20261021224000_package_media\''); } finally { await legacyDb.$disconnect(); }
   legacy.rowCounts.TravelPackage=null; legacy.rowCountErrors={TravelPackage:'Historical unavailable count'};
   const legacyBytes=await fs.readFile(legacyDbFile); legacy.database={...legacy.database,bytes:legacyBytes.length,sha256:createHash('sha256').update(legacyBytes).digest('hex')};
@@ -84,7 +85,7 @@ try {
   const downgraded=structuredClone(manifest); downgraded.formatVersion=1; delete downgraded.packageMedia; delete downgraded.rowCounts.PackageMedia;
   await sourceRejectsWithoutMutation(downgraded);
   for(const change of [{sha256:'0'.repeat(64)},{byteSize:999},{storageName:'missing.webp'}]) {
-    const sourceClient=new PrismaClient({datasources:{db:{url:`file:${sourceDb}`}}});
+    const sourceClient=new PrismaClient({datasources:{db:{url:`file:${sourceDb.replaceAll("\\","/")}`}}});
     try { await sourceClient.packageMedia.updateMany({data:change}); } finally { await sourceClient.$disconnect(); }
     const changedBytes=await fs.readFile(sourceDb), changedManifest=structuredClone(manifest);
     changedManifest.database.bytes=changedBytes.length; changedManifest.database.sha256=createHash('sha256').update(changedBytes).digest('hex');
@@ -171,9 +172,9 @@ try {
   await fs.writeFile(path.join(backup,'manifest.json'),JSON.stringify(manifest));
   // Missing referenced media must never produce a successful backup, even when DB is valid.
   await fs.rename(media,media+'-hidden');
-  assert.throws(()=>run(['--import',hook,'scripts/backup.mjs','--out',path.join(temp,'incomplete-backups')]),e=>String(e.stderr).includes('snapshot is incomplete'));
+  assert.throws(()=>run(['--import',pathToFileURL(hook).href,'scripts/backup.mjs','--out',path.join(temp,'incomplete-backups')]),e=>String(e.stderr).includes('snapshot is incomplete'));
   env.PACKAGE_MEDIA_ROOT=media+'-hidden';
-  assert.match(run(['--import',hook,'scripts/backup.mjs','--out',path.join(temp,'override-backups')]),/Backup complete/);
+  assert.match(run(['--import',pathToFileURL(hook).href,'scripts/backup.mjs','--out',path.join(temp,'override-backups')]),/Backup complete/);
   await fs.rename(media+'-hidden',media); env.PACKAGE_MEDIA_ROOT='';
   const source = path.join(backup,'database/fixture.db');
   const corrupt=await fs.readFile(source); corrupt[100]^=1; await fs.writeFile(source,corrupt);

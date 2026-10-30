@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 
-const source = readFileSync(new URL("../src/app/(app)/sales/SalesClient.tsx", import.meta.url), "utf8");
+const source = readFileSync(new URL("../src/app/(app)/sales/SalesClient.tsx", import.meta.url), "utf8").replaceAll("\r\n","\n");
 function section(start, end) {
   const from = source.indexOf(start), to = source.indexOf(end, from);
   assert(from >= 0 && to > from, "Actual Sales controller must remain under regression coverage");
@@ -35,7 +35,7 @@ function harness(actionMemory) {
     selectedIdRef: { current: null }, dataRef: { current: null }, activeQuote: { current: null }, mutationLock: { current: false },
     draftMemory: { context: "fixture", getSnapshot: () => null, clear() {}, expire() {} },
     actionMemory: actionMemory ?? { getSnapshot: () => pendingReview, getReviewEpoch: () => 1, clearAfterReview(nonce) { reviewed.push(nonce); pendingReview = null; return true; } },
-    customerMemory: { getSnapshot: () => null }, dirty: false,
+    customerMemory: { getSnapshot: () => null }, dirty: false, initialCreate: false,
     async fetch(url, init) { calls.push(url); requests.push({ url, method: init?.method ?? "GET" }); return fetcher(url); },
     setData(value) { state.data = value; env.dataRef.current = value; },
     setSelectedId(value) { state.selectedId = value; env.selectedIdRef.current = value; },
@@ -55,6 +55,17 @@ function harness(actionMemory) {
       return { ...controller, activate: () => activate() };
     },
   };
+}
+
+// A deliberate launcher intent opens entry once; ordinary Back/activation must not repeat it.
+{
+  const h=harness();h.env.initialCreate=true;
+  const location={search:"?action=new"};
+  h.env.window={location,history:{replaceState(_state,_title,url){location.search=new URL(url,"http://fixture.invalid").search;}}};
+  const route=h.route(undefined);route.activate();await flush();await flush();
+  assert.equal(h.state.view,"new");assert.equal(location.search,"");
+  route.activate();await flush();await flush();assert.equal(h.state.view,"list");
+  assert(h.requests.every(request=>request.method==="GET"));
 }
 
 // A publish acknowledgement received after navigation stays locked until explicit review.

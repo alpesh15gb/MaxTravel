@@ -4,6 +4,8 @@ Deploy on the existing Ubuntu VPS: [Docker + system Nginx installation and updat
 
 Use the official [Meta Cloud API setup](META-WHATSAPP-SETUP.md) for WhatsApp. The Evolution guide is retained for legacy installations.
 
+Daily operations: [Staff workflow guide](docs/DAILY-WORK-GUIDE.md). Research, screen inventory and verification for the workspace redesign: [CRM UI/UX revamp](docs/CRM-UX-REVAMP-2026-10-30.md).
+
 Latest additions and rollout: [CRM completion update](docs/crm-completion-2026-10-18.md). Includes staff MFA/sessions, encryption, enquiries/quotes, incoming documents, applicant checklists, customer import and advance allocation; the document explicitly records remaining finance and release work.
 
 Travel workflow benchmark and prioritized roadmap: [Travel CRM benchmark](docs/travel-crm-benchmark-2026-10-18.md). The supplier desk includes booking-linked payables and an auditable settlement ledger; imported statement reconciliation is still a later workflow.
@@ -12,7 +14,7 @@ Operational system for visa processing, air ticketing, payment collection, docum
 collection/verification, WhatsApp communication, employee tasks, and supplier/refund
 tracking. Built around: **Search anyone, know everything, see what is pending, take action.**
 
-The workspace is a premium light UI: warm white surfaces, deep navy text, teal actions,
+The workspace uses a light UI: white surfaces, deep navy text, blue actions,
 quiet semantic status colours, a persistent navigation rail on desktop that becomes a drawer on small
 screens, and universal search. Screens open straight on the greeting, the numbers and the work — no
 marketing filler.

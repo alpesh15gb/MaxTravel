@@ -53,6 +53,14 @@ export function reportDatePreset(key: ReportDatePreset, report: string, cutover:
 }
 
 export type ReportFilters = { report: string; from: string; to: string; customerId: string; supplierId: string; ownerId: string; status: string };
+/** URL criteria are only UI input. Report routes still enforce authorization and financial bounds. */
+export function reportLocationFilters(input: Record<string, unknown>): Partial<ReportFilters> {
+  const result: Partial<ReportFilters> = {};
+  if(typeof input.report==="string"&&(input.report==="overview"||reportDefinition(input.report)))result.report=input.report;
+  for(const key of ["from","to"] as const){const value=input[key];if(typeof value==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(value)){const date=new Date(`${value}T00:00:00Z`);if(Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===value)result[key]=value;}}
+  for(const key of ["customerId","supplierId","ownerId","status"] as const){const value=input[key];if(typeof value==="string"&&/^[A-Za-z0-9_ -]{1,200}$/.test(value))result[key]=value;}
+  return result;
+}
 /** Use the same normalized criteria for dirty detection, paging and downloads. */
 export function reportFilterQuery(filters: ReportFilters) {
   const supplier = filters.report.startsWith("supplier");

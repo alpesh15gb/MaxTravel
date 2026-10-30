@@ -26,6 +26,7 @@
     "test:crm-core": "tsx tests/staff-security.ts && tsx tests/sensitive-encryption.ts && tsx tests/customer-import.ts && tsx tests/upload-scan.mts && node --import ./scripts/standalone-server.mjs --import tsx tests/incoming-media.mts && node --import tsx tests/maintenance.mts",
     "test:staff-sales": "node --import tsx tests/staff-sales-flow.mts",
     "test:journeys": "node tests/journey-suite.mjs",
+    "test:workspace-revamp": "node --import tsx tests/workspace-guide.ts && node tests/workspace-revamp-browser.mjs",
     "test:reporting": "node --import tsx tests/export-format.ts && node --import tsx tests/export-routes.ts && tsx tests/reporting-workspace.ts && tsx tests/report-read.ts && node --test tests/reporting-diagnostics.test.mjs && tsx tests/reporting.ts",
     "reports:reconcile": "node scripts/reconcile-reporting.mjs",
     "test:evolution": "node tests/evolution.mjs",
