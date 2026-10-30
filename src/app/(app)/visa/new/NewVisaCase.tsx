@@ -1,4 +1,5 @@
 "use client";
+import CaseReference from "@/components/CaseReference";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -10,7 +11,7 @@ import { inrAmount } from "@/lib/money";
 type Customer={id:string;name:string;code:string;travellers:{id:string;fullName:string;relation:string}[]};
 type Checklist={id:string;country:string;visaType:string;applicantType:string;version:number};
 const STEPS=["Customer & applicants","Requirements","Fees & review"];
-export default function NewVisaCase({customers,checklists,defaultCustomerId,canCreate}:{customers:Customer[];checklists:Checklist[];defaultCustomerId:string|null;canCreate:boolean}) {
+export default function NewVisaCase({customers,checklists,defaultCustomerId,canCreate,serviceCase}:{customers:Customer[];checklists:Checklist[];defaultCustomerId:string|null;canCreate:boolean;serviceCase?:{id:string;caseNo:string}|null}) {
   const router=useRouter();
   const [step,setStep]=useState(0),[customerId,setCustomer]=useState(customers.some(c=>c.id===defaultCustomerId)?defaultCustomerId!:"");
   const [travellerIds,setTravellers]=useState<string[]>([]),[checklistId,setChecklist]=useState("");
@@ -30,7 +31,7 @@ export default function NewVisaCase({customers,checklists,defaultCustomerId,canC
     if(step<2){setStep(value=>value+1);return;}
     setBusy(true);
     try {
-      const response=await fetch("/api/visa/cases",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,customerId,travellerIds,checklistId})});
+      const response=await fetch("/api/visa/cases",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({serviceCaseId:serviceCase?.id,...form,customerId,travellerIds,checklistId})});
       const data=await response.json();
       if(!response.ok){if(response.status>=500)setUncertain(true);setError(data.error??"The case could not be saved. Check the case list before trying again.");return;}
       if(!data.caseId)throw Error("Missing case reference");
@@ -38,10 +39,10 @@ export default function NewVisaCase({customers,checklists,defaultCustomerId,canC
     } catch {setUncertain(true);setError("The save response was interrupted. Check the case list before creating another case. Your form is preserved here.");}
     finally {setBusy(false);}
   }
-  return <div className="workspace-page"><PageHeader eyebrow="Visa operations" title="Start a visa case" description="Applicants first, the correct requirements next, then a clear fee review." actions={<Link href="/visa" className="btn-secondary">Back to cases</Link>}/>
+  return <div className="workspace-page"><CaseReference record={serviceCase}/><PageHeader eyebrow="Visa operations" title="Start a visa case" description="Applicants first, the correct requirements next, then a clear fee review." actions={<Link href="/visa" className="btn-secondary">Back to cases</Link>}/>
     {!canCreate?<EmptyState title="Creation is restricted" description="Your role cannot create visa cases."/>:!customers.length?<EmptyState icon="customers" title="Start with a customer" description="Add the customer and their travellers before opening the application." href="/customers?action=new" action="Add a customer"/>:<>
       <TransactionSteps labels={STEPS} current={step}/><div className="transaction-layout"><form noValidate onSubmit={submit} className="panel transaction-form">
-        <fieldset hidden={step!==0} disabled={busy||step!==0}><h2 ref={step===0?heading:undefined} tabIndex={-1}>Who is applying?</h2><p className="step-description">Select the customer and each applicant. Document requirements are tracked separately for every person.</p><Field label="Customer *"><select required value={customerId} onChange={e=>{setCustomer(e.target.value);setTravellers([]);}}><option value="">Choose a customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name} · {c.code}</option>)}</select></Field>
+        <fieldset hidden={step!==0} disabled={busy||step!==0}><h2 ref={step===0?heading:undefined} tabIndex={-1}>Who is applying?</h2><p className="step-description">Select the customer and each applicant. Document requirements are tracked separately for every person.</p><Field label="Customer *"><select required disabled={Boolean(serviceCase)} value={customerId} onChange={e=>{setCustomer(e.target.value);setTravellers([]);}}><option value="">Choose a customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name} · {c.code}</option>)}</select></Field>
           {customer&&<div className="traveller-options" role="group" aria-label="Applicants">{customer.travellers.map(t=><label key={t.id} className="traveller-option"><input type="checkbox" checked={travellerIds.includes(t.id)} onChange={e=>setTravellers(previous=>e.target.checked?[...previous,t.id]:previous.filter(id=>id!==t.id))}/><span>{t.fullName}{" "}<small className="ml-2 text-slate-600">{t.relation.toLowerCase()}</small></span></label>)}{!customer.travellers.length&&<Link className="text-blue-700 underline" href={`/customers/${customer.id}?tab=travellers`}>Add an applicant to the customer record first</Link>}</div>}
         </fieldset>
         <fieldset hidden={step!==1} disabled={busy||step!==1}><h2 ref={step===1?heading:undefined} tabIndex={-1}>Where are they going?</h2><p className="step-description">Set the country and visa type, then choose the matching agency checklist.</p><div className="form-grid"><Field label="Destination country *"><input required value={form.destination} onChange={e=>{update("destination",e.target.value);setChecklist("");}} placeholder="Destination country"/></Field><Field label="Visa type *"><input required value={form.visaType} onChange={e=>{update("visaType",e.target.value);setChecklist("");}} placeholder="Tourist, business, student…"/></Field><Field label="Travel date"><input type="date" value={form.travelDate} onChange={e=>update("travelDate",e.target.value)}/></Field><Field label="Checklist" hint="Only templates matching this country and visa type are offered."><select value={checklistId} onChange={e=>setChecklist(e.target.value)}><option value="">No checklist yet</option>{matching.map(c=><option key={c.id} value={c.id}>{c.country} · {c.visaType} · {c.applicantType} · v{c.version}</option>)}</select></Field></div>

@@ -13,6 +13,7 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
   const vc = await prisma.visaCase.findUnique({
     where: { id },
     include: {
+      serviceCase:{select:{id:true,caseNo:true}},
       customer: true,
       stage: true,
       supplier: true,
@@ -40,7 +41,7 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
   return (
     <VisaCaseView
       vc={{
-        id: vc.id, caseNo: vc.caseNo,
+        serviceCase: vc.serviceCase, id: vc.id, caseNo: vc.caseNo,
         customer: { id: vc.customer.id, name: vc.customer.name, code: vc.customer.code, phone: vc.customer.phone },
         stage: { id: vc.stage.id, key: vc.stage.key, name: vc.stage.name },
         destination: vc.destination, visaType: vc.visaType, visaCategory: vc.visaCategory,

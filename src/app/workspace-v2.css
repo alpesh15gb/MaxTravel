@@ -174,3 +174,14 @@
 .transaction-check dt { font-size:.8125rem; color:var(--desk-text); margin-bottom:4px; }
 .transaction-check dd { font-size:.875rem; font-weight:600; overflow-wrap:anywhere; }
 @media(max-width:767px) { .record-section-links { display:none; } .record-section-select { display:block; flex:1; min-width:0; } .record-section-select select { width:100%; min-height:44px; border-radius:7px; padding:8px; border:1px solid var(--desk-line-strong); font-size:.875rem; background:var(--paper-0); } .record-section-nav { gap:10px; padding:10px 12px; } .record-section-label { flex-basis:100%; } .record-next-step { padding:14px; } .transaction-check dl { grid-template-columns:minmax(0,1fr); } }
+
+.case-reference { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:14px 18px; margin-bottom:18px; background:var(--desk-soft); border:1px solid var(--desk-line); border-radius:9px; font-size:.875rem; }
+.case-reference a { font-weight:650; color:var(--desk-link); min-height:32px; display:inline-flex; align-items:center; }
+.case-reference > span { color:var(--desk-text); }
+.case-detail-grid { display:grid; grid-template-columns:minmax(0,1.8fr) minmax(280px,1fr); gap:24px; align-items:start; }
+.case-record-list > li { display:flex; flex-direction:column; gap:6px; border-bottom:1px solid var(--desk-line); padding:16px 0; font-size:.875rem; overflow-wrap:anywhere; }
+.case-record-list a { color:var(--desk-link); font-weight:600; display:inline-flex; align-items:center; min-height:32px; }
+.case-record-list span { color:var(--desk-text); }
+.case-history { margin-top:18px; }
+.case-history > li { border-left:2px solid var(--desk-line-active); padding:0 0 24px 18px; margin-left:5px; font-size:.875rem; line-height:1.6; }
+@media(max-width:1000px) { .case-detail-grid { grid-template-columns:minmax(0,1fr); } .case-detail-grid > form { grid-row:1; } }

@@ -7,6 +7,7 @@ export type SalesQuote = {
 };
 export type SalesLead = {
   baseRevision?: string;
+  serviceCase?:{id:string;caseNo:string}|null;
   id: string; title: string; customerId: string; source: string; product: string;
   stage: string; notes?: string | null; travelDate?: string | null; budgetMinor?: number | null; lostReason?: string | null; destination: string | null; followUpAt: string | null; quotes: SalesQuote[];
 };

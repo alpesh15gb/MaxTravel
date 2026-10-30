@@ -1,0 +1,13 @@
+import {createHash} from "node:crypto";
+import {z} from "zod";
+import {prisma} from "@/lib/db";
+import {ApiError,jsonError,requireSession} from "@/lib/guard";
+import {boundedJson} from "@/lib/bounded-json";
+import {customerFor} from "@/lib/transactions";
+import {CASE_READ,CASE_SERVICES,canCreateCase,caseCustomerScope,createServiceCase} from "@/lib/service-cases";
+const input=z.object({requestKey:z.string().uuid(),customerId:z.string().min(1).max(200),service:z.enum(CASE_SERVICES),title:z.string().trim().min(3).max(200)}).strict();
+export async function GET(req:Request){try{const user=await requireSession("customer:view");const q=new URL(req.url).searchParams.get("q")?.trim().slice(0,100)??"";const customers=await prisma.customer.findMany({where:{AND:[caseCustomerScope(user),{mergedIntoId:null},q?{OR:[{name:{contains:q}},{code:{contains:q}},{phone:{contains:q}}]}:{}]},select:{id:true,name:true,code:true},orderBy:[{name:"asc"},{id:"asc"}],take:31});return Response.json({customers:customers.slice(0,30),more:customers.length>30},{headers:{"Cache-Control":"private, no-store"}});}catch(e){return jsonError(e);}}
+export async function POST(req:Request){try{const user=await requireSession([...CASE_READ]);if(!canCreateCase(user))throw new ApiError(403,"Service creation permission is required.");const data=input.parse(await boundedJson(req));if(data.service==="VISA"?!user.permissions.includes("visa:create"):!user.permissions.includes("ticketing:create"))throw new ApiError(403,"This service is not available to your role.");const hash=createHash("sha256").update(JSON.stringify(data)).digest("hex");const row=await prisma.$transaction(async tx=>{
+ const c=await customerFor(tx,user,data.customerId);const prior=await tx.serviceCaseMutation.findUnique({where:{actorId_requestKey:{actorId:user.id,requestKey:data.requestKey}}});if(prior){if(prior.bodyHash!==hash)throw new ApiError(409,"This request reference was already used for different details.");return tx.serviceCase.findUniqueOrThrow({where:{id:prior.caseId}});}
+ const record=await createServiceCase(tx,{customerId:c.id,branchId:c.branchId,ownerId:user.id,service:data.service,title:data.title},user.id);await tx.serviceCaseMutation.create({data:{actorId:user.id,requestKey:data.requestKey,bodyHash:hash,caseId:record.id}});await tx.auditLog.create({data:{userId:user.id,action:"CREATE",entity:"ServiceCase",entityId:record.id,detail:record.caseNo}});return record;
+ });return Response.json({ok:true,caseId:row.id,caseNo:row.caseNo});}catch(e){if(e instanceof z.ZodError)return Response.json({error:"Choose a customer, service and request title."},{status:400});return jsonError(e);}}

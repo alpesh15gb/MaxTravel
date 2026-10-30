@@ -52,13 +52,13 @@ export async function salesLeadPage(db: PrismaClient, user: SessionUser, filters
     if (filters.q) {
       // Literal substring search, not caller-controlled SQL LIKE wildcards.
       const term = `%${filters.q.replace(/[\\%_]/g, "\\$&")}%`;
-      clauses.push(Prisma.sql`(l."title" LIKE ${term} ESCAPE '\\' OR l."source" LIKE ${term} ESCAPE '\\' OR l."destination" LIKE ${term} ESCAPE '\\' OR l."product" LIKE ${term} ESCAPE '\\' OR c."name" LIKE ${term} ESCAPE '\\' OR c."code" LIKE ${term} ESCAPE '\\')`);
+      clauses.push(Prisma.sql`((SELECT sc."caseNo" FROM "ServiceCase" sc WHERE sc."id"=l."serviceCaseId") LIKE ${term} ESCAPE '\\' OR l."title" LIKE ${term} ESCAPE '\\' OR l."source" LIKE ${term} ESCAPE '\\' OR l."destination" LIKE ${term} ESCAPE '\\' OR l."product" LIKE ${term} ESCAPE '\\' OR c."name" LIKE ${term} ESCAPE '\\' OR c."code" LIKE ${term} ESCAPE '\\')`);
     }
     if (filters.cursor) { const date = new Date(filters.cursor.createdAt); clauses.push(Prisma.sql`(l."createdAt" < ${date} OR (l."createdAt" = ${date} AND l."id" < ${filters.cursor.id}))`); }
   }
   return db.$transaction(async tx => {
     const ids = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`SELECT l."id" FROM "SalesLead" l INNER JOIN "Customer" c ON c."id" = l."customerId" WHERE ${Prisma.join(clauses, " AND ")} ORDER BY l."createdAt" DESC, l."id" DESC LIMIT ${leadId ? 1 : SALES_PAGE_SIZE + 1}`);
-    const rows = await tx.salesLead.findMany({ where: { id: { in: ids.slice(0, SALES_PAGE_SIZE).map(row => row.id) } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], include: { quotes: { orderBy: { version: "desc" } } } });
+    const rows = await tx.salesLead.findMany({ where: { id: { in: ids.slice(0, SALES_PAGE_SIZE).map(row => row.id) } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], include: { serviceCase:{select:{id:true,caseNo:true}},quotes: { orderBy: { version: "desc" } } } });
     const last = rows.at(-1);
     const nextCursor = ids.length > SALES_PAGE_SIZE && last ? Buffer.from(JSON.stringify({ id: last.id, createdAt: last.createdAt.toISOString() })).toString("base64url") : null;
     return { leads: rows, nextCursor };

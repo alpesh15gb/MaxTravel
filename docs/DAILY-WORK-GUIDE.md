@@ -6,6 +6,8 @@ Open **Today**. It lists work that needs a decision, with the reason, customer/r
 
 Use **Start work** in the navigation whenever you know the task but not its module. Search for payment, booking, visa, invoice or quotation. Only workflows permitted by your role are offered. **Screen guide** explains the current screen in three steps.
 
+For a new visa or ticket request, begin with **Cases & journeys → Register client request**. This assigns the case ID at first contact. Add the visa application or booking from that case so the same ID follows the journey. Directly created service work also gets a case automatically. See [Client cases and settings](CASE-MANAGEMENT.md) for ownership, follow-ups, closure and administrator defaults.
+
 ## Existing customer
 
 Search for the customer before creating another record. The customer workspace holds travellers, visa cases, travel records, documents and money together. Its related-work links preselect that customer when starting a flight, hotel stay, visa case or statement.

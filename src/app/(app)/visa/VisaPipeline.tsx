@@ -7,7 +7,7 @@ import { BoardCard, BoardColumn, DocumentMeter } from "@/components/Board";
 import { EmptyState, Status, ViewToggle, avatarClass, initialsOf } from "@/components/ui";
 
 export interface PipelineCase {
-  id: string; caseNo: string; customerId: string; customerName: string; phone: string; email: string | null;
+  id: string; caseNo: string; serviceCaseNo?:string|null; customerId: string; customerName: string; phone: string; email: string | null;
   travellers: string[]; destination: string; visaType: string;
   stageId: string; stageKey: string; stageName: string; stageSeq: number;
   createdAt: string; createdLabel: string; travelDate: string | null; travelLabel: string | null; travelInDays: number | null;
@@ -116,7 +116,7 @@ export default function VisaPipeline({ cases, stages, perms, initialQuery, initi
     return items.filter(c =>
       (!stageFilter || c.stageKey === stageFilter) &&
       (!ownerFilter || c.ownerName === ownerFilter) &&
-      (!q || `${c.caseNo} ${c.customerName} ${c.destination} ${c.travellers.join(" ")}`.toLowerCase().includes(q)));
+      (!q || `${c.caseNo}{c.serviceCaseNo&&<span className="block text-xs text-slate-600 mt-1">{c.serviceCaseNo}</span>} ${c.customerName} ${c.destination} ${c.travellers.join(" ")}`.toLowerCase().includes(q)));
   }, [items, query, stageFilter, ownerFilter]);
 
   const activeQuick = QUICK_FILTERS.find(f => f.id === quick);
@@ -153,14 +153,14 @@ export default function VisaPipeline({ cases, stages, perms, initialQuery, initi
       const d = await r.json().catch(() => null);
       if (!r.ok) {
         setItems(previous);
-        setNotice({ tone: "error", text: d?.error ?? `${c.caseNo} could not be moved.` });
+        setNotice({ tone: "error", text: d?.error ?? `${c.caseNo}{c.serviceCaseNo&&<span className="block text-xs text-slate-600 mt-1">{c.serviceCaseNo}</span>} could not be moved.` });
         return;
       }
-      setNotice({ tone: "ok", text: `${c.caseNo} moved to ${stage.name}.` });
+      setNotice({ tone: "ok", text: `${c.caseNo}{c.serviceCaseNo&&<span className="block text-xs text-slate-600 mt-1">{c.serviceCaseNo}</span>} moved to ${stage.name}.` });
       router.refresh();
     } catch {
       setItems(previous);
-      setNotice({ tone: "error", text: `Connection failed. ${c.caseNo} was not moved.` });
+      setNotice({ tone: "error", text: `Connection failed. ${c.caseNo}{c.serviceCaseNo&&<span className="block text-xs text-slate-600 mt-1">{c.serviceCaseNo}</span>} was not moved.` });
     } finally {
       setBusyId(null);
     }
@@ -175,7 +175,7 @@ export default function VisaPipeline({ cases, stages, perms, initialQuery, initi
       draggable={perms.canMove && !busyId}
       onDragStart={e => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", c.id); setDragId(c.id); }}
       onDragEnd={() => { setDragId(null); setOverColumn(null); }}>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><span className="text-small font-semibold text-slate-500">{c.caseNo}</span><Status tone={outcome?.tone ?? "info"}>{c.stageName}</Status></div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><span className="text-small font-semibold text-slate-500">{c.caseNo}{c.serviceCaseNo&&<span className="block text-xs text-slate-600 mt-1">{c.serviceCaseNo}</span>}</span><Status tone={outcome?.tone ?? "info"}>{c.stageName}</Status></div>
       <div className="flex items-start gap-3">
         <span className={`avatar ${avatarClass(c.customerName)}`} aria-hidden="true">{initialsOf(c.customerName)}</span>
         <div className="min-w-0 flex-1">
@@ -275,7 +275,7 @@ export default function VisaPipeline({ cases, stages, perms, initialQuery, initi
         <tbody>{visible.slice(0, listShown).map(c => {
           const column = columnForCase(c, stages);
           return <tr key={c.id} className="border-t">
-            <td className="px-4"><Link className="text-xs font-semibold text-teal-700" href={`/visa/${c.id}`}>{c.caseNo}</Link><p className="mt-1 text-small text-slate-500">{c.travellers.join(", ")}</p></td>
+            <td className="px-4"><Link className="text-xs font-semibold text-teal-700" href={`/visa/${c.id}`}>{c.caseNo}{c.serviceCaseNo&&<span className="block text-xs text-slate-600 mt-1">{c.serviceCaseNo}</span>}</Link><p className="mt-1 text-small text-slate-500">{c.travellers.join(", ")}</p></td>
             <td className="px-4"><Link className="text-xs hover:text-teal-700" href={`/customers/${c.customerId}`}>{c.customerName}</Link></td>
             <td className="px-4"><span className="text-xs font-medium">{c.destination}</span><p className="mt-1 text-small text-slate-500">{c.visaType}</p></td>
             <td className="px-4"><Status tone={c.stageKey === "APPROVED" ? "success" : c.stageKey === "REJECTED" ? "danger" : "neutral"}>{c.stageName}</Status></td>

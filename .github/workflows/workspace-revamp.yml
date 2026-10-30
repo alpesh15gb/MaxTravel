@@ -5,6 +5,8 @@ on:
     paths:
       - "src/**"
       - "tests/workspace-*"
+      - "tests/service-case*"
+      - "prisma/**"
       - "tests/visual-review-server.mjs"
       - "package*.json"
       - ".github/workflows/workspace-revamp.yml"
@@ -29,9 +31,12 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run test:workspace-revamp
+      - run: npm run test:cases
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: crm-daily-work-review
-          path: test-artifacts/crm-revamp-2026-10-30
+          path: |
+            test-artifacts/crm-revamp-2026-10-30
+            test-artifacts/service-cases
           retention-days: 14

@@ -2,6 +2,7 @@ import type { IconName } from "@/components/Icon";
 
 export type WorkAction = { id: string; title: string; description: string; href: string; permission: string; group: "Customers & sales" | "Travel operations" | "Money & accounts"; icon: IconName; steps: readonly string[] };
 export const WORK_ACTIONS: readonly WorkAction[] = [
+  {id:"case",title:"Register a client request",description:"Assign a permanent case ID at first contact and track the complete client journey.",href:"/cases",permission:"customer:view",group:"Customers & sales",icon:"compass",steps:["Choose the customer and service","Get the case ID","Track service work and follow-ups"]},
   { id:"customer",title:"Add a customer",description:"Create one customer record and add the people who travel with them.",href:"/customers?action=new",permission:"customer:create",group:"Customers & sales",icon:"customers",steps:["Check for an existing customer","Save contact details","Add their travellers"] },
   { id:"enquiry",title:"Prepare a quotation",description:"Capture a travel request, prepare options and track the customer's decision.",href:"/sales?action=new",permission:"customer:create",group:"Customers & sales",icon:"compass",steps:["Select or add the customer","Capture the request","Prepare and publish a quote"] },
   { id:"followup",title:"Plan a follow-up",description:"Give a task an owner and due date so it returns to the daily work queue.",href:"/tasks?action=new",permission:"task:create",group:"Customers & sales",icon:"tasks",steps:["Describe the next action","Choose an owner and date","Link the customer when relevant"] },
@@ -24,6 +25,8 @@ export function availableWorkActions(permissions:readonly string[]){return WORK_
 
 type Guide = { match: RegExp; area: string; title: string; parent?: { label: string; href: string }; steps: readonly string[] };
 export const SCREEN_GUIDES: readonly Guide[] = [
+  {match:/^\/cases\/[^/]+/,area:"Client journeys",title:"Case journey",parent:{label:"Cases",href:"/cases"},steps:["Confirm the case ID and responsible owner","Review linked work and history","Record the next action, follow-up or closure"]},
+  {match:/^\/cases$/,area:"Client journeys",title:"Cases",steps:["Register a customer request at first contact","Find its permanent case ID","Open the journey to review progress and follow-ups"]},
   {match:/^\/dashboard$/,area:"Daily work",title:"Today",steps:["Review urgent work and deadlines","Open the record that needs attention","Complete the action and return to your queue"]},
   {match:/^\/work$/,area:"Daily work",title:"Start work",steps:["Choose what you need to do","Check the customer and required information","Continue into the right transaction form"]},
   {match:/^\/sales/,area:"Customers & sales",title:"Enquiries & quotes",steps:["Capture a customer request","Prepare and publish a quote for acceptance","Create a CRM booking from the accepted quote"]},

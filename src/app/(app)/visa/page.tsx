@@ -21,6 +21,7 @@ export default async function VisaPage({ searchParams: pending }: { searchParams
     prisma.visaCase.findMany({
       where: scopeWhere(user, null, "ownerId"),
       include: {
+        serviceCase:{select:{caseNo:true}},
         customer: { select: { name: true, phone: true, email: true } },
         stage: true,
         owner: { select: { name: true } },
@@ -40,6 +41,7 @@ export default async function VisaPage({ searchParams: pending }: { searchParams
     return {
       id: v.id,
       caseNo: v.caseNo,
+      serviceCaseNo:v.serviceCase?.caseNo??null,
       customerId: v.customerId,
       customerName: v.customer.name,
       phone: v.customer.phone,

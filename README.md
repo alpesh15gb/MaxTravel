@@ -6,6 +6,8 @@ Use the official [Meta Cloud API setup](META-WHATSAPP-SETUP.md) for WhatsApp. Th
 
 Daily operations: [Staff workflow guide](docs/DAILY-WORK-GUIDE.md). Research, screen inventory and verification for the workspace redesign: [CRM UI/UX revamp](docs/CRM-UX-REVAMP-2026-10-30.md).
 
+First-contact request IDs and admin defaults: [Client cases and settings](docs/CASE-MANAGEMENT.md).
+
 Latest additions and rollout: [CRM completion update](docs/crm-completion-2026-10-18.md). Includes staff MFA/sessions, encryption, enquiries/quotes, incoming documents, applicant checklists, customer import and advance allocation; the document explicitly records remaining finance and release work.
 
 Travel workflow benchmark and prioritized roadmap: [Travel CRM benchmark](docs/travel-crm-benchmark-2026-10-18.md). The supplier desk includes booking-linked payables and an auditable settlement ledger; imported statement reconciliation is still a later workflow.

@@ -1,4 +1,5 @@
 "use client";
+import CaseReference from "@/components/CaseReference";
 
 import { appointmentInput, appointmentValue } from "@/lib/visa-checklist";
 import { enumLabel } from "@/lib/labels";
@@ -34,6 +35,7 @@ type Doc = {
 };
 
 type VC = {
+  serviceCase?:{id:string;caseNo:string}|null;
   id: string; caseNo: string;
   customer: { id: string; name: string; code: string; phone: string };
   stage: { id: string; key: string; name: string };
@@ -113,7 +115,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
   }, [vc.documents]);
 
   return (
-    <div className="workspace-page">
+    <div className="workspace-page"><CaseReference record={vc.serviceCase}/>
       {/* min-h-8 + padding: this measured 16px tall, under the 24px minimum target size. */}
       <Link href="/visa" className="mb-2 inline-flex min-h-8 items-center gap-2 py-1.5 text-xs font-medium text-slate-600 hover:text-teal-700"><Icon name="visa" size={15} />All visa cases</Link>
 

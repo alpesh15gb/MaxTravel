@@ -1,9 +1,10 @@
+import {resolveServiceCase,customerForCase} from "@/lib/service-cases";
 import { isReservedBookingSource } from "@/lib/booking-policy";
 import { hotelDate, hotelStayProblem } from "@/lib/manual-hotel";
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { prisma } from "@/lib/db";
 import { queueBookingConfirmation } from "@/lib/whatsapp-queue";
-import { customerFor, travellersFor, optionalId, nextReference, money, date, transactionAudit } from "@/lib/transactions";
+import { travellersFor, optionalId, nextReference, money, date, transactionAudit } from "@/lib/transactions";
 export async function POST(req: Request) {
   try {
     const user = await requireSession("ticketing:create"); const b = await req.json();
@@ -25,15 +26,16 @@ export async function POST(req: Request) {
     }
     const travelDate=product==="HOTEL"?hotelCheckIn:date(b.travelDate,"Travel date");
     const booking=await prisma.$transaction(async tx=>{
-      const customer=await customerFor(tx,user,customerId); const travellers=await travellersFor(tx,customerId,b.travellerIds);
+      const customer=await customerForCase(tx,user,customerId,b.serviceCaseId); const travellers=await travellersFor(tx,customerId,b.travellerIds);
       const supplierId=optionalId(b.supplierId); if(supplierId&&!(await tx.supplier.findUnique({where:{id:supplierId}})))throw new ApiError(400,"Supplier not found.");
       const pnr=optionalId(b.pnr);
-      const record=await tx.booking.create({data:{bookingNo:await nextReference(tx, "BK"),customerId,product,hotelName,hotelCheckIn,hotelCheckOut,pnr,airline:product==="FLIGHT"?optionalId(b.airline):null,gdsSource:product==="FLIGHT"?optionalId(b.gdsSource):"Direct",supplierId,status:product==="FLIGHT"&&pnr?"PNR_CREATED":"ENQUIRY",sector:optionalId(b.sector),flightNo:product==="FLIGHT"?optionalId(b.flightNo):null,travelDate,ticketingDeadline:product==="FLIGHT"&&pnr&&hours>0?new Date(Date.now()+hours*3600000):null,fare,taxes,markup,serviceFee,supplierCost,sellingPrice:money(fare+taxes+markup+serviceFee,"Selling price"),ownerId:user.id,branchId:customer.branchId,travellers:{create:travellers.map(t=>({travellerId:t.id}))}}});
+      const journey=await resolveServiceCase(tx,user,{caseId:b.serviceCaseId,customerId,branchId:customer.branchId,ownerId:user.id,service:product,title:optionalId(b.sector)??hotelName??"Flight request"});
+      const record=await tx.booking.create({data:{serviceCaseId:journey.id,bookingNo:await nextReference(tx, "BK"),customerId,product,hotelName,hotelCheckIn,hotelCheckOut,pnr,airline:product==="FLIGHT"?optionalId(b.airline):null,gdsSource:product==="FLIGHT"?optionalId(b.gdsSource):"Direct",supplierId,status:product==="FLIGHT"&&pnr?"PNR_CREATED":"ENQUIRY",sector:optionalId(b.sector),flightNo:product==="FLIGHT"?optionalId(b.flightNo):null,travelDate,ticketingDeadline:product==="FLIGHT"&&pnr&&hours>0?new Date(Date.now()+hours*3600000):null,fare,taxes,markup,serviceFee,supplierCost,sellingPrice:money(fare+taxes+markup+serviceFee,"Selling price"),ownerId:user.id,branchId:customer.branchId,travellers:{create:travellers.map(t=>({travellerId:t.id}))}}});
       await transactionAudit(tx,user,"CREATE","Booking",record.id,record.bookingNo);
       await tx.activity.create({data:{customerId,actorId:user.id,type:"BOOKING",summary:`Booking ${record.bookingNo} created`,link:`/ticketing/${record.id}`}});
       await queueBookingConfirmation(tx, record.id);
-      return record;
+      return {...record,caseReference:journey.caseNo};
     });
-    return Response.json({ok:true,bookingId:booking.id,bookingNo:booking.bookingNo});
+    return Response.json({ok:true,bookingId:booking.id,bookingNo:booking.bookingNo,serviceCaseId:booking.serviceCaseId,serviceCaseNo:booking.caseReference});
   }catch(e){return jsonError(e);}
 }

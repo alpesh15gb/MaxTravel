@@ -1,4 +1,5 @@
 "use client";
+import CaseReference from "@/components/CaseReference";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -13,6 +14,7 @@ import {
   type SalesLead, type SalesCustomer,
 } from "./sales-workspace";
 
+type CaseContext={id:string;caseNo:string;customerId:string;customerName:string;customerCode:string;service:string;title:string};
 type Data = {
   leads: SalesLead[]; customers: SalesCustomer[]; recoveryContext: string; nextCursor: string | null;
   canCreate: boolean; canEdit: boolean; canQuote: boolean; canConvert: boolean;
@@ -30,7 +32,8 @@ const localDateTime = (value: string | null) => {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 };
 
-export default function SalesClient({ initialLeadId, initialCreate=false }: { initialLeadId?: string; initialCreate?: boolean }) {
+export default function SalesClient({ initialLeadId, initialCreate=false, initialCase=null }: { initialLeadId?: string; initialCreate?: boolean; initialCase?:CaseContext|null }) {
+  const [caseContext,setCaseContext]=useState(initialCase);
   const draftMemory = useSalesDraftMemory();
   const customerMemory = useCustomerCreateMemory();
   const customerWrite = useCustomerCreateEntry();
@@ -198,11 +201,11 @@ export default function SalesClient({ initialLeadId, initialCreate=false }: { in
       }
       const entry = draftMemory.getSnapshot();
       if (active && activation === activationGeneration.current && entry) await checkRecovery(entry);
-      else if (!initialLeadId && initialCreate && latest.canCreate && latest.canEdit && new URLSearchParams(window.location.search).get("action")==="new") { setSelectedId(null); setView("new"); setFocusRequest(value => value + 1); window.history.replaceState(null,"","/sales"); }
+      else if (!initialLeadId && initialCreate && latest.canCreate && latest.canEdit && new URLSearchParams(window.location.search).get("action")==="new") { setCaseContext(initialCase);setSelectedId(null); setView("new"); setFocusRequest(value => value + 1); window.history.replaceState(null,"","/sales"); }
     }).catch(error => { if (active && activation === activationGeneration.current) setError(error instanceof Error && error.message.startsWith("Staff session or access changed") ? error.message : "Enquiries could not be loaded. Retry to see the latest records."); })
       .finally(() => { if (active && activation === activationGeneration.current) setLoading(false); });
     return () => { active = false; activationGeneration.current += 1; recoveryCheck.current += 1; readGeneration.current += 1; };
-  }, [load, checkRecovery, draftMemory, initialLeadId, initialCreate]);
+  }, [load, checkRecovery, draftMemory, initialLeadId, initialCreate, initialCase]);
 
   useEffect(() => {
     if (!recovery) return;
@@ -269,7 +272,7 @@ export default function SalesClient({ initialLeadId, initialCreate=false }: { in
     }
     if (activeQuote.current) draftMemory.clear(activeQuote.current.nonce);
     activeQuote.current = null; if (!draftMemory.getSnapshot()) setRecovery(null); setRetentionError("");
-    setDirty(false); setError(""); setSelectedId(id); setView(viewNext);
+    setCaseContext(null);setDirty(false); setError(""); setSelectedId(id); setView(viewNext);
     if (viewNext === "quote") {
       const lead = data?.leads.find(item => item.id === id);
       if (!lead?.baseRevision) { setError("Reload latest status before preparing a quotation."); setView("lead"); return; }
@@ -577,17 +580,17 @@ export default function SalesClient({ initialLeadId, initialCreate=false }: { in
           {view !== "list" && <button className="btn mb-4" disabled={busy || customerPending || loading} onClick={() => open("list")}>Back to enquiries</button>}
           {view === "new" && <>
             <h2 {...headingProps}>New enquiry</h2><p className="mt-2 mb-5 text-sm text-slate-600">Choose an existing customer and record the request. This does not create a booking.</p><p className="mb-4 text-sm text-slate-600">Date/time fields use your device’s local time. Saved follow-up and expiry labels are shown in IST.</p>
-            <EnquiryCustomerPicker key={`customer-${focusRequest}`} context={data.recoveryContext} initialCustomers={data.customers} disabled={locked}
-              onDirty={() => setDirty(true)} onAccessChanged={customerAccessChanged} />
+            {caseContext?<><CaseReference record={caseContext}/><p className="text-sm mb-4">Customer: {caseContext.customerName} · {caseContext.customerCode}</p><input type="hidden" form="sales-new-enquiry" name="customer" value={caseContext.customerId}/></>:<EnquiryCustomerPicker key={`customer-${focusRequest}`} context={data.recoveryContext} initialCustomers={data.customers} disabled={locked}
+              onDirty={() => setDirty(true)} onAccessChanged={customerAccessChanged} />}
             <form id="sales-new-enquiry" key={`new-${focusRequest}`} onChange={() => setDirty(true)} onSubmit={async event => {
               event.preventDefault(); const form = new FormData(event.currentTarget); const follow = String(form.get("follow") ?? ""); const travel = String(form.get("date") ?? "");
-              const result = await action({ action: "create", data: { customerId: form.get("customer"), title: form.get("title"), source: form.get("source"), product: form.get("product"), budgetMinor: Math.round(Number(form.get("budget") ?? 0) * 100), destination: form.get("destination"), notes: form.get("notes"), followUpAt: follow ? new Date(follow).toISOString() : null, travelDate: travel ? new Date(travel).toISOString() : null } });
+              const result = await action({ action: "create", data: { ...(caseContext?{serviceCaseId:caseContext.id}:{}),customerId: form.get("customer"), title: form.get("title"), source: form.get("source"), product: caseContext?.service??form.get("product"), budgetMinor: Math.round(Number(form.get("budget") ?? 0) * 100), destination: form.get("destination"), notes: form.get("notes"), followUpAt: follow ? new Date(follow).toISOString() : null, travelDate: travel ? new Date(travel).toISOString() : null } });
               if (result && typeof result.id === "string") { setSelectedId(result.id); setView("lead"); setFocusRequest(value => value + 1); }
             }}>
               <fieldset disabled={locked} className="space-y-4"><div className="sales-editor-grid grid gap-4 sm:grid-cols-2">
-                <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-title">Enquiry title</label><input id="sales-title" className="control mt-1" name="title" required maxLength={200} /></div>
+                <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-title">Enquiry title</label><input id="sales-title" className="control mt-1" name="title" defaultValue={caseContext?.title} required maxLength={200} /></div>
                 <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-source">Source</label><input id="sales-source" className="control mt-1" name="source" required maxLength={100} placeholder="Website, referral, walk-in…" /></div>
-                <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-product">Product</label><select id="sales-product" className="control mt-1" name="product"><option value="FLIGHT">Flight</option><option value="HOTEL">Hotel</option></select></div>
+                <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-product">Product</label><select id="sales-product" className="control mt-1" name="product" disabled={Boolean(caseContext)} defaultValue={caseContext?.service??"FLIGHT"}><option value="FLIGHT">Flight</option><option value="HOTEL">Hotel</option></select></div>
                 <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-destination">Destination / route</label><input id="sales-destination" className="control mt-1" name="destination" maxLength={200} /></div>
                 <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-travel-date">Travel date</label><input id="sales-travel-date" className="control mt-1" name="date" type="date" /></div>
                 <div className="field text-sm font-medium"><label className="field-label" htmlFor="sales-follow-up">Follow-up deadline</label><input id="sales-follow-up" className="control mt-1" name="follow" type="datetime-local" /></div>
@@ -600,7 +603,7 @@ export default function SalesClient({ initialLeadId, initialCreate=false }: { in
           {view !== "new" && view !== "list" && !selected && <p>This enquiry is no longer in the loaded view. Return to the enquiry list or refresh your permitted records.</p>}
           {selected && view === "lead" && <>
             <div className="sales-record-header space-y-3"><div className="flex flex-wrap items-center gap-2"><span className="pill">{enumLabel(selected.stage)}</span><span className="text-sm">{enumLabel(selected.product)}</span></div>
-              <h2 {...headingProps}>{selected.title}</h2><p className="text-sm text-slate-600">{customerName(selected.customerId)} · {data.customers.find(customer => customer.id === selected.customerId)?.code ?? "Customer code unavailable"} · {selected.source}</p>
+              <CaseReference record={selected.serviceCase}/><h2 {...headingProps}>{selected.title}</h2><p className="text-sm text-slate-600">{customerName(selected.customerId)} · {data.customers.find(customer => customer.id === selected.customerId)?.code ?? "Customer code unavailable"} · {selected.source}</p>
               <div className="sales-actions flex flex-wrap gap-2">{canQuote && canStartQuote(selected) && <button className={selected.quotes.length ? "btn" : "btn btn-primary"} disabled={locked} onClick={() => open("quote")}>New quote version</button>}<Link className="btn" href={`/customers/${selected.customerId}`}>Open customer</Link></div>
             </div>
             {nextStep && <section className="mt-5 rounded-xl border bg-slate-50 p-4 space-y-2" aria-label="Enquiry next step">

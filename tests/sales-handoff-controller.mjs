@@ -35,7 +35,7 @@ function harness(actionMemory) {
     selectedIdRef: { current: null }, dataRef: { current: null }, activeQuote: { current: null }, mutationLock: { current: false },
     draftMemory: { context: "fixture", getSnapshot: () => null, clear() {}, expire() {} },
     actionMemory: actionMemory ?? { getSnapshot: () => pendingReview, getReviewEpoch: () => 1, clearAfterReview(nonce) { reviewed.push(nonce); pendingReview = null; return true; } },
-    customerMemory: { getSnapshot: () => null }, dirty: false, initialCreate: false,
+    customerMemory: { getSnapshot: () => null }, dirty: false, initialCreate: false, initialCase:null,setCaseContext(){},
     async fetch(url, init) { calls.push(url); requests.push({ url, method: init?.method ?? "GET" }); return fetcher(url); },
     setData(value) { state.data = value; env.dataRef.current = value; },
     setSelectedId(value) { state.selectedId = value; env.selectedIdRef.current = value; },

@@ -13,6 +13,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
   const b = await prisma.booking.findUnique({
     where: { id },
     include: {
+      serviceCase:{select:{id:true,caseNo:true}},
       customer: { include: { travellers: true } },
       supplier: true,
       owner: { select: { name: true } },
@@ -35,7 +36,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
   return (
     <BookingView
       b={{
-        id: b.id, bookingNo: b.bookingNo, product:b.product, hotelName:b.hotelName, hotelCheckIn:b.hotelCheckIn?.toISOString()??null,hotelCheckOut:b.hotelCheckOut?.toISOString()??null, supplierId:b.supplierId,
+        serviceCase: b.serviceCase, id: b.id, bookingNo: b.bookingNo, product:b.product, hotelName:b.hotelName, hotelCheckIn:b.hotelCheckIn?.toISOString()??null,hotelCheckOut:b.hotelCheckOut?.toISOString()??null, supplierId:b.supplierId,
         customer: { id: b.customer.id, name: b.customer.name, code: b.customer.code, phone: b.customer.phone },
         pnr: b.pnr, airline: b.airline, gdsSource: b.gdsSource, supplier: b.supplier?.name ?? null,
         cancellationSupplierCharge: showMoney ? b.cancellationSupplierCharge : null,

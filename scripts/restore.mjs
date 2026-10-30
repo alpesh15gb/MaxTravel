@@ -26,6 +26,9 @@ const ROOT = path.resolve(HERE, "..");
 // Same label → Prisma client delegate map as backup.mjs; a manifest key we do not know about is
 // reported rather than silently ignored.
 const COUNTED_MODELS = [
+  ["ServiceCase", "serviceCase"],
+  ["ServiceCaseEvent", "serviceCaseEvent"],
+  ["ServiceCaseMutation", "serviceCaseMutation"],
   ["User", "user"],
   ["Customer", "customer"],
   ["Traveller", "traveller"],

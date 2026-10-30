@@ -92,7 +92,7 @@ await ok("/api/payments", { customerId: meera.id, bookingId: booking.bookingId, 
 await ok("/api/invoices", { customerId: meera.id, amount: 2500, description: "Visa service charge", dueDate: "2026-11-01" }, owner);
 await ok("/api/tasks", { title: "Call Meera about travel insurance", priority: "HIGH", customerId: meera.id, details: "She asked about Schengen insurance cover on WhatsApp." }, owner);
 await ok("/api/tasks", { title: "Collect Arjun's bank statements", priority: "MEDIUM", customerId: arjun.id }, owner);
-writeFileSync(path.join(ROOT, "tests", ".runtime", "visual-review-current.json"), JSON.stringify({ runtime, base: BASE, serverPid: server.pid, dev, customerId: meera.id, visaCaseId: v1.caseId, bookingId: booking.bookingId, salesLeadId: acceptedLead.id, onlineBookingId: onlineBooking.id }, null, 2));
+writeFileSync(path.join(ROOT, "tests", ".runtime", "visual-review-current.json"), JSON.stringify({ runtime, base: BASE, serverPid: server.pid, dev, customerId: meera.id, visaCaseId: v1.caseId, bookingId: booking.bookingId, serviceCaseId:booking.serviceCaseId, salesLeadId: acceptedLead.id, onlineBookingId: onlineBooking.id }, null, 2));
 console.log(`VISUAL REVIEW READY ${BASE} pid=${server.pid}`);
 console.log(`Review login: review@visual.test / ${password}`);
 server.on("exit", code => { console.log(`Server exited ${code}`); log.end(); process.exitCode = code ?? 1; });

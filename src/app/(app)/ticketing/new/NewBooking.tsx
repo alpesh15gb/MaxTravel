@@ -1,4 +1,5 @@
 "use client";
+import CaseReference from "@/components/CaseReference";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -9,7 +10,7 @@ import { inrAmount } from "@/lib/money";
 type Customer={id:string;name:string;code:string;travellers:{id:string;fullName:string;relation:string}[]};
 const STEPS=["Customer & travellers","Travel details","Price & review"];
 
-export default function NewBooking({customers,suppliers,defaultCustomerId,defaultProduct="FLIGHT"}:{customers:Customer[];suppliers:{id:string;name:string}[];defaultCustomerId:string|null;defaultProduct?:"FLIGHT"|"HOTEL"}) {
+export default function NewBooking({customers,suppliers,defaultCustomerId,defaultProduct="FLIGHT",serviceCase}:{customers:Customer[];suppliers:{id:string;name:string}[];defaultCustomerId:string|null;defaultProduct?:"FLIGHT"|"HOTEL";serviceCase?:{id:string;caseNo:string}|null}) {
   const router=useRouter();
   const [step,setStep]=useState(0),[product,setProduct]=useState(defaultProduct);
   const [customerId,setCustomer]=useState(customers.some(c=>c.id===defaultCustomerId)?defaultCustomerId!:"");
@@ -31,7 +32,7 @@ export default function NewBooking({customers,suppliers,defaultCustomerId,defaul
     if(step<2){setStep(value=>value+1);return;}
     setBusy(true);
     try {
-      const response=await fetch("/api/bookings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,product,customerId,travellerIds})});
+      const response=await fetch("/api/bookings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({serviceCaseId:serviceCase?.id,...form,product,customerId,travellerIds})});
       const data=await response.json();
       if(!response.ok){if(response.status>=500)setUncertain(true);setError(data.error??"The booking could not be saved. Check the booking list before retrying.");return;}
       if(!data.bookingId)throw Error("Missing booking reference");
@@ -39,16 +40,16 @@ export default function NewBooking({customers,suppliers,defaultCustomerId,defaul
     } catch {setUncertain(true);setError("The save response was interrupted. Check the booking list for an existing record before creating another. Your form is preserved here.");}
     finally {setBusy(false);}
   }
-  return <div className="workspace-page"><PageHeader eyebrow="Travel operations" title="Create a booking" description="A short guided flow, with a review before anything is saved." actions={<Link className="btn-secondary" href="/ticketing">Back to bookings</Link>}/>
+  return <div className="workspace-page"><CaseReference record={serviceCase}/><PageHeader eyebrow="Travel operations" title="Create a booking" description="A short guided flow, with a review before anything is saved." actions={<Link className="btn-secondary" href="/ticketing">Back to bookings</Link>}/>
     {!customers.length?<EmptyState icon="customers" title="Add a customer first" description="Every booking belongs to a real customer and their travellers." href="/customers?action=new" action="Add a customer"/>:<>
       <TransactionSteps labels={STEPS} current={step}/>
       <div className="transaction-layout"><form className="panel transaction-form" noValidate onSubmit={submit}>
         <fieldset hidden={step!==0} disabled={busy||step!==0}><h2 ref={step===0?heading:undefined} tabIndex={-1}>Who is this booking for?</h2><p className="step-description">Choose the paying customer, then select the people travelling.</p>
-          <Field label="Customer *"><select required value={customerId} onChange={e=>{setCustomer(e.target.value);setTravellers([]);}}><option value="">Choose a customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name} · {c.code}</option>)}</select></Field>
+          <Field label="Customer *"><select required disabled={Boolean(serviceCase)} value={customerId} onChange={e=>{setCustomer(e.target.value);setTravellers([]);}}><option value="">Choose a customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name} · {c.code}</option>)}</select></Field>
           {customer&&<div className="traveller-options" role="group" aria-label="Travellers">{customer.travellers.map(t=><label key={t.id} className="traveller-option"><input type="checkbox" checked={travellerIds.includes(t.id)} onChange={e=>setTravellers(previous=>e.target.checked?[...previous,t.id]:previous.filter(id=>id!==t.id))}/><span>{t.fullName}</span></label>)}{!customer.travellers.length&&<p className="step-description">Add a traveller in <Link className="underline text-blue-700" href={`/customers/${customer.id}?tab=travellers`}>the customer record</Link> first.</p>}</div>}
         </fieldset>
         <fieldset hidden={step!==1} disabled={busy||step!==1}><h2 ref={step===1?heading:undefined} tabIndex={-1}>What are they booking?</h2><p className="step-description">Use the actual itinerary and references from your supplier. Confirmation remains a separate step on the booking record.</p>
-          <div className="form-grid"><Field label="Service"><select value={product} onChange={e=>{setProduct(e.target.value as "FLIGHT"|"HOTEL");update("pnr","");}}><option value="FLIGHT">Flight</option><option value="HOTEL">Hotel stay</option></select></Field>
+          <div className="form-grid"><Field label="Service"><select disabled={Boolean(serviceCase)} value={product} onChange={e=>{setProduct(e.target.value as "FLIGHT"|"HOTEL");update("pnr","");}}><option value="FLIGHT">Flight</option><option value="HOTEL">Hotel stay</option></select></Field>
           {product==="FLIGHT"?<>{input("sector","Route / sector *","text",true)}{input("travelDate","Travel date","date")}{input("airline","Airline")}{input("pnr","Actual PNR (optional)")}{form.pnr&&input("deadlineHours","Ticketing deadline (hours from now)","number")}{input("flightNo","Flight number")}</>:<>{input("hotelName","Hotel name *","text",true)}{input("hotelCheckIn","Check-in *","date",true)}{input("hotelCheckOut","Check-out *","date",true)}{input("sector","Destination / city")}{input("pnr","Supplier confirmation reference (optional)")}</>}
           <Field label="Supplier"><select value={form.supplierId} onChange={e=>update("supplierId",e.target.value)}><option value="">Not assigned</option>{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
           {product==="FLIGHT"&&<Field label="Booking source"><select value={form.gdsSource} onChange={e=>update("gdsSource",e.target.value)}><option value="">Not specified</option>{["Amadeus","Sabre","Galileo","Direct"].map(source=><option key={source}>{source}</option>)}</select></Field>}</div>

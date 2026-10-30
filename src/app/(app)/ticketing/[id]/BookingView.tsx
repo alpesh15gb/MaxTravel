@@ -1,4 +1,5 @@
 "use client";
+import CaseReference from "@/components/CaseReference";
 
 import { MANUAL_HOTEL_STATUSES, hotelStayProblem } from "@/lib/manual-hotel";
 import { enumLabel } from "@/lib/labels";
@@ -22,6 +23,7 @@ const dt = (s: string | null | undefined) => (s ? dateTimeLabel(s) : "—");
 const dOnly = (s: string | null | undefined) => (s ? dateLabel(s) : "—");
 
 type B = {
+  serviceCase?:{id:string;caseNo:string}|null;
   id: string; bookingNo: string; product:string; hotelName:string|null; hotelCheckIn:string|null; hotelCheckOut:string|null; supplierId:string|null;
   customer: { id: string; name: string; code: string; phone: string };
   pnr: string | null; airline: string | null; gdsSource: string | null; supplier: string | null;
@@ -104,7 +106,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
   }
 
   return (
-    <div className="workspace-page">
+    <div className="workspace-page"><CaseReference record={b.serviceCase}/>
       <Link href="/ticketing" className="mb-3 inline-flex items-center gap-2 text-xs font-medium text-slate-600 hover:text-teal-700"><Icon name="plane" size={15} />All bookings</Link>
 
       {/* Booking header */}

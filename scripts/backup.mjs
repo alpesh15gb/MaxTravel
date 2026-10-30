@@ -29,6 +29,9 @@ const MANIFEST_FORMAT = 2;
 // Business entities whose row counts make the backup self-describing and let restore.mjs prove
 // it put back what it took out. Label → Prisma client delegate.
 const COUNTED_MODELS = [
+  ["ServiceCase", "serviceCase"],
+  ["ServiceCaseEvent", "serviceCaseEvent"],
+  ["ServiceCaseMutation", "serviceCaseMutation"],
   ["User", "user"],
   ["Customer", "customer"],
   ["Traveller", "traveller"],

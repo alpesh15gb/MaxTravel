@@ -24,7 +24,7 @@ function workstream(item: Item): Workstream {
   if (/SALES/.test(item.kind)) return "sales";
   if (/PAYMENT|REFUND|SUPPLIER|INVOICE/.test(item.kind)) return "money";
   if (/DOC|PASSPORT/.test(item.kind)) return "documents";
-  if (/TASK|WHATSAPP|MESSAGE/.test(item.kind)) return "followups";
+  if (/TASK|WHATSAPP|MESSAGE|CASE_FOLLOWUP/.test(item.kind)) return "followups";
   return "travel";
 }
 

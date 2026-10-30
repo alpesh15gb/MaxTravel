@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import type { SessionUser } from "./session";
 import { journalEntity } from "./financial-journal";
 import { ApiError, canTouchRecord } from "./guard";
+import { recordCaseEventForEntity } from "./case-events";
 
 export const optionalId = (value: unknown): string | null => typeof value === "string" && value.trim() ? value.trim() : null;
 
@@ -9,6 +10,7 @@ export const optionalId = (value: unknown): string | null => typeof value === "s
 // transaction as the record, so the same number can never be handed out twice; the per-table
 // lookup additionally skips numbers already used by imported or legacy records.
 const COUNTERS: Record<string, (tx: Prisma.TransactionClient, code: string) => Promise<number>> = {
+  CASE: (tx, code) => tx.serviceCase.count({ where: { caseNo: code } }),
   C: (tx, code) => tx.customer.count({ where: { code } }),
   EMP: (tx, code) => tx.user.count({ where: { employeeCode: code } }),
   VC: (tx, code) => tx.visaCase.count({ where: { caseNo: code } }),
@@ -91,4 +93,5 @@ export async function travellersFor(tx: Prisma.TransactionClient, customerId: st
 export async function transactionAudit(tx: Prisma.TransactionClient, user: SessionUser, action: string, entity: string, entityId: string, detail: string) {
   if (!(entity === "VisaCase" && action === "STAGE")) await journalEntity(tx, entity, entityId, user.id);
   await tx.auditLog.create({ data: { userId: user.id, action, entity, entityId, detail } });
+  await recordCaseEventForEntity(tx,user.id,action,entity,entityId);
 }

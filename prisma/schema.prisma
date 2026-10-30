@@ -88,8 +88,62 @@ model User {
   taskComments      TaskComment[]
   caseStatusUpdates VisaCaseStatus[]
   managedCustomers  Customer[]
+  serviceCases ServiceCase[]
   auditLogs         AuditLog[]
   invoiceCreditNotes InvoiceCreditNote[] @relation("InvoiceCreditNoteIssuer")
+}
+
+// One permanent request identity from first contact through service and aftercare.
+model ServiceCase {
+  createdById String?
+  id             String                @id @default(cuid())
+  caseNo         String                @unique
+  customerId     String
+  customer       Customer              @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  branchId       String
+  ownerId        String
+  owner          User                  @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  service        String
+  title          String
+  status         String                @default("OPEN")
+  nextFollowUpAt DateTime?
+  closedAt       DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  bookings       Booking[]
+  visaCases      VisaCase[]
+  leads          SalesLead[]
+  events         ServiceCaseEvent[]
+  mutations      ServiceCaseMutation[]
+
+  @@index([branchId, ownerId, status])
+  @@index([customerId, createdAt])
+  @@index([nextFollowUpAt])
+}
+
+model ServiceCaseEvent {
+  id          String      @id @default(cuid())
+  caseId      String
+  serviceCase ServiceCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  actorId     String?
+  kind        String
+  summary     String
+  permission  String?
+  href        String?
+  at          DateTime    @default(now())
+
+  @@index([caseId, at])
+}
+
+model ServiceCaseMutation {
+  actorId     String
+  requestKey  String
+  bodyHash    String
+  caseId      String
+  serviceCase ServiceCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  createdAt   DateTime    @default(now())
+
+  @@id([actorId, requestKey])
 }
 
 // ── Customers & Travellers ──────────────────────────────────────────────────
@@ -113,6 +167,7 @@ model Customer {
   assignedToId    String? // relationship manager
   assignedTo      User?            @relation(fields: [assignedToId], references: [id])
   createdAt       DateTime         @default(now())
+  serviceCases ServiceCase[]
   travellers      Traveller[]
   visaCases       VisaCase[]
   bookings        Booking[]
@@ -173,6 +228,9 @@ model VisaStage {
 
 // Admin-configurable workflow; default seed = the 16-stage spec flow.
 model VisaCase {
+  @@index([serviceCaseId])
+  serviceCaseId String?
+  serviceCase ServiceCase? @relation(fields:[serviceCaseId],references:[id],onDelete:Restrict)
   id                   String           @id @default(cuid())
   caseNo               String           @unique // VC-2001
   customerId           String
@@ -362,6 +420,9 @@ model UploadLink {
 // ── Ticketing ───────────────────────────────────────────────────────────────
 
 model Booking {
+  @@index([serviceCaseId])
+  serviceCaseId String?
+  serviceCase ServiceCase? @relation(fields:[serviceCaseId],references:[id],onDelete:Restrict)
   product           String             @default("FLIGHT")
   hotelName         String?
   hotelCheckIn      DateTime?
@@ -825,6 +886,9 @@ model StaffRecovery {
   createdAt DateTime @default(now())
 }
 model SalesLead {
+  @@index([serviceCaseId])
+  serviceCaseId String?
+  serviceCase ServiceCase? @relation(fields:[serviceCaseId],references:[id],onDelete:Restrict)
  id String @id @default(cuid())
  customerId String
  branchId String

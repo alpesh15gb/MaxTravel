@@ -14,6 +14,7 @@ import Brand from "./Brand";
 import WorkspaceGuide from "./WorkspaceGuide";
 export interface ShellUser { name: string; roleName: string; branchName: string | null; employeeCode: string; permissions: string[]; }
 const NAV: { href: string; label: string; icon: IconName; perm: string; group: string }[] = [
+  { href:"/cases",label:"Cases & journeys",icon:"compass",perm:"customer:view",group:"Daily work" },
   { href:"/dashboard",label:"Today",icon:"dashboard",perm:"dashboard:view",group:"Daily work" },
   { href:"/sales",label:"Enquiries & quotes",icon:"customers",perm:"customer:view",group:"Sales" },
   { href:"/customers",label:"Customers",icon:"customers",perm:"customer:view",group:"Sales" },

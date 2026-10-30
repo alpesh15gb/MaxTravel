@@ -15,6 +15,7 @@ interface Resp {
 }
 
 const GROUP_COLORS: Record<string, string> = {
+  CASE: "bg-sky-50 text-sky-700 border-sky-200",
   CUSTOMER: "bg-sky-50 text-sky-700 border-sky-200",
   EMPLOYEE: "bg-violet-50 text-violet-700 border-violet-200",
   VISA_CASE: "bg-amber-50 text-amber-700 border-amber-200",

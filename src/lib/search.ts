@@ -1,15 +1,17 @@
+import {serviceCaseScope} from "./service-cases";
 import {passportLookup,encryptionConfigured} from "./sensitive-encryption";
 import { inrAmount } from "@/lib/money";
 import type { PrismaClient } from "@prisma/client";
 import type { SessionUser } from "./session";
 import { scopeWhere } from "./guard";
-export type SearchGroupKey="CUSTOMER"|"EMPLOYEE"|"VISA_CASE"|"BOOKING"|"PNR"|"TICKET"|"TRAVELLER"|"DOCUMENT"|"INVOICE"|"RECEIPT"|"SUPPLIER"|"TASK";
+export type SearchGroupKey="CASE"|"CUSTOMER"|"EMPLOYEE"|"VISA_CASE"|"BOOKING"|"PNR"|"TICKET"|"TRAVELLER"|"DOCUMENT"|"INVOICE"|"RECEIPT"|"SUPPLIER"|"TASK";
 export interface SearchHit{id:string;group:SearchGroupKey;title:string;subtitle:string;context:string;href:string}
 export interface SearchResponse{query:string;tookMs:number;groups:{key:SearchGroupKey;label:string;hits:SearchHit[]}[];exact?:SearchHit}
 export async function universalSearch(prisma:PrismaClient,query:string,user:SessionUser):Promise<SearchResponse>{
  const passportFilter=encryptionConfigured()?{OR:[{passportLookup:passportLookup(query)},{passportLookup:null,passportNumber:{contains:query.trim().slice(0,120)}}]}:{passportNumber:{contains:query.trim().slice(0,120)}};
  const start=Date.now(),q=query.trim().slice(0,120);if(q.length<2)return{query:q,tookMs:0,groups:[]};const can=(p:string)=>user.permissions.some(v=>v===p),contains={contains:q},customer=scopeWhere(user,null,undefined,"assignedToId"),work=scopeWhere(user,null,"ownerId"),sensitive=can("sensitive:view");
- const [customers,employees,cases,bookings,travellers,tickets,invoices,receipts,suppliers,tasks,docs]=await Promise.all([
+ const [journeys,customers,employees,cases,bookings,travellers,tickets,invoices,receipts,suppliers,tasks,docs]=await Promise.all([
+ ["customer:view","visa:view","ticketing:view"].some(can)?prisma.serviceCase.findMany({where:{AND:[serviceCaseScope(user),{OR:[{caseNo:contains},{title:contains},{customer:{name:contains}}]}]},include:{customer:{select:{name:true}},owner:{select:{name:true}}},take:8}):[],
  can("customer:view")?prisma.customer.findMany({where:{AND:[customer,{OR:[{name:contains},{phone:contains},{email:contains},{code:contains},{city:contains}]}]},take:8}):[],
  can("employee:view")?prisma.user.findMany({where:{AND:[user.accessMode==="BRANCH"?{branchId:user.branchId}:user.accessMode==="ASSIGNED"?{id:user.id}:{},{OR:[{name:contains},{email:contains},{employeeCode:contains}]}]},include:{role:true},take:6}):[],
  can("visa:view")?prisma.visaCase.findMany({where:{AND:[work,{OR:[{caseNo:contains},{destination:contains},{customer:{name:contains}},{travellers:{some:{traveller:{fullName:contains}}}},...(sensitive?[{travellers:{some:{traveller:passportFilter}}}]:[])]}]},include:{customer:true,stage:true},take:8}):[],
@@ -23,6 +25,7 @@ export async function universalSearch(prisma:PrismaClient,query:string,user:Sess
  can("document:view")?prisma.document.findMany({where:{customer:{is:customer},OR:[{docNo:contains},{docType:contains},{customer:{name:contains}},{traveller:{fullName:contains}}]},include:{customer:true},take:6}):[],
  ]);
  const groups:SearchResponse["groups"]=[];const add=(key:SearchGroupKey,label:string,hits:Omit<SearchHit,"group">[])=>{if(hits.length)groups.push({key,label,hits:hits.map(h=>({...h,group:key}))});};
+ add("CASE","Client cases",journeys.map(c=>({id:c.id,title:c.caseNo,subtitle:`${c.customer.name} · ${c.title}`,context:`${c.status} · ${c.owner.name}`,href:`/cases/${c.id}`})));
  add("CUSTOMER","Customers",customers.map(c=>({id:c.id,title:c.name,subtitle:`${c.code} · ${c.phone}`,context:c.city,href:`/customers/${c.id}`})));
  add("EMPLOYEE","Team",employees.map(e=>({id:e.id,title:e.name,subtitle:e.employeeCode,context:e.role.name,href:`/employees/${e.id}`})));
  add("VISA_CASE","Visa cases",cases.map(v=>({id:v.id,title:v.caseNo,subtitle:`${v.customer.name} · ${v.destination}`,context:v.stage.name,href:`/visa/${v.id}`})));
