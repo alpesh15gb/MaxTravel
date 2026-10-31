@@ -59,14 +59,14 @@ See [reporting deployment and acceptance](docs/reporting-deployment.md) before u
 See [reporting research](docs/reporting-research.md) and the
 [single-office launch guide](docs/single-office-launch.md) for the latest work and deployment path.
 
-**Workspace** — Agency pulse (`/dashboard`), Customers + Customer 360, Visa cases, Ticketing,
-Documents. **Finance** — Money & invoices, Refunds, Suppliers. **Operations** — Tasks,
-WhatsApp desk, Team. **Manage** — Visa checklists, Audit trail, Agency settings.
+**Seven workspaces** — Today / My work, Customers & cases, Travel operations, Finance,
+Communications, Reports, and Administration. Each section has a focused entry point;
+the sidebar opens one section at a time. See [workspace sections and role-aware daily work](docs/WORKSPACE-SECTIONS.md).
 
-- **Agency pulse** answers "what needs attention now": PNR deadlines, overdue money,
-  dossiers blocked on documents, passport-validity warnings, unverified documents, supplier
-  dues, pending refunds and overdue tasks. A fresh workspace shows truthful zeros and a
-  getting-started path instead of invented trends.
+- **Daily overview** (`/dashboard`) shows scoped summary counts, a short decision list,
+  today's follow-ups and a permission-controlled New case entry. Owners and branch managers
+  see Agency overview; staff see My work. Section overviews hold the detailed queues and
+  transaction launchers; existing records and reports remain the authoritative workspaces.
 - **Customer 360** (`/customers/[id]`) connects travellers, cases, bookings, documents,
   money, refunds, WhatsApp history, tasks, notes and an activity timeline with permitted
   quick actions.

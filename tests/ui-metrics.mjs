@@ -133,6 +133,7 @@ async function startWorkspace() {
 // ---------------------------------------------------------------- what the reader sees
 const ROUTES = [
   ["dashboard", "/dashboard"],
+  ["workspace-customers","/workspace/customers"],["workspace-operations","/workspace/operations"],["workspace-finance","/workspace/finance"],["workspace-communications","/workspace/communications"],["workspace-administration","/workspace/administration"],
   ["customers", "/customers"],
   ["customer-detail", "/customers/{customerId}"],
   ["visa", "/visa"],

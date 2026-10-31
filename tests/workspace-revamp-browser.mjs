@@ -32,6 +32,7 @@ try{
   const owner=await db.user.findUniqueOrThrow({where:{email:"review@visual.test"}});
   const invoice=await db.invoice.findFirstOrThrow({where:{customerId:fixture.customerId}});
   const routes=[
+    ["customers-workspace","/workspace/customers"],["operations-workspace","/workspace/operations"],["finance-workspace","/workspace/finance"],["communications-workspace","/workspace/communications"],["administration-workspace","/workspace/administration"],
     ["cases","/cases"],["case-journey",`/cases/${fixture.serviceCaseId}`],["today","/dashboard"],["start-work","/work"],["sales","/sales"],["customers","/customers"],["customer",`/customers/${fixture.customerId}`],
     ["tasks","/tasks"],["bookings","/ticketing"],["new-flight","/ticketing/new"],["new-hotel","/ticketing/new?product=HOTEL"],["booking",`/ticketing/${fixture.bookingId}`],
     ["online-bookings","/online-bookings"],["hotel-booking",`/ticketing/${fixture.onlineBookingId}`],["stay-record",`/ticketing/${fixture.onlineBookingId}/stay`],

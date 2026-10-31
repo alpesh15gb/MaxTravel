@@ -15,9 +15,9 @@ export async function checkSalesToday(page, base, fixture) {
     const lead = await db.salesLead.create({ data: { ...common, id: `${prefix}-due`, title: "Today exact older enquiry", followUpAt: new Date(Date.now()-86400000), createdAt: new Date(0) } }); leadIds.push(lead.id);
     // More than one Sales page: navigation must fetch this exact enquiry, not guess from the first page.
     for (let i=0;i<51;i++) { const row=await db.salesLead.create({data:{...common,id:`${prefix}-new-${i}`,title:`Unscheduled ${i}`}}); leadIds.push(row.id); }
-    await page.goto(`${base}/dashboard`, { waitUntil: "networkidle" });
+    await page.goto(`${base}/workspace/customers`, { waitUntil: "networkidle" });
     const queue = page.getByRole("region", { name: "Attention queue" });
-    await queue.getByLabel("Work area", { exact: true }).selectOption("sales");
+
     const item = queue.locator("article").filter({ hasText: lead.title });
     // A transient exact-record failure must not make Reload silently settle on page one.
     let interrupted = false;
@@ -29,7 +29,7 @@ export async function checkSalesToday(page, base, fixture) {
       return route.fallback();
     };
     await page.route("**/api/sales*", interruptExact);
-    await item.getByRole("button", { name: "Open enquiry", exact: true }).click();
+    await item.getByRole("link", { name: "Open enquiry", exact: true }).click();
     await page.waitForURL(`**/sales?lead=${lead.id}`);
     await page.getByText("Enquiries could not be loaded. Retry to see the latest records.", { exact: true }).waitFor();
     assert(interrupted, "The off-page exact-record read really was interrupted");
@@ -43,15 +43,15 @@ export async function checkSalesToday(page, base, fixture) {
     assert((await saved).ok());
     await page.getByText("Saved. The latest enquiry record is shown below.",{exact:true}).waitFor();
     await page.goBack({ waitUntil:"networkidle" });
-    await page.waitForURL("**/dashboard");
-    await queue.getByRole("button", { name:"Refresh",exact:true }).click();
+    await page.waitForURL("**/workspace/customers");
+    await page.getByRole("button", { name:"Refresh workspace",exact:true }).click();
     await queue.locator("article").filter({hasText:lead.title}).waitFor({state:"hidden"});
     assert.equal((await db.salesLead.findUniqueOrThrow({where:{id:lead.id}})).followUpAt.getFullYear(),2099);
 
     const accepted=await db.salesLead.create({data:{...common,id:`prefix-${prefix}-accepted`,title:"Today accepted quote review",stage:"QUOTED"}}); leadIds.push(accepted.id);
     await db.salesQuote.create({data:{leadId:accepted.id,version:1,state:"ACCEPTED",items:"[]",terms:"Synthetic only",totalMinor:10000,costMinor:8000,expiresAt:new Date("2099-12-01"),createdBy:owner.id}});
-    await queue.getByRole("button", {name:"Refresh",exact:true}).click();
-    await queue.locator("article").filter({hasText:accepted.title}).getByRole("button",{name:"Review accepted quote",exact:true}).click();
+    await page.getByRole("button", {name:"Refresh workspace",exact:true}).click();
+    await queue.locator("article").filter({hasText:accepted.title}).getByRole("link",{name:"Review accepted quote",exact:true}).click();
     await page.getByRole("heading",{name:accepted.title,exact:true}).waitFor();
     await page.getByRole("heading",{name:"Quote v1 · Accepted",exact:true}).waitFor();
     const converted=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/sales"&&r.request().method()==="POST");
@@ -59,7 +59,7 @@ export async function checkSalesToday(page, base, fixture) {
     assert((await converted).ok());
     await page.getByRole("link",{name:"Open linked booking",exact:true}).waitFor();
     assert.equal((await db.salesLead.findUniqueOrThrow({where:{id:accepted.id}})).stage,"WON");
-    await page.goto(`${base}/dashboard`,{waitUntil:"networkidle"});
+    await page.goto(`${base}/workspace/customers`,{waitUntil:"networkidle"});
     assert.equal(await queue.locator("article").filter({hasText:accepted.title}).count(),0);
     // A guessed or revoked exact-record link must not reopen retained enquiry details.
     await page.goto(`${base}/sales?lead=unavailable-${prefix}`,{waitUntil:"networkidle"});

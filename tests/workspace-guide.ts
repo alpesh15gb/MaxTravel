@@ -5,6 +5,7 @@ import { reportLocationFilters } from "../src/lib/report-workspace";
 assert.deepEqual(availableWorkActions([]),[],"No operations are offered without permissions");
 assert(!availableWorkActions(["payment:record"]).some(action=>action.id==="payment"),"A write permission cannot bypass the destination read guard");
 assert(availableWorkActions(["payment:view","payment:record"]).some(action=>action.id==="payment"));
+assert(!availableWorkActions(["payment:view","supplier:view","refund:view","customer:view"]).some(action=>["case","advance","supplier","refund"].includes(action.id)),"Read-only access does not advertise transaction writes");
 assert(!availableWorkActions(["customer:create","customer:view"]).some(action=>action.id==="enquiry"),"Quotation entry requires enquiry editing access too");
 assert(availableWorkActions(["customer:create","customer:view","customer:edit"]).some(action=>action.href==="/sales?action=new"));
 assert(availableWorkActions(["ticketing:create"]).some(action=>action.href==="/ticketing/new?product=HOTEL"),"Manual hotel entry is a first-class workflow");

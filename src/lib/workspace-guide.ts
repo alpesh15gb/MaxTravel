@@ -1,4 +1,5 @@
 import type { IconName } from "@/components/Icon";
+import { sectionForPath } from "./workspace-sections";
 
 export type WorkAction = { id: string; title: string; description: string; href: string; permission: string; group: "Customers & sales" | "Travel operations" | "Money & accounts"; icon: IconName; steps: readonly string[] };
 export const WORK_ACTIONS: readonly WorkAction[] = [
@@ -20,8 +21,8 @@ export const WORK_ACTIONS: readonly WorkAction[] = [
 ];
 
 // A launch shortcut must meet both the operation permission and its destination's read guard.
-const ENTRY_PERMISSIONS:Record<string,readonly string[]>={customer:["customer:view"],enquiry:["customer:view","customer:edit"],followup:["task:view"],payment:["payment:view"],invoice:["payment:view"]};
-export function availableWorkActions(permissions:readonly string[]){return WORK_ACTIONS.filter(action=>permissions.includes(action.permission)&&(ENTRY_PERMISSIONS[action.id]??[]).every(permission=>permissions.includes(permission)));}
+const ENTRY_PERMISSIONS:Record<string,readonly string[]>={customer:["customer:view"],enquiry:["customer:view","customer:edit"],followup:["task:view"],payment:["payment:view"],invoice:["payment:view"],advance:["payment:record"],supplier:["supplier:manage"],refund:["refund:manage"]};
+export function availableWorkActions(permissions:readonly string[]){return WORK_ACTIONS.filter(action=>permissions.includes(action.permission)&&(ENTRY_PERMISSIONS[action.id]??[]).every(permission=>permissions.includes(permission))&&(action.id!=="case"||permissions.includes("visa:create")||permissions.includes("ticketing:create")));}
 
 type Guide = { match: RegExp; area: string; title: string; parent?: { label: string; href: string }; steps: readonly string[] };
 export const SCREEN_GUIDES: readonly Guide[] = [
@@ -59,4 +60,9 @@ export const SCREEN_GUIDES: readonly Guide[] = [
   {match:/^\/account-security/,area:"Your account",title:"Account security",steps:["Review your account protections","Complete the requested verification","Review active sessions and recovery options"]},
   {match:/^\/notifications/,area:"Daily work",title:"Notifications",steps:["Review recent updates","Open the linked record for context","Mark the update read once reviewed"]},
 ];
-export function screenGuide(path: string) { return SCREEN_GUIDES.find(guide => guide.match.test(path)); }
+export function screenGuide(path: string) {
+  const existing = SCREEN_GUIDES.find(guide => guide.match.test(path));
+  if (existing) return existing;
+  const section = sectionForPath(path);
+  if (section && path === section.href) return { area: section.title, title: section.title, steps: ["Review the records and priorities available to your role", "Choose the workspace for the transaction you need", "Open the linked record and complete its next step"] };
+}

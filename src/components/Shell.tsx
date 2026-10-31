@@ -12,31 +12,8 @@ import Modal from "./Modal";
 import DensityControl from "./DensityControl";
 import Brand from "./Brand";
 import WorkspaceGuide from "./WorkspaceGuide";
+import { availableSections, sectionForPath, type SectionId } from "@/lib/workspace-sections";
 export interface ShellUser { name: string; roleName: string; branchName: string | null; employeeCode: string; permissions: string[]; }
-const NAV: { href: string; label: string; icon: IconName; perm: string; group: string }[] = [
-  { href:"/cases",label:"Cases & journeys",icon:"compass",perm:"customer:view",group:"Daily work" },
-  { href:"/dashboard",label:"Today",icon:"dashboard",perm:"dashboard:view",group:"Daily work" },
-  { href:"/sales",label:"Enquiries & quotes",icon:"customers",perm:"customer:view",group:"Sales" },
-  { href:"/customers",label:"Customers",icon:"customers",perm:"customer:view",group:"Sales" },
-  { href:"/tasks",label:"Tasks & follow-ups",icon:"tasks",perm:"task:view",group:"Sales" },
-  { href:"/visa",label:"Visa cases",icon:"visa",perm:"visa:view",group:"Travel desk" },
-  { href:"/ticketing",label:"Bookings & stays",icon:"plane",perm:"ticketing:view",group:"Travel desk" },
-  { href:"/online-bookings",label:"Online bookings",icon:"plane",perm:"ticketing:view",group:"Travel desk" },
-  { href:"/documents",label:"Documents",icon:"documents",perm:"document:view",group:"Travel desk" },
-  { href:"/payments",label:"Money & invoices",icon:"wallet",perm:"payment:view",group:"Finance" },
-  { href:"/advances",label:"Customer advances",icon:"wallet",perm:"payment:view",group:"Finance" },
-  { href:"/reports",label:"Reports & insights",icon:"dashboard",perm:"payment:view",group:"Daily work" },
-  { href:"/refunds",label:"Refunds",icon:"refund",perm:"refund:view",group:"Finance" },
-  { href:"/suppliers",label:"Suppliers",icon:"suppliers",perm:"supplier:view",group:"Finance" },
-  { href:"/incoming-documents",label:"Incoming documents",icon:"documents",perm:"whatsapp:view",group:"Travel desk" },
-  { href:"/whatsapp",label:"WhatsApp desk",icon:"message",perm:"whatsapp:view",group:"Travel desk" },
-  { href:"/employees",label:"Team",icon:"customers",perm:"employee:view",group:"Administration" },
-  { href:"/customer-tools",label:"Customer import",icon:"customers",perm:"customer:create",group:"Administration" },
-  { href:"/checklists",label:"Visa checklists",icon:"check",perm:"checklist:view",group:"Administration" },
-  { href:"/audit",label:"Audit trail",icon:"audit",perm:"audit:view",group:"Administration" },
-  { href:"/travel-packages",label:"Travel packages",icon:"compass",perm:"settings:manage",group:"Catalogue" },
-  { href:"/settings",label:"Agency settings",icon:"settings",perm:"settings:manage",group:"Administration" },
-];
 const QUICK: { href: string; label: string; icon: IconName; perm: string }[] = [
   { href:"/visa/new",label:"New visa case",icon:"visa",perm:"visa:create" },
   { href:"/ticketing/new",label:"New booking",icon:"plane",perm:"ticketing:create" },
@@ -60,13 +37,10 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
   const whatsappMemory = useWhatsAppComposerMemory();
   const [mobile, setMobile] = useState(false); const [pwOpen, setPwOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false); const [userOpen, setUserOpen] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<string[]>(() => {
-    return [];
-  });
-  useEffect(() => {
-    const currentGroup = NAV.find(n => path === n.href || path.startsWith(n.href + "/"))?.group;
-    if (currentGroup) setCollapsedGroups(previous => previous.filter(group => group !== currentGroup));
-  }, [path]);
+  const sections = availableSections(user.permissions);
+  const activeSection = sectionForPath(path);
+  const [expanded, setExpanded] = useState<{ path: string; id: SectionId | null } | null>(null);
+  const openSection = expanded?.path === path ? expanded.id : activeSection?.id ?? sections[0]?.id;
   const [count, setCount] = useState(0); const [error, setError] = useState("");
   const drawerRef = useRef<HTMLElement>(null); const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const quickRef = useRef<HTMLDivElement>(null); const userRef = useRef<HTMLDivElement>(null);
@@ -106,10 +80,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
     };
   }, [mobile]);
   async function logout() { draftMemory.clear(); try { const r = await fetch("/api/auth/logout", { method: "POST" }); if (!r.ok) throw new Error(); packageDraftMemory.clear(); whatsappMemory.clear(); router.push("/login"); router.refresh(); } catch { setError("Could not sign out. Please try again."); } }
-  const nav = NAV.filter(n => user.permissions.includes(n.perm));
   const quick = QUICK.filter(q => user.permissions.includes(q.perm));
-  const activeModule = nav.find(n => path === n.href || path.startsWith(n.href + "/"));
-  const groups = ["Daily work", "Sales", "Travel desk", "Finance", "Catalogue", "Administration"].filter(group => nav.some(n => n.group === group));
   return <div className="operations-studio flex min-h-screen flex-col">
     <a href="#workspace-content" className="skip-link">Skip to workspace</a>
     {mobile && <button aria-label="Close navigation" className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm lg:hidden" onClick={() => setMobile(false)} />}
@@ -150,13 +121,15 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
         <div className="studio-workspace-label"><span className="studio-agency-monogram" aria-hidden="true">{initials(agencyName)}</span><span><strong title={agencyName}>{agencyName}</strong><small>Agency operations</small></span></div>
         <Link href="/work" aria-current={path==="/work"?"page":undefined} className="rail-start" onClick={()=>setMobile(false)}><Icon name="plus" size={18}/>Start work<Icon name="arrow" size={16}/></Link>
         <nav aria-label="Main navigation" className="tos-scroll flex-1 overflow-y-auto px-3 pb-5 pt-1">
-          {groups.map(group => {
-            const expanded = !collapsedGroups.includes(group);
-            const id = `navigation-${group.replaceAll(" ", "-").toLowerCase()}`;
-            return <section key={group} className="studio-nav-group"><button className="nav-section" aria-expanded={expanded} aria-controls={id} onClick={() => setCollapsedGroups(previous => expanded ? [...previous, group] : previous.filter(value => value !== group))}>{group}<Icon name={expanded ? "chevronDown" : "arrow"} size={13}/></button>
-              <div id={id} hidden={!expanded}>{nav.filter(n => n.group === group).map(n => {
-                const active = path === n.href || path.startsWith(n.href + "/");
-                return <Link key={n.href} onClick={() => setMobile(false)} href={n.href} aria-current={active ? "page" : undefined} className={`nav-link ${active ? "active" : ""}`}><Icon name={n.icon} size={18}/><span>{n.label}</span>{active && <span className="studio-active-dot" aria-hidden="true"/>}</Link>;
+          {sections.map(section => {
+            const isOpen = openSection === section.id;
+            const id = `navigation-${section.id}`;
+            const links = section.href.startsWith("/workspace/") ? [{href:section.href,label:"Section overview",icon:section.icon},...section.links] : section.links;
+            return <section key={section.id} className={`studio-nav-group workspace-nav-section ${activeSection?.id===section.id?"is-current":""}`}>
+              <div className="workspace-section-nav-heading"><Link href={section.href} onClick={()=>setMobile(false)}><Icon name={section.icon} size={18}/><span>{section.title}</span></Link><button type="button" aria-label={`${isOpen?"Collapse":"Expand"} ${section.title}`} aria-expanded={isOpen} aria-controls={id} onClick={()=>setExpanded({path,id:isOpen?null:section.id})}><Icon name={isOpen?"chevronDown":"arrow"} size={15}/></button></div>
+              <div id={id} hidden={!isOpen}>{links.map(n => {
+                const active = path === n.href || (!n.href.startsWith("/workspace/") && path.startsWith(n.href + "/"));
+                return <Link key={n.href} onClick={() => setMobile(false)} href={n.href} aria-current={active ? "page" : undefined} className={`nav-link ${active ? "active" : ""}`}><Icon name={n.icon} size={17}/><span>{n.label}</span>{active && <span className="studio-active-dot" aria-hidden="true"/>}</Link>;
               })}</div>
             </section>;
           })}
@@ -168,7 +141,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
         </div>
       </aside>
       <div className="workspace-main-shell flex min-w-0 flex-1 flex-col">
-        <main id="workspace-content" tabIndex={-1} data-workspace-area={activeModule?.group??"Daily work"} className="min-w-0 flex-1"><WorkspaceGuide key={path} path={path}/>{children}</main>
+        <main id="workspace-content" tabIndex={-1} data-workspace-area={activeSection?.title??"Today / My work"} className="min-w-0 flex-1"><WorkspaceGuide key={path} path={path}/>{children}</main>
         <footer className="no-print flex justify-between gap-3 border-t border-slate-200 px-6 py-3 text-small text-slate-600"><span>{agencyName} · Private agency workspace</span><span>Max Travel CRM</span></footer>
       </div>
     </div>
