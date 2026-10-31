@@ -1,9 +1,10 @@
+import {configuredAppOrigin} from "./lib/app-origin";
 import { NextRequest, NextResponse } from "next/server";
 
 export function middleware(request: NextRequest) {
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
     const origin = request.headers.get("origin");
-    const configured = process.env.APP_ORIGIN;
+    const configured = configuredAppOrigin();
     let allowed = !origin;
     if (origin) {
       try {

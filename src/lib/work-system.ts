@@ -153,7 +153,7 @@ export async function scheduleWork(now = new Date()) {
     hour < config.closeHour;
   const markerDay = String(agencyDay(now).start.getTime());
   const ids = await prisma.$queryRaw<{ id: string }[]>(
-    Prisma.sql`SELECT t.id FROM Task t WHERE t.status IN ('OPEN','IN_PROGRESS') AND ( (t.hardDeadline=1 AND t.dueAt<${new Date(now.getTime() + 86400000)}) ${office ? Prisma.sql`OR t.dueAt<${now} OR t.nextCheckAt<=${now} OR (t.updatedAt<${new Date(now.getTime() - config.staleDays * 86400000)} AND t.workState<>'WAITING')` : Prisma.empty}) AND NOT EXISTS (SELECT 1 FROM Settings s WHERE s.key='work.notice.'||t.id||'.'||t.version||'.'||${markerDay}) ORDER BY t.hardDeadline DESC,t.dueAt ASC,t.updatedAt ASC,t.id ASC LIMIT 100`,
+    Prisma.sql`SELECT t."id" FROM "Task" t WHERE t."status" IN ('OPEN','IN_PROGRESS') AND ( (t."hardDeadline"=true AND t."dueAt"<${new Date(now.getTime() + 86400000)}) ${office ? Prisma.sql`OR t."dueAt"<${now} OR t."nextCheckAt"<=${now} OR (t."updatedAt"<${new Date(now.getTime() - config.staleDays * 86400000)} AND t."workState"<>'WAITING')` : Prisma.empty}) AND NOT EXISTS (SELECT 1 FROM "Settings" s WHERE s."key"='work.notice.'||t."id"||'.'||t."version"||'.'||${markerDay}) ORDER BY t."hardDeadline" DESC,t."dueAt" ASC,t."updatedAt" ASC,t."id" ASC LIMIT 100`,
   );
   const jobs = await prisma.task.findMany({
     where: { id: { in: ids.map((r) => r.id) } },

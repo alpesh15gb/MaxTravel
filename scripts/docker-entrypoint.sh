@@ -38,7 +38,10 @@ log "private uploads: $UPLOAD_DIR"
 # RUN_MIGRATIONS=false is for the case where migrations are applied by a separate job.
 if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
   log "applying database migrations"
-  ./node_modules/.bin/prisma migrate deploy || fail "database migration failed — refusing to start with an unknown schema"
+  case "$DATABASE_URL" in
+    postgres://*|postgresql://*) node scripts/prisma-database.mjs migrate-postgres || fail "PostgreSQL migration failed" ;;
+    *) ./node_modules/.bin/prisma migrate deploy || fail "database migration failed — refusing to start with an unknown schema" ;;
+  esac
 else
   log "RUN_MIGRATIONS=false: skipping migrations"
 fi

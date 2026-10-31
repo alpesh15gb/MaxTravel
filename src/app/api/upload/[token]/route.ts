@@ -1,6 +1,7 @@
+import {persistPrivateFile,removePrivateFile} from "@/lib/private-storage";
 import {scanUpload} from "@/lib/upload-scan";
 import { prisma } from "@/lib/db";
-import { mkdir,writeFile,unlink } from "fs/promises";
+import { mkdir,writeFile } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 import { ApiError,jsonError } from "@/lib/guard";
@@ -56,7 +57,7 @@ export async function POST(req:Request,ctx:{params:Promise<{token:string}>}){let
  const max=Math.min(15,item?.maxSizeMb??15);if(file.size>max*1024*1024)throw new ApiError(413,`This document allows files up to ${max} MB.`);
  const buffer=Buffer.from(await file.arrayBuffer());const valid=normalized==="pdf"?buffer.subarray(0,5).toString()==="%PDF-":normalized==="jpg"?buffer[0]===255&&buffer[1]===216&&buffer[2]===255:buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));if(!valid)throw new ApiError(400,"File content does not match its PDF or image extension.");
  await scanUpload(buffer);
- await mkdir(ROOT,{recursive:true});const storageName=`${randomUUID()}.${normalized}`;saved=path.join(ROOT,storageName);await writeFile(saved,buffer);
+ await mkdir(ROOT,{recursive:true});const storageName=`${randomUUID()}.${normalized}`;saved=path.join(ROOT,storageName);await writeFile(saved,buffer);await persistPrivateFile(saved);
  const doc=await prisma.$transaction(async tx=>{
  const current=await tx.uploadLink.findUnique({where:{id:link.id}});if(!current||current.revoked||current.expiresAt<new Date())throw new ApiError(410,"Link expired while uploading.");
  const data={status:"RECEIVED",verificationStatus:"PENDING",fileName:file.name,storagePath:`uploads/${storageName}`,mimeType:normalized==="pdf"?"application/pdf":normalized==="jpg"?"image/jpeg":"image/png",sizeBytes:file.size,uploadSource:"PORTAL",uploadedAt:new Date(),expiryDate,verifiedAt:null,verifiedById:null,extractedConfirmedAt:null,extractedConfirmedById:null,rejectionReason:null,extracted:null,warnings:null};
@@ -66,4 +67,4 @@ export async function POST(req:Request,ctx:{params:Promise<{token:string}>}){let
  await tx.uploadLink.update({where:{id:link.id},data:{usedAt:new Date()}});await tx.activity.create({data:{customerId:link.customerId,type:"DOC",summary:`${record.docType} received via client portal; review pending`,link:`/documents?focus=${record.id}`}});return record;
  },{timeout:20000});
  saved=null;return Response.json({ok:true,docNo:doc.docNo,documentId:doc.id,status:doc.status});
- }catch(e){if(saved)await unlink(saved).catch(error=>console.error("Could not remove failed upload",error));return jsonError(e);}}
+ }catch(e){if(saved)await removePrivateFile(saved).catch(error=>console.error("Could not remove failed upload",error));return jsonError(e);}}

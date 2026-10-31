@@ -81,6 +81,7 @@ function errorReference() {
  * about internals. `context` is optional and only narrows the log line (for example a route name).
  */
 export function jsonError(e: unknown, context?: string): Response {
+  if(e&&typeof e==="object"&&"code"in e&&e.code==="P2034")return Response.json({error:"Another update was saved concurrently. Refresh to check the latest record, then retry the same request if needed."},{status:409});
   if (e instanceof ApiError) {
     return Response.json({ error: e.message }, { status: e.status });
   }

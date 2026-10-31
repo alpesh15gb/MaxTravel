@@ -12,9 +12,10 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
-  serverExternalPackages: ["pdfkit", "exceljs"],
+  serverExternalPackages: ["pdfkit", "exceljs", "@vercel/blob", "@maxtravel/prisma-postgresql"],
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   poweredByHeader: false,
+  outputFileTracingIncludes:{"/*":["./node_modules/@maxtravel/prisma-postgresql/**/*"]},
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

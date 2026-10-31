@@ -1,0 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {execFileSync} from 'node:child_process';
+const root=path.resolve(import.meta.dirname,'..'),cli=path.join(root,'node_modules/prisma/build/index.js');
+export function postgresSchema(){const source=fs.readFileSync(path.join(root,'prisma/schema.prisma'),'utf8').replace(/\r\n/g,'\n');const schema=source.replace('provider = "sqlite"','provider = "postgresql"').replace(/(generator client\s*\{)/,'$1\n  output = "../../node_modules/@maxtravel/prisma-postgresql"').replace(/^(\s+\w+\s+DateTime\??)([^\n]*)$/gm,(_,field,attrs)=>{const [declaration,...comment]=attrs.split('//');return field+declaration.trimEnd()+(declaration.includes('@db.')?'':' @db.Timestamptz(3)')+(comment.length?' //'+comment.join('//'):'');});const target=path.join(root,'prisma/postgresql/schema.prisma');fs.mkdirSync(path.dirname(target),{recursive:true});const content='// Generated from ../schema.prisma by scripts/prisma-database.mjs.\n'+schema;if(!fs.existsSync(target)||fs.readFileSync(target,'utf8')!==content)fs.writeFileSync(target,content);return target;}
+function prisma(args,env={...process.env,DATABASE_URL:process.env.DATABASE_URL??"file:./build-only.db"}){execFileSync(process.execPath,[cli,...args],{cwd:root,env,stdio:'inherit'});}
+const command=process.argv[2]??'generate';if(!['generate','build','migrate-postgres'].includes(command))throw Error('Unknown database command.');const pgSchema=postgresSchema();
+if(command==='generate'||command==='build'){prisma(['generate','--schema','prisma/schema.prisma']);prisma(['generate','--schema',pgSchema]);}
+if(command==='migrate-postgres'){if(!/^postgres(?:ql)?:\/\//.test(process.env.MIGRATION_DATABASE_URL??process.env.DATABASE_URL??''))throw Error('A PostgreSQL migration connection is required. SQLite data is never converted by this command.');prisma(['migrate','deploy','--schema',pgSchema],{...process.env,DATABASE_URL:process.env.MIGRATION_DATABASE_URL??process.env.DATABASE_URL});}
+if(command==='build')execFileSync(process.execPath,[path.join(root,'node_modules/next/dist/bin/next'),'build','--webpack'],{cwd:root,env:process.env,stdio:'inherit'});

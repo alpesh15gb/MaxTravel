@@ -13,11 +13,11 @@
   },
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build --webpack",
+    "build": "node scripts/prisma-database.mjs build",
     "start": "next start",
     "lint": "eslint src --ext .js,.mjs,.cjs,.jsx,.ts,.mts,.cts,.tsx",
     "typecheck": "tsc --noEmit",
-    "db:generate": "prisma generate",
+    "db:generate": "node scripts/prisma-database.mjs generate",
     "db:migrate": "prisma migrate deploy",
     "db:status": "prisma migrate status",
     "backup": "node scripts/backup.mjs",
@@ -44,11 +44,14 @@
     "test:whatsapp-idempotency": "node --import tsx tests/whatsapp-manual-idempotency.mts",
     "test:meta-inbound": "node --import ./scripts/standalone-server.mjs --import tsx tests/meta-inbound.mts",
     "test:workspace-sections": "node tests/workspace-sections-browser.mjs",
-    "test:case-workflow": "node --import tsx tests/work-migration.mts && node --import ./scripts/standalone-server.mjs --import tsx tests/work-engine.mts && node tests/case-workflow-browser.mjs"
+    "test:case-workflow": "node --import tsx tests/work-migration.mts && node --import ./scripts/standalone-server.mjs --import tsx tests/work-engine.mts && node tests/case-workflow-browser.mjs",
+    "db:migrate:postgres": "node scripts/prisma-database.mjs migrate-postgres",
+    "postinstall": "node scripts/prisma-database.mjs generate"
   },
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",
     "@prisma/client": "^5.22.0",
+    "@vercel/blob": "^2.8.2",
     "bcryptjs": "^3.0.3",
     "exceljs": "^4.4.0",
     "jose": "^6.2.12",
@@ -61,8 +64,8 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "server-only": "^0.0.1",
-    "zod": "^4.6.7",
-    "sharp": "0.35.5"
+    "sharp": "0.35.5",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

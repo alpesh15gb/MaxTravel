@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/db";
 import { initializeReferenceData } from "@/lib/bootstrap";
 import { ApiError, jsonError } from "@/lib/guard";
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     }, { maxWait: 10000, timeout: 20000 });
     return Response.json({ ok: true }, { status: 201 });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && ["P2002", "P2034"].includes(e.code)) return Response.json({ error: "Setup was completed by another request. Please sign in." }, { status: 409 });
+    if (e && typeof e === "object" && "code" in e && ["P2002", "P2034"].includes(String(e.code))) return Response.json({ error: "Setup was completed by another request. Please sign in." }, { status: 409 });
     return jsonError(e);
   }
 }

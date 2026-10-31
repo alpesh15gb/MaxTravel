@@ -1,3 +1,4 @@
+import {ensurePrivateFile} from "@/lib/private-storage";
 import { jwtVerify } from "jose";
 import { createReadStream, existsSync, statSync } from "fs";
 import { Readable } from "stream";
@@ -21,6 +22,7 @@ export async function GET(req: Request) {
     if (payload.aud !== "document-file" || !rel.startsWith("uploads/")) return new Response("Invalid token", { status: 403 });
     const resolved = path.resolve(ROOT, rel.slice("uploads/".length));
     if (!resolved.startsWith(ROOT + path.sep)) return new Response("Invalid path", { status: 403 });
+    await ensurePrivateFile(resolved);
     if (!existsSync(resolved)) return new Response("File not found", { status: 404 });
 
     const stat = statSync(resolved);

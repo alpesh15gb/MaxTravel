@@ -1,3 +1,4 @@
+import {configuredAppOrigin} from "./app-origin";
 // The configuration contract for running the agency workspace.
 //
 // A misconfigured deploy used to look healthy until the first person tried to sign in: the session
@@ -22,7 +23,7 @@ export interface ConfigIssue {
   message: string;
 }
 
-const DATABASE_SCHEMES = ["file:"];
+const DATABASE_SCHEMES = ["file:","postgresql:","postgres:"];
 
 /**
  * Prisma resolves a relative `file:` URL against the directory holding schema.prisma, so
@@ -133,7 +134,7 @@ export function checkConfig(env: NodeJS.ProcessEnv = process.env, root = process
   }
 
   // ── Optional: the public origin of the workspace ────────────────────────────────────────────
-  const origin = env.APP_ORIGIN ?? "";
+  const origin = configuredAppOrigin(env) ?? "";
   if (origin) {
     try {
       const url = new URL(origin);
@@ -214,7 +215,7 @@ export const configErrors = (env: NodeJS.ProcessEnv = process.env, root = proces
  * Returns null when neither is usable, so a caller can decide what to do rather than emit "null".
  */
 export function publicOrigin(requestUrl?: string, env: NodeJS.ProcessEnv = process.env): string | null {
-  const configured = env.APP_ORIGIN;
+  const configured = configuredAppOrigin(env);
   if (configured) {
     try {
       return new URL(configured).origin;
@@ -270,6 +271,6 @@ export function configSummary(env: NodeJS.ProcessEnv = process.env, root = proce
     `uploads=${uploads}`,
     `session=${SESSION_HOURS}h`,
     `secret=${env.JWT_SECRET ? `${Buffer.byteLength(env.JWT_SECRET)} bytes` : "MISSING"}`,
-    `origin=${env.APP_ORIGIN || "inferred from request host"}`,
+    `origin=${configuredAppOrigin(env) || "inferred from request host"}`,
   ].join(" · ");
 }

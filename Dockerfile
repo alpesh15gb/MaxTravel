@@ -17,6 +17,8 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 # package-lock.json is committed, so install exactly what is locked.
 COPY package.json package-lock.json ./
+COPY prisma ./prisma
+COPY scripts/prisma-database.mjs ./scripts/prisma-database.mjs
 RUN npm ci
 # The Prisma client is generated code, not source: it must exist before the build.
 COPY prisma ./prisma
@@ -58,12 +60,13 @@ ENV NODE_ENV=production \
 # Build tools are removed from the final image, including ESLint and Tailwind.
 COPY --from=runtime-deps /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules/@maxtravel/prisma-postgresql ./node_modules/@maxtravel/prisma-postgresql
 COPY --from=builder /app/public ./public
 COPY package.json next.config.mjs ./
-COPY prisma ./prisma
+COPY --from=builder /app/prisma ./prisma
 
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY scripts/backup.mjs scripts/restore.mjs ./scripts/
+COPY scripts/backup.mjs scripts/restore.mjs scripts/prisma-database.mjs scripts/database-client.mjs ./scripts/
 COPY scripts/reconcile-reporting.mjs scripts/encrypt-sensitive.mjs scripts/staff-recovery.mjs ./scripts/
 COPY scripts/whatsapp-worker.mjs scripts/configure-evolution.mjs ./scripts/
 # COPY preserves source modes. A root checkout created with umask 077 can otherwise

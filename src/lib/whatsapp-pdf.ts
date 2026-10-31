@@ -1,7 +1,8 @@
+import {persistPrivateFile,ensurePrivateFile,removePrivateFile} from "./private-storage";
 import "server-only";
 import {scanUpload} from "./upload-scan";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, writeFile, unlink } from "node:fs/promises";
+import { mkdir, open, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ApiError } from "./guard";
 
@@ -32,10 +33,12 @@ export async function savePdf(bytes: Buffer) {
   validatePdf(bytes); await scanUpload(bytes); const storageKey = `${randomUUID()}.pdf`;
   await mkdir(root(), { recursive: true, mode: 0o700 });
   await writeFile(filePath(storageKey), bytes, { flag: "wx", mode: 0o600 });
+  await persistPrivateFile(filePath(storageKey));
   return { storageKey, sha256: createHash("sha256").update(bytes).digest("hex"), size: bytes.length };
 }
-export async function removePdf(storageKey: string) { await unlink(filePath(storageKey)); }
+export async function removePdf(storageKey: string) { await removePrivateFile(filePath(storageKey)); }
 export async function readPdf(attachment: { storageKey: string; sha256: string; size: number }) {
+  await ensurePrivateFile(filePath(attachment.storageKey));
   const handle = await open(filePath(attachment.storageKey), "r");
   let bytes:Buffer;try{const stat=await handle.stat();if(!stat.isFile()||stat.size>PDF_LIMIT||stat.size!==attachment.size)throw new ApiError(409,"Private PDF changed.");bytes=await handle.readFile();}finally{await handle.close();}validatePdf(bytes);
   if (bytes.length !== attachment.size || createHash("sha256").update(bytes).digest("hex") !== attachment.sha256) throw new ApiError(409, "The PDF has changed. Upload and preview it again.");

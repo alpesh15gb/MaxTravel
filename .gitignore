@@ -52,3 +52,6 @@ next-env.d.ts
 # Dedicated marketing images (never commit operator files).
 /prisma/package-media/
 /package-media/
+
+/generated/
+.next-cloud-preview/

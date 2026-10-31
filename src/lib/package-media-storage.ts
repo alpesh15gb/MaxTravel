@@ -1,3 +1,4 @@
+import {persistPrivateFile,ensurePrivateFile,removePrivateFile,remoteFiles} from "./private-storage";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
@@ -68,13 +69,15 @@ export async function writePackageImage(id: string, bytes: Buffer) {
   try {
     try { await handle.writeFile(bytes); await handle.sync(); } finally { await handle.close(); }
     await fs.link(temp, final);
+    await persistPrivateFile(final);
   } finally { await fs.unlink(temp); }
 }
 /** Only for a just-created asset whose DB transaction failed. Never deletes existing assets. */
-export async function removeFailedPackageImage(id: string) { await fs.unlink(path.join(await checkedRoot(), filename(id))).catch(() => {}); }
+export async function removeFailedPackageImage(id: string) { await removePrivateFile(path.join(await checkedRoot(true), filename(id))).catch(() => {}); }
 export async function readPackageImage(asset: { id: string; storageName: string; byteSize: number; sha256: string }) {
   if (asset.storageName !== filename(asset.id) || asset.byteSize < 1 || asset.byteSize > MAX_MEDIA_BYTES) throw new ApiError(404, "Image not found.");
-  const root = await checkedRoot();
+  const root = await checkedRoot(remoteFiles());
+  await ensurePrivateFile(path.join(root,asset.storageName));
   const handle = await fs.open(path.join(root, asset.storageName), constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = await handle.stat();

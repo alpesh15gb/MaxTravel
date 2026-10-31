@@ -1,8 +1,8 @@
-import { PrismaClient } from "@prisma/client";
+import {databaseClient} from './database-client.mjs';
 import { existsSync } from "node:fs";
 if(!process.env.DATABASE_URL&&existsSync(".env")&&process.loadEnvFile)process.loadEnvFile();
 if(!process.env.DATABASE_URL)throw new Error("Set DATABASE_URL for the database to verify.");
-const db=new PrismaClient();
+const db=databaseClient();
 try{
  const result=await db.$transaction(async tx=>{
   const cutover=await tx.settings.findUnique({where:{key:"financialJournal.cutover"}});
