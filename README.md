@@ -1,5 +1,7 @@
 # Max Travel CRM — Travel Agency Operating System
 
+Case-based daily work, staff delegation and management reporting: [Case workflow](docs/CASE-WORKFLOW.md). This release requires database migration `20261031100000_case_workflow`.
+
 Deploy on the existing Ubuntu VPS: [Docker + system Nginx installation and updates](docs/vps-nginx-deploy.md).
 
 Use the official [Meta Cloud API setup](META-WHATSAPP-SETUP.md) for WhatsApp. The Evolution guide is retained for legacy installations.

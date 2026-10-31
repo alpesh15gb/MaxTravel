@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic";
 
 export default async function NewBookingPage({ searchParams }: { searchParams: Promise<{ case?:string; customer?: string; product?: string }> }) {
   const user = await requirePage("ticketing:create");
-  const input=await searchParams;const journey=await caseEntryContext(prisma,user,input.case);const customer=journey?.customerId??input.customer,product=journey?.service??input.product;
+  const input=await searchParams;const journey=await caseEntryContext(prisma,user,input.case);const customer=journey?.customerId??input.customer,product=input.product??(journey?.service==="VISA"?"FLIGHT":journey?.service);
 
-  if(journey&&(journey.closedAt||journey.service==="VISA"))redirect(`/cases/${journey.id}`);
+  if(journey&&(journey.closedAt||!await prisma.serviceWork.count({where:{caseId:journey.id,service:product==="HOTEL"?"HOTEL":"FLIGHT"}})))redirect(`/cases/${journey.id}`);
   const where: Record<string, unknown> = {};
   if (user.accessMode === "BRANCH") where.branchId = user.branchId;
   if (user.accessMode === "ASSIGNED") where.OR = [{ assignedToId: user.id }, { id: user.id }];

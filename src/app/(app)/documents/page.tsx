@@ -9,7 +9,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   const user = await requirePage("document:view");
   const { focus } = await searchParams;
 
-  const where = { customer: { is: scopeWhere(user, null, undefined, "assignedToId") } };
+  const where = { OR: [{ customer: { is: scopeWhere(user, null, undefined, "assignedToId") } }, ...(user.permissions.includes("visa:view") && user.workRecordIds?.length ? [{visaCaseId:{in:user.workRecordIds}}] : [])] };
   const include = {
     customer: { select: { name: true, code: true } },
     traveller: { select: { fullName: true } },

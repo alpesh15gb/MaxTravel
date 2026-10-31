@@ -24,6 +24,7 @@ export interface SessionUser {
   authVersion?: string;
   sessionId?: string;
   mfaEnabled?: boolean;
+  workRecordIds?: string[];
 }
 
 export async function signSession(u: SessionUser): Promise<string> {
@@ -82,7 +83,11 @@ export async function getServerSession(): Promise<SessionUser | null> {
     if (!user?.active || payload.authVersion !== credentialVersion(user.passwordHash)) return null;
     const role = user.role.key as RoleKey;
     const mfa = await prisma.staffMfa.findUnique({where:{userId:user.id},select:{enabled:true}});
-    return { mfaEnabled:!!mfa?.enabled, sessionId: session.id, id: user.id, name: user.name, email: user.email, role, roleName: user.role.name,
+    const delegated = ROLE_ACCESS[role]==='ASSIGNED' ? await prisma.task.findMany({where:{unassigned:false,OR:[{ownerId:user.id},{reviewerId:user.id}]},select:{bookingId:true,visaCaseId:true,serviceCaseId:true,serviceWork:{select:{service:true}}}}) : [];
+    const quoteCases=delegated.filter(t=>t.serviceCaseId&&["FLIGHT","HOTEL"].includes(t.serviceWork?.service??""));
+    const quotes=ROLE_ACCESS[role]==="ASSIGNED"&&ROLE_PERMISSIONS[role].includes("ticketing:view")?await prisma.salesLead.findMany({where:{OR:[{serviceCase:{ownerId:user.id}},...quoteCases.map(t=>({serviceCaseId:t.serviceCaseId,product:t.serviceWork!.service}))]},select:{id:true}}):[];
+    const workRecordIds = [...new Set([...delegated.flatMap(t=>[t.bookingId,t.visaCaseId].filter((id):id is string=>!!id)),...quotes.map(q=>q.id)])];
+    return { workRecordIds, mfaEnabled:!!mfa?.enabled, sessionId: session.id, id: user.id, name: user.name, email: user.email, role, roleName: user.role.name,
       branchId: user.branchId, branchName: user.branch?.name ?? null, employeeCode: user.employeeCode,
       accessMode: ROLE_ACCESS[role] ?? "ASSIGNED", permissions: ROLE_PERMISSIONS[role] ?? [] };
   } catch {

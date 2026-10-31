@@ -15,7 +15,7 @@ export async function checkSalesToday(page, base, fixture) {
     const lead = await db.salesLead.create({ data: { ...common, id: `${prefix}-due`, title: "Today exact older enquiry", followUpAt: new Date(Date.now()-86400000), createdAt: new Date(0) } }); leadIds.push(lead.id);
     // More than one Sales page: navigation must fetch this exact enquiry, not guess from the first page.
     for (let i=0;i<51;i++) { const row=await db.salesLead.create({data:{...common,id:`${prefix}-new-${i}`,title:`Unscheduled ${i}`}}); leadIds.push(row.id); }
-    await page.goto(`${base}/workspace/customers`, { waitUntil: "networkidle" });
+    await page.goto(`${base}/work/service-alerts`, { waitUntil: "networkidle" });
     const queue = page.getByRole("region", { name: "Attention queue" });
 
     const item = queue.locator("article").filter({ hasText: lead.title });
@@ -43,7 +43,7 @@ export async function checkSalesToday(page, base, fixture) {
     assert((await saved).ok());
     await page.getByText("Saved. The latest enquiry record is shown below.",{exact:true}).waitFor();
     await page.goBack({ waitUntil:"networkidle" });
-    await page.waitForURL("**/workspace/customers");
+    await page.waitForURL("**/work/service-alerts");
     await page.getByRole("button", { name:"Refresh workspace",exact:true }).click();
     await queue.locator("article").filter({hasText:lead.title}).waitFor({state:"hidden"});
     assert.equal((await db.salesLead.findUniqueOrThrow({where:{id:lead.id}})).followUpAt.getFullYear(),2099);
@@ -59,7 +59,7 @@ export async function checkSalesToday(page, base, fixture) {
     assert((await converted).ok());
     await page.getByRole("link",{name:"Open linked booking",exact:true}).waitFor();
     assert.equal((await db.salesLead.findUniqueOrThrow({where:{id:accepted.id}})).stage,"WON");
-    await page.goto(`${base}/workspace/customers`,{waitUntil:"networkidle"});
+    await page.goto(`${base}/work/service-alerts`,{waitUntil:"networkidle"});
     assert.equal(await queue.locator("article").filter({hasText:accepted.title}).count(),0);
     // A guessed or revoked exact-record link must not reopen retained enquiry details.
     await page.goto(`${base}/sales?lead=unavailable-${prefix}`,{waitUntil:"networkidle"});

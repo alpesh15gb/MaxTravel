@@ -54,6 +54,7 @@ export function scopeWhere(
   const or: Record<string, unknown>[] = [];
   if (ownerId) or.push({ [ownerId]: user.id });
   if (assignedToId) or.push({ [assignedToId]: user.id });
+  if (ownerId === "ownerId" && user.workRecordIds?.length) or.push({ id: { in: user.workRecordIds } });
   if (!or.length) return { id: "__none__" };
   return { OR: or };
 }

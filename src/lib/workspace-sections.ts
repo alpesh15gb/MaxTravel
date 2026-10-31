@@ -5,17 +5,19 @@ export type SectionId = "today" | "customers" | "operations" | "finance" | "comm
 export type WorkspaceLink = { href: string; label: string; description: string; icon: IconName; permission: Permission };
 export type WorkspaceSection = { id: SectionId; title: string; description: string; icon: IconName; href: string; links: WorkspaceLink[] };
 export const WORKSPACE_SECTIONS: WorkspaceSection[] = [
-  { id: "today", title: "Today / My work", description: "Priorities, appointments and follow-ups for your working day.", icon: "dashboard", href: "/dashboard", links: [
+  { id: "today", title: "Home", description: "Priorities, appointments and follow-ups for your working day.", icon: "dashboard", href: "/dashboard", links: [
     { href: "/dashboard", label: "Daily overview", description: "See the next decisions and follow-ups.", icon: "dashboard", permission: "dashboard:view" },
     { href: "/tasks", label: "Tasks & follow-ups", description: "Plan, assign and complete the next action.", icon: "tasks", permission: "task:view" },
     { href: "/notifications", label: "Notifications", description: "Review updates to your work.", icon: "bell", permission: "dashboard:view" },
   ] },
-  { id: "customers", title: "Customers & cases", description: "Start at the customer, register a case ID and follow the complete journey.", icon: "customers", href: "/workspace/customers", links: [
+  { id: "customers", title: "Cases", description: "Start at the customer, register a case ID and follow the complete journey.", icon: "customers", href: "/cases", links: [
     { href: "/cases", label: "Cases & journeys", description: "One permanent case ID from first contact to completion.", icon: "compass", permission: "customer:view" },
     { href: "/customers", label: "Customers", description: "Customer details, travellers and related work.", icon: "customers", permission: "customer:view" },
     { href: "/sales", label: "Enquiries & quotes", description: "Prepare options and follow the customer's decision.", icon: "compass", permission: "customer:view" },
   ] },
-  { id: "operations", title: "Travel operations", description: "Manage bookings, visa applications and the documents needed to deliver them.", icon: "plane", href: "/workspace/operations", links: [
+  { id: "operations", title: "Work", description: "Manage bookings, visa applications and the documents needed to deliver them.", icon: "plane", href: "/work", links: [
+    { href: "/work/service-alerts", label: "Service alerts", description: "Sales handoffs, holds, appointments and source exceptions.", icon: "bell", permission: "dashboard:view" },
+    { href: "/work", label: "Work register", description: "Assign, execute, review and follow up work.", icon: "tasks", permission: "task:view" },
     { href: "/ticketing", label: "Flights & hotels", description: "Itineraries, stays, confirmations and servicing.", icon: "plane", permission: "ticketing:view" },
     { href: "/online-bookings", label: "Online bookings", description: "Transactions received from the booking app.", icon: "plane", permission: "ticketing:view" },
     { href: "/visa", label: "Visa applications", description: "Applicants, appointments and application stages.", icon: "visa", permission: "visa:view" },
@@ -27,15 +29,17 @@ export const WORKSPACE_SECTIONS: WorkspaceSection[] = [
     { href: "/refunds", label: "Refunds", description: "Approval, supplier recovery and actual payouts.", icon: "refund", permission: "refund:view" },
     { href: "/suppliers", label: "Supplier accounts", description: "Supplier bills, settlements and balances.", icon: "suppliers", permission: "supplier:view" },
   ] },
-  { id: "communications", title: "Communications", description: "Customer conversations and received files, ready to link to the right journey.", icon: "message", href: "/workspace/communications", links: [
+  { id: "communications", title: "Inbox", description: "Customer conversations and received files, ready to link to the right journey.", icon: "message", href: "/whatsapp", links: [
     { href: "/whatsapp", label: "WhatsApp desk", description: "Conversations, consent and message delivery.", icon: "message", permission: "whatsapp:view" },
     { href: "/incoming-documents", label: "Incoming documents", description: "Identify, scan and file received PDFs and images.", icon: "documents", permission: "whatsapp:view" },
   ] },
-  { id: "reports", title: "Reports", description: "Answer business questions with dated, scoped reports and complete exports.", icon: "audit", href: "/reports", links: [
+  { id: "reports", title: "Reports", description: "Answer business questions with dated, scoped reports and complete exports.", icon: "audit", href: "/reports/work", links: [
+    { href: "/reports/work", label: "Work & team reports", description: "Staff workload, outcomes and unfinished work.", icon: "tasks", permission: "task:view" },
     { href: "/reports", label: "Reports & insights", description: "Sales, collections, balances and operational performance.", icon: "audit", permission: "payment:view" },
   ] },
-  { id: "administration", title: "Administration", description: "Maintain team access, agency defaults, service checklists and your catalogue.", icon: "settings", href: "/workspace/administration", links: [
+  { id: "administration", title: "Settings", description: "Maintain team access, agency defaults, service checklists and your catalogue.", icon: "settings", href: "/workspace/administration", links: [
     { href: "/employees", label: "Team & access", description: "Staff records, roles and account status.", icon: "customers", permission: "employee:view" },
+    { href: "/work/settings", label: "Work templates & rules", description: "Service steps, reviews and staff reminder calendar.", icon: "tasks", permission: "settings:manage" },
     { href: "/settings", label: "Agency settings", description: "Agency, case-management and invoicing defaults.", icon: "settings", permission: "settings:manage" },
     { href: "/checklists", label: "Visa checklists", description: "Requirements for each destination and visa type.", icon: "check", permission: "checklist:view" },
     { href: "/travel-packages", label: "Travel packages", description: "Prepare and publish the customer-facing catalogue.", icon: "compass", permission: "settings:manage" },
@@ -49,6 +53,7 @@ export function availableSections(permissions: readonly string[]) {
 }
 export const findSection = (id: string) => WORKSPACE_SECTIONS.find(section => section.id === id);
 export function sectionForPath(path: string) {
+  if(path.startsWith("/work/settings")) return findSection("administration");
   return WORKSPACE_SECTIONS.find(section => path === section.href || section.links.some(link => path === link.href || path.startsWith(link.href + "/"))) ??
     (path.startsWith("/visa-requirements") ? findSection("operations") : undefined);
 }

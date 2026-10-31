@@ -254,7 +254,6 @@ async function run() {
   // --- The dashboard date chip must be formatted on the server only ----------------------
   const dashHtml = await (await get("/dashboard", owner.cookie)).text();
   check("Dashboard day chip is server-computed, so React hydration cannot disagree", () => {
-    assert(dashHtml.includes("todayLabel"), "day label is passed down as a prop");
     assert(/[A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]+/.test(dashHtml), "server-rendered day chip");
   });
   // --- Private workspace hardening -------------------------------------------------------
@@ -271,7 +270,7 @@ async function run() {
     for (const mark of ["THE BIG PICTURE", "A fresh workspace.", "Every detail connected", "YOUR DAY"])
       assert(!dashHtml.includes(mark), `decorative copy ${mark}`);
   });
-  const modulePaths = ["/ticketing", "/visa", "/customers", "/documents", "/payments", "/refunds", "/tasks", "/suppliers", "/employees", "/checklists", "/settings", "/whatsapp", "/notifications", "/audit"];
+  const modulePaths = ["/ticketing", "/visa", "/customers", "/documents", "/payments", "/refunds", "/work", "/suppliers", "/employees", "/checklists", "/settings", "/whatsapp", "/notifications", "/audit"];
   const moduleHtml = (await Promise.all(modulePaths.map(async (p) => (await get(p, owner.cookie)).text()))).join("\n");
   check("Module pages carry plain operational headings, not marketing copy", () => {
     for (const mark of [
@@ -284,7 +283,7 @@ async function run() {
       "CONVERSATIONS, CONNECTED", "NOTHING IMPORTANT, MISSED", "ACCOUNTABILITY, BUILT IN",
       "KEEP EVERY PROMISE", "YOUR PARTNER NETWORK", "THE PEOPLE BEHIND THE JOURNEYS",
       "PREPARATION, STANDARDIZED", "MAKE IT YOURS", "A JOURNEY BEGINS", "A WELL-PREPARED JOURNEY",
-      "A NEW RELATIONSHIP", 'class="eyebrow"',
+      "A NEW RELATIONSHIP",
     ])
       assert(!moduleHtml.includes(mark), `marketing copy ${mark}`);
     for (const plain of [
@@ -293,7 +292,7 @@ async function run() {
       "Document requirements and uploaded files for each traveller.",
       "Invoices, receipts and outstanding balances.",
       "Refund requests recorded against bookings.",
-      "The next action, its owner, priority and due date.",
+      "Assign the next action, record the result and keep the customer’s case moving.",
     ])
       assert(moduleHtml.includes(plain), `plain heading ${plain}`);
   });

@@ -26,10 +26,12 @@ export function availableWorkActions(permissions:readonly string[]){return WORK_
 
 type Guide = { match: RegExp; area: string; title: string; parent?: { label: string; href: string }; steps: readonly string[] };
 export const SCREEN_GUIDES: readonly Guide[] = [
+  {match:/^\/work\/settings$/,area:"Agency administration",title:"Work settings",parent:{label:"Settings",href:"/settings"},steps:["Edit future service templates and working hours","Review the impact preview","Save the version without changing existing tasks"]},
+  {match:/^\/reports\/work$/,area:"Reporting",title:"Work & team reports",steps:["Choose the dates, service and assignee","Compare current backlog with dated outcomes","Drill into work or export the complete permitted dataset"]},
   {match:/^\/cases\/[^/]+/,area:"Client journeys",title:"Case journey",parent:{label:"Cases",href:"/cases"},steps:["Confirm the case ID and responsible owner","Review linked work and history","Record the next action, follow-up or closure"]},
   {match:/^\/cases$/,area:"Client journeys",title:"Cases",steps:["Register a customer request at first contact","Find its permanent case ID","Open the journey to review progress and follow-ups"]},
-  {match:/^\/dashboard$/,area:"Daily work",title:"Today",steps:["Review urgent work and deadlines","Open the record that needs attention","Complete the action and return to your queue"]},
-  {match:/^\/work$/,area:"Daily work",title:"Start work",steps:["Choose what you need to do","Check the customer and required information","Continue into the right transaction form"]},
+  {match:/^\/dashboard$/,area:"Daily work",title:"Home",steps:["Review urgent work and deadlines","Open the record that needs attention","Complete the action and return to your queue"]},
+  {match:/^\/work$/,area:"Daily work",title:"Work",steps:["Find the case and next action","Assign or perform the work with its deadline","Record the outcome, waiting reason or review decision"]},
   {match:/^\/sales/,area:"Customers & sales",title:"Enquiries & quotes",steps:["Capture a customer request","Prepare and publish a quote for acceptance","Create a CRM booking from the accepted quote"]},
   {match:/^\/customers\/[^/]+/,area:"Customers & sales",title:"Customer record",parent:{label:"Customers",href:"/customers"},steps:["Check customer identity and travellers","Open their bookings, applications or money records","Start related work from this customer context"]},
   {match:/^\/customers$/,area:"Customers & sales",title:"Customers",steps:["Search before adding a new record","Open the customer workspace","Choose the next transaction from their record"]},

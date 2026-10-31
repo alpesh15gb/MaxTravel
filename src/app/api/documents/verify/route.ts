@@ -1,4 +1,5 @@
-import { requireSession, jsonError, ApiError, canTouchRecord } from "@/lib/guard";
+import {canTouchDocument} from "@/lib/record-access";
+import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
 
@@ -12,7 +13,7 @@ export async function POST(req: Request) {
     }
     const doc = await prisma.document.findUnique({ where: { id: documentId }, include: { customer: true } });
     if (!doc) throw new ApiError(404, "Document not found");
-    if (!canTouchRecord(user, doc.customer)) throw new ApiError(403, "Document is outside your access.");
+    if (!canTouchDocument(user, doc)) throw new ApiError(403, "Document is outside your access.");
     if (!doc.storagePath) throw new ApiError(400, "A document must be uploaded before review.");
     if (["ARCHIVED", "SUBMITTED"].includes(doc.status)) throw new ApiError(400, "This document is archived or already submitted.");
 

@@ -24,7 +24,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           await tx.salesLead.updateMany({where:{customerId:id,ownerId:current.assignedToId??user.id,stage:{notIn:["WON","LOST"]}},data:{ownerId:owner.id}});
           await tx.booking.updateMany({ where: { customerId: id, ownerId: current.assignedToId ?? user.id }, data: { ownerId: owner.id } });
           await tx.visaCase.updateMany({ where: { customerId: id, ownerId: current.assignedToId ?? user.id }, data: { ownerId: owner.id } });
-          await tx.task.updateMany({ where: { customerId: id, ownerId: current.assignedToId ?? user.id, status: { in: ["OPEN", "IN_PROGRESS"] } }, data: { ownerId: owner.id } });
+          await tx.task.updateMany({ where: { workflowTracked: false, customerId: id, ownerId: current.assignedToId ?? user.id, status: { in: ["OPEN", "IN_PROGRESS"] } }, data: { ownerId: owner.id } });
         }
       }
       // City was previously cut at 150 characters with a silent slice, so saving could store something

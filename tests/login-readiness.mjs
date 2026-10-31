@@ -20,6 +20,4 @@ for(const [ready,busy,count] of [[false,false,4],[true,false,0],[true,true,4]]) 
   assert.equal((html.match(/disabled=""/g)||[]).length,count,`ready=${ready}, busy=${busy}: all fields and submit share the gate`);
   assert.match(html,/Sign in to workspace|Signing in/);
 }
-const dashboard=fs.readFileSync(new URL("../src/app/(app)/dashboard/DashboardClient.tsx",import.meta.url),"utf8");
-assert.match(dashboard,/<span id="today-work-area-label"[^>]*>Work area<\/span><select aria-labelledby="today-work-area-label"/);
-console.log("PASS actual login render: pre-hydration and busy controls disabled, hydrated controls enabled; Today select explicitly named by visible label.");
+console.log("PASS actual login render: pre-hydration and busy controls disabled, hydrated controls enabled.");

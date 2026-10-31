@@ -1,6 +1,6 @@
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { prisma } from "@/lib/db";
-import { customerFor, optionalId, transactionAudit } from "@/lib/transactions";
+import { customerFor,relatedFor, optionalId, transactionAudit } from "@/lib/transactions";
 
 /** Revoke a customer upload link so a shared URL stops working immediately. */
 export async function POST(req: Request) {
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     const link = await prisma.$transaction(async (tx) => {
       const existing = await tx.uploadLink.findUnique({ where: { id: linkId } });
       if (!existing) throw new ApiError(404, "Upload link not found.");
-      await customerFor(tx, user, existing.customerId);
+      if(existing.visaCaseId){if(!user.permissions.includes("visa:view"))throw new ApiError(403,"Visa access is required for this upload link.");await relatedFor(tx,user,existing.customerId,null,existing.visaCaseId);}else await customerFor(tx, user, existing.customerId);
       const revoked = await tx.uploadLink.update({ where: { id: linkId }, data: { revoked: true } });
       await transactionAudit(tx, user, "REVOKE", "UploadLink", revoked.id, "Customer upload link revoked");
       return revoked;

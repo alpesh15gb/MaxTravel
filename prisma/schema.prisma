@@ -115,6 +115,9 @@ model ServiceCase {
   leads          SalesLead[]
   events         ServiceCaseEvent[]
   mutations      ServiceCaseMutation[]
+  serviceWork    ServiceWork[]
+  messages       CaseMessage[]
+  tasks          Task[]
 
   @@index([branchId, ownerId, status])
   @@index([customerId, createdAt])
@@ -682,9 +685,83 @@ model Task {
   booking     Booking?      @relation(fields: [bookingId], references: [id])
   createdAt   DateTime      @default(now())
   completedAt DateTime?
+  serviceCaseId String?
+  serviceCase ServiceCase? @relation(fields: [serviceCaseId], references: [id], onDelete: Restrict)
+  serviceWorkId String?
+  serviceWork ServiceWork? @relation(fields: [serviceWorkId], references: [id], onDelete: Restrict)
+  workState String @default("TODO")
+  unassigned Boolean @default(false)
+  originalDueAt DateTime?
+  waitingReason String?
+  nextCheckAt DateTime?
+  outcome String?
+  requiresReview Boolean @default(false)
+  resultType String @default("NOTE")
+  required Boolean @default(true)
+  hardDeadline Boolean @default(false)
+  reviewerId String?
+  startedAt DateTime?
+  submittedAt DateTime?
+  reviewedAt DateTime?
+  assignedAt DateTime?
+  updatedAt DateTime @default(now())
+  version Int @default(1)
+  workflowTracked Boolean @default(false)
+  sourceKey String? @unique
+  prerequisiteId String?
+  prerequisite Task? @relation("TaskPrerequisite", fields: [prerequisiteId], references: [id], onDelete: Restrict)
+  dependents Task[] @relation("TaskPrerequisite")
+  waived Boolean @default(false)
+  events WorkEvent[]
   comments    TaskComment[]
 
   @@index([ownerId, status])
+  @@index([serviceCaseId, status])
+  @@index([branchId, workState, dueAt])
+  @@index([reviewerId, workState])
+}
+
+model ServiceWork {
+  id String @id @default(cuid())
+  caseId String
+  serviceCase ServiceCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  service String
+  title String
+  templateVersion Int?
+  createdAt DateTime @default(now())
+  tasks Task[]
+  @@unique([caseId, service])
+}
+
+model WorkEvent {
+  id String @id @default(cuid())
+  taskId String
+  task Task @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  actorId String?
+  actorName String
+  taskTitle String @default("")
+  caseNo String?
+  kind String
+  fromState String?
+  toState String
+  assigneeId String?
+  assigneeName String?
+  dueAt DateTime?
+  originalDueAt DateTime?
+  detail String
+  at DateTime @default(now())
+  @@index([taskId, at])
+  @@index([kind, at])
+  @@index([assigneeId, at])
+}
+
+model WorkMutation {
+  actorId String
+  requestKey String
+  bodyHash String
+  response String
+  createdAt DateTime @default(now())
+  @@id([actorId, requestKey])
 }
 
 model TaskComment {
@@ -723,6 +800,7 @@ model WhatsAppThread {
 }
 
 model WhatsAppMessage {
+  caseLinks CaseMessage[]
   id        String         @id @default(cuid())
   threadId  String
   thread    WhatsAppThread @relation(fields: [threadId], references: [id])
@@ -750,6 +828,17 @@ model WhatsAppMessage {
   @@index([threadId])
   @@index([attachmentId])
   @@index([status, nextAttempt])
+}
+
+model CaseMessage {
+  id String @id @default(cuid())
+  caseId String
+  serviceCase ServiceCase @relation(fields:[caseId],references:[id],onDelete:Restrict)
+  messageId String
+  message WhatsAppMessage @relation(fields:[messageId],references:[id],onDelete:Restrict)
+  linkedById String
+  createdAt DateTime @default(now())
+  @@unique([caseId,messageId])
 }
 
 model WhatsAppAttachment {

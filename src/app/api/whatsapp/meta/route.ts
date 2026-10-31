@@ -1,3 +1,4 @@
+import {inboundWorkException} from "@/lib/work-system";
 import { z } from "zod";
 import { timingSafeEqual } from "node:crypto";
 import { cloudConfig,cloudSignature } from "@/lib/meta-cloud";
@@ -38,6 +39,7 @@ for(const entry of event.entry){if(entry.id!==cfg.wabaId)continue;for(const chan
     update: {},
    });
    if (!inbound.matched && matches.length === 1) await attachInbound(tx, inbound.id, matches[0].id);
+   if(!content.available) await inboundWorkException(tx,inbound.id);
    // One bounded, content-free diagnostic per configured business number.
    const healthKey = metaInboundHealthKey(cfg.phoneId);
    const health = JSON.stringify({ receivedAt: new Date().toISOString(), type: content.type, errorCodes: content.errorCodes, contentAvailable: content.available });

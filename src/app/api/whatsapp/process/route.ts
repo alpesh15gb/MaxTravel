@@ -1,3 +1,4 @@
+import { scheduleWork } from "@/lib/work-system";
 import { randomUUID } from "node:crypto";
 import { bearerMatches } from "@/lib/evolution";
 import { prisma } from "@/lib/db";
@@ -13,6 +14,7 @@ export async function POST(req: Request) {
   });
   if (!acquired) return Response.json({ ok: true, busy: true });
   try {
+    await scheduleWork();
     await scheduleReminders();
     return Response.json({ ok: true, ...await processWhatsAppQueue() });
   } catch { return Response.json({ error: "Messaging worker failed. Check database and provider connectivity." }, { status: 500 }); }

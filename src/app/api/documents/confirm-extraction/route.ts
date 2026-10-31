@@ -1,4 +1,5 @@
-import { requireSession, jsonError, ApiError, assertCan, canTouchRecord } from "@/lib/guard";
+import {canTouchDocument} from "@/lib/record-access";
+import { requireSession, jsonError, ApiError, assertCan } from "@/lib/guard";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
 
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
     }
     const doc = await prisma.document.findUnique({ where: { id: documentId }, include: { traveller: true, customer: true } });
     if (!doc) throw new ApiError(404, "Document not found");
-    if (!canTouchRecord(user, doc.customer)) throw new ApiError(403, "Document is outside your access.");
+    if (!canTouchDocument(user, doc)) throw new ApiError(403, "Document is outside your access.");
     if (!doc.extracted || Object.keys(JSON.parse(doc.extracted)).length === 0) throw new ApiError(400, "No extraction is available. Enter verified passport details manually in the traveller profile.");
 
     // Write confirmed values onto the traveller (critical fields only via this path)

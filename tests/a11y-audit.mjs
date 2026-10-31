@@ -449,7 +449,7 @@ try {
   // ---- dialogs: naming, initial focus, trap, Escape, restore.
   if (rules.includes("modal")) {
     for (const [name, route, trigger, expected] of [
-      ["tasks", "/tasks", "New task", "New task"],
+      ["tasks", "/work", "Add work", "Add work"],
       ["customers", "/customers", null, null],
       ["booking", `/ticketing/${fixture.bookingId}`, "Record actual tickets", "Record actual tickets"],
     ]) {

@@ -6,7 +6,7 @@ import {PrismaClient} from "@prisma/client";
 import {createServiceCase} from "../src/lib/service-cases";
 await mkdir("tests/.runtime",{recursive:true});const dir=await mkdtemp(path.resolve("tests/.runtime/service-case-migration-"));const url=`file:${path.join(dir,"fixture.db").replaceAll("\\","/")}`;
 await writeFile(path.join(dir,"fixture.db"),"");await writeFile(path.join(dir,"schema.prisma"),await readFile("prisma/schema.prisma"));await mkdir(path.join(dir,"migrations"));await cp("prisma/migrations/migration_lock.toml",path.join(dir,"migrations/migration_lock.toml"));
-const latest="20261030110000_service_cases";for(const name of await readdir("prisma/migrations")){if(name!==latest&&name!=="migration_lock.toml")await cp(path.join("prisma/migrations",name),path.join(dir,"migrations",name),{recursive:true});}
+const latest="20261030110000_service_cases";for(const name of await readdir("prisma/migrations")){if(name<latest&&name!=="migration_lock.toml")await cp(path.join("prisma/migrations",name),path.join(dir,"migrations",name),{recursive:true});}
 const migrate=()=>execFileSync(process.execPath,["node_modules/prisma/build/index.js","migrate","deploy","--schema",path.join(dir,"schema.prisma")],{env:{...process.env,DATABASE_URL:url},stdio:"pipe"});migrate();
 const db=new PrismaClient({datasources:{db:{url}}});
 try{
@@ -22,7 +22,7 @@ try{
  await db.$executeRaw`INSERT INTO VisaStage(id,key,name,seq) VALUES('stage','ENQUIRY','Enquiry',1)`;
  await db.$executeRaw`INSERT INTO VisaCase(id,caseNo,customerId,stageId,visaType,destination,ownerId,branchId,updatedAt) VALUES('visa','VC-OLD','client','stage','Visitor','UK','staff','branch',CURRENT_TIMESTAMP)`;
  await db.$executeRaw`INSERT INTO AuditLog(id,userId,action,entity,entityId,detail) VALUES('old-audit','staff','UPDATE','Booking','original','Sensitive historical raw detail is not copied')`;
- await db.$disconnect();await cp(path.join("prisma/migrations",latest),path.join(dir,"migrations",latest),{recursive:true});migrate();
+ await db.$disconnect();for(const name of await readdir("prisma/migrations")){if(name>=latest&&name!=="migration_lock.toml")await cp(path.join("prisma/migrations",name),path.join(dir,"migrations",name),{recursive:true});}migrate();
  const [lead,original,reissue,hotel,visa]=await Promise.all([db.salesLead.findUniqueOrThrow({where:{id:"lead"}}),db.booking.findUniqueOrThrow({where:{id:"original"}}),db.booking.findUniqueOrThrow({where:{id:"reissue"}}),db.booking.findUniqueOrThrow({where:{id:"hotel"}}),db.visaCase.findUniqueOrThrow({where:{id:"visa"}})]);
  assert(lead.serviceCaseId);assert.equal(original.serviceCaseId,lead.serviceCaseId);assert.equal(reissue.serviceCaseId,lead.serviceCaseId);assert.notEqual(hotel.serviceCaseId,lead.serviceCaseId);assert.notEqual(visa.serviceCaseId,lead.serviceCaseId);assert.equal(await db.serviceCase.count(),3);
  assert.equal(original.bookingNo,"BK-OLD");assert.equal(visa.caseNo,"VC-OLD");assert.equal(await db.ticket.count(),0);assert.equal(await db.payment.count(),0);

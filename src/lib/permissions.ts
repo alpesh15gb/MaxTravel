@@ -1,4 +1,5 @@
 export type Permission =
+  | "work:team" | "work:assign" | "work:review" | "work:report" | "case:assign"
   | "dashboard:view"
   | "search:use"
   | "customer:view" | "customer:create" | "customer:edit" | "customer:delete"
@@ -22,6 +23,7 @@ export type Permission =
   | "export:data";
 
 export const ALL_PERMISSIONS: Permission[] = [
+  "work:team", "work:assign", "work:review", "work:report", "case:assign",
   "dashboard:view", "search:use",
   "customer:view", "customer:create", "customer:edit", "customer:delete",
   "traveller:view", "traveller:create", "traveller:edit", "traveller:delete",
@@ -207,3 +209,11 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "refund:view", "task:view", "whatsapp:view", "supplier:view", "employee:view", "audit:view",
   ),
 };
+
+ROLE_PERMISSIONS.READ_ONLY.push("work:team", "work:report");
+ROLE_PERMISSIONS.ACCOUNTS.push("task:create", "task:edit");
+
+// Delegation is independent of HR and agency-security administration.
+for (const role of ["OWNER", "BRANCH_MANAGER", "VISA_MANAGER", "TICKETING_MANAGER", "OPERATIONS"] as const) {
+  ROLE_PERMISSIONS[role].push("work:team", "work:assign", "work:review", "work:report", "case:assign");
+}

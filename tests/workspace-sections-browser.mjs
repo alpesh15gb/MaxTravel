@@ -16,7 +16,7 @@ const report={checks:[],screens:[],errors:[],passed:false};
 const save=()=>{writeFileSync(path.join(out,"report.json"),JSON.stringify(report,null,2));writeFileSync(path.join(out,"server.log"),logs);};
 async function shot(name){await page.evaluate(()=>document.fonts.ready);const geometry=await page.evaluate(()=>({width:document.documentElement.scrollWidth,viewport:innerWidth}));assert(geometry.width<=geometry.viewport+1,`${name} must fit viewport`);await page.screenshot({path:path.join(out,name+".png"),fullPage:true,animations:"disabled"});report.screens.push(name);save();}
 async function login(context,email){const r=await context.request.post(base+"/api/auth/login",{data:{email,password:"Review-Visual-2026!"}});assert(r.ok(),"Fixture login must succeed");}
-const sections=[["/dashboard","Agency overview"],["/workspace/customers","Customers & cases"],["/workspace/operations","Travel operations"],["/workspace/finance","Finance"],["/workspace/communications","Communications"],["/reports","Reports & insights"],["/workspace/administration","Administration"]];
+const sections=[["/dashboard","Agency overview"],["/workspace/customers","Cases"],["/workspace/operations","Team work"],["/workspace/finance","Finance"],["/workspace/communications","WhatsApp desk"],["/reports","Reports & insights"],["/workspace/administration","Settings"]];
 try{
   for(let i=0;i<180&&!logs.includes("VISUAL REVIEW READY");i++){if(child.exitCode!==null)throw Error(logs);await new Promise(r=>setTimeout(r,500));}
   assert(logs.includes("VISUAL REVIEW READY"),logs);
@@ -31,7 +31,7 @@ try{
     for(const [route,title]of sections){
       await page.goto(base+route,{waitUntil:"networkidle"});
       const main=page.getByRole("main");await main.getByRole("heading",{level:1,name:title,exact:true}).waitFor();
-      if(route!=="/reports")await main.getByRole("button",{name:"Refresh workspace",exact:true}).waitFor();
+      if(["/dashboard","/workspace/finance","/workspace/administration"].includes(route))await main.getByRole("button",{name:"Refresh workspace",exact:true}).waitFor();
       assert.equal(await main.locator("h1").count(),1);
       assert.equal(await main.locator("a.btn-primary:visible,button.btn-primary:visible").count(),1,"One primary action per screen");
       if(width===390)await page.getByRole("button",{name:"Open navigation",exact:true}).click();
@@ -79,11 +79,11 @@ try{
   const staffContext=await browser.newContext({viewport:{width:390,height:844}});await login(staffContext,staff.email);
   const restricted=await(await staffContext.request.get(base+"/api/pulse?section=today")).json();
   assert.equal(restricted.mode,"personal");assert.equal(restricted.scope,"Assigned to you");assert.equal(restricted.stats.find(s=>s.label==="Active cases").value,"0");
-  assert(!JSON.stringify(restricted).includes(c.name));assert(!restricted.sections.some(s=>s.id==="reports"||s.id==="administration"));
+  assert(!JSON.stringify(restricted).includes(c.name));assert(!restricted.sections.some(s=>s.id==="administration"));assert(restricted.sections.some(s=>s.id==="reports"&&s.href==="/reports/work"));
   assert.equal((await staffContext.request.get(base+"/api/pulse?section=administration")).status(),403);
-  assert.equal((await staffContext.request.get(base+"/api/pulse?section=reports")).status(),403);
+  const personalReports=await staffContext.request.get(base+"/api/pulse?section=reports");assert.equal(personalReports.status(),200);assert((await personalReports.json()).links.every(l=>l.href==="/reports/work"));
   assert.equal((await staffContext.request.post(base+"/api/payments",{data:{customerId:mine.id,amount:1}})).status(),403);
-  const staffPage=await staffContext.newPage();await staffPage.goto(base+"/dashboard",{waitUntil:"networkidle"});await staffPage.getByRole("heading",{name:"My work",exact:true}).waitFor();
+  const staffPage=await staffContext.newPage();await staffPage.goto(base+"/dashboard",{waitUntil:"networkidle"});await staffPage.getByRole("heading",{name:"My day",exact:true}).waitFor();
   await staffPage.getByRole("button",{name:"New case",exact:true}).click();const staffDialog=staffPage.getByRole("dialog",{name:"Register client request",exact:true});
   await staffDialog.getByRole("combobox",{name:"Customer *",exact:true}).selectOption(mine.id);
   assert.equal(await staffDialog.getByRole("link",{name:"Add a new customer in another tab"}).count(),0);

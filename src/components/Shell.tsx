@@ -11,6 +11,8 @@ import { Field } from "./ui";
 import Modal from "./Modal";
 import DensityControl from "./DensityControl";
 import Brand from "./Brand";
+import {Suspense} from "react";
+import CaseContext from "./CaseContext";
 import WorkspaceGuide from "./WorkspaceGuide";
 import { availableSections, sectionForPath, type SectionId } from "@/lib/workspace-sections";
 export interface ShellUser { name: string; roleName: string; branchName: string | null; employeeCode: string; permissions: string[]; }
@@ -19,7 +21,7 @@ const QUICK: { href: string; label: string; icon: IconName; perm: string }[] = [
   { href:"/ticketing/new",label:"New booking",icon:"plane",perm:"ticketing:create" },
   { href:"/sales",label:"Enquiries & quotes",icon:"customers",perm:"customer:view" },
   { href:"/customers",label:"Find a customer",icon:"customers",perm:"customer:view" },
-  { href:"/tasks",label:"Add a follow-up task",icon:"tasks",perm:"task:create" },
+  { href:"/work?new=1",label:"Add a follow-up task",icon:"tasks",perm:"task:create" },
 ];
 function initials(name: string) { return name.split(" ").filter(Boolean).map(n => n[0]).slice(0, 2).join("").toUpperCase(); }
 function useDismiss(ref: React.RefObject<HTMLDivElement | null>, open: boolean, close: () => void) {
@@ -119,13 +121,12 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
       <aside ref={drawerRef} id="workspace-navigation" role={mobile ? "dialog" : undefined} aria-modal={mobile ? true : undefined} aria-label="Workspace navigation" data-drawer={mobile ? "open" : "closed"} className={`app-sidebar no-print ${mobile ? "translate-x-0 top-0" : "-translate-x-full"}`}>
         <div className="studio-brand-row"><Link href="/dashboard" aria-label="Max Travel Today" onClick={() => setMobile(false)}><Brand compact /></Link><button className="icon-button lg:hidden" aria-label="Close navigation" onClick={() => setMobile(false)}><Icon name="close" /></button></div>
         <div className="studio-workspace-label"><span className="studio-agency-monogram" aria-hidden="true">{initials(agencyName)}</span><span><strong title={agencyName}>{agencyName}</strong><small>Agency operations</small></span></div>
-        <Link href="/work" aria-current={path==="/work"?"page":undefined} className="rail-start" onClick={()=>setMobile(false)}><Icon name="plus" size={18}/>Start work<Icon name="arrow" size={16}/></Link>
         <nav aria-label="Main navigation" className="tos-scroll flex-1 overflow-y-auto px-3 pb-5 pt-1">
           {sections.map(section => {
             const isOpen = openSection === section.id;
             const id = `navigation-${section.id}`;
             const links = section.href.startsWith("/workspace/") ? [{href:section.href,label:"Section overview",icon:section.icon},...section.links] : section.links;
-            return <section key={section.id} className={`studio-nav-group workspace-nav-section ${activeSection?.id===section.id?"is-current":""}`}>
+            return <section key={section.id} className={`studio-nav-group workspace-nav-section ${section.id==="administration"?"work-settings-nav":""} ${activeSection?.id===section.id?"is-current":""}`}>
               <div className="workspace-section-nav-heading"><Link href={section.href} onClick={()=>setMobile(false)}><Icon name={section.icon} size={18}/><span>{section.title}</span></Link><button type="button" aria-label={`${isOpen?"Collapse":"Expand"} ${section.title}`} aria-expanded={isOpen} aria-controls={id} onClick={()=>setExpanded({path,id:isOpen?null:section.id})}><Icon name={isOpen?"chevronDown":"arrow"} size={15}/></button></div>
               <div id={id} hidden={!isOpen}>{links.map(n => {
                 const active = path === n.href || (!n.href.startsWith("/workspace/") && path.startsWith(n.href + "/"));
@@ -141,7 +142,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
         </div>
       </aside>
       <div className="workspace-main-shell flex min-w-0 flex-1 flex-col">
-        <main id="workspace-content" tabIndex={-1} data-workspace-area={activeSection?.title??"Today / My work"} className="min-w-0 flex-1"><WorkspaceGuide key={path} path={path}/>{children}</main>
+        <main id="workspace-content" tabIndex={-1} data-workspace-area={activeSection?.title??"Today / My work"} className="min-w-0 flex-1"><WorkspaceGuide key={path} path={path}/><Suspense fallback={null}><CaseContext/></Suspense>{children}</main>
         <footer className="no-print flex justify-between gap-3 border-t border-slate-200 px-6 py-3 text-small text-slate-600"><span>{agencyName} · Private agency workspace</span><span>Max Travel CRM</span></footer>
       </div>
     </div>

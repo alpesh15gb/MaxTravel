@@ -79,7 +79,7 @@ function Overview({ sectionId, todayLabel }: { sectionId: SectionId; todayLabel:
   </div>;
 }
 
-function AttentionList({items,empty,description}:{items:PulseItem[];empty:string;description:string}) {
+export function AttentionList({items,empty,description}:{items:PulseItem[];empty:string;description:string}) {
   if (!items.length) return <EmptyState icon="check" title={empty} description={description}/>;
   return <div className="section-attention-list">{items.map(item=><article key={item.id} className="section-attention-row"><div><div className="section-record-label"><Status tone={item.severity==="URGENT"?"danger":item.severity==="HIGH"?"warning":"info"}>{enumLabel(item.severity)}</Status><span>{enumLabel(item.kind)}</span></div><Link href={item.href} className="section-record-title">{item.title}</Link><p>{item.detail}</p></div><Link className="btn-secondary" href={item.href}>{item.actions.find(action=>action.href)?.label??"Open record"}<Icon name="arrow" size={14}/></Link></article>)}</div>;
 }
