@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { DEFAULT_PAYMENT_TEMPLATE, PAYMENT_TOKENS, PAYMENT_PREVIEW, paymentTemplateError, renderPaymentTemplate } from "@/lib/whatsapp-templates";
 import { useRouter } from "next/navigation";
+import type { MetaInboundHealth } from "@/lib/meta-inbound";
 const RULE_LABELS: Record<string,string> = { BOOKING_CREATED: "Booking created acknowledgement", TICKET_CONFIRMED: "Ticket confirmation after ticket numbers are recorded", HOTEL_CONFIRMED: "Hotel booking confirmation", BOOKING_DOCUMENT:"Send confirmed booking PDF automatically (Meta document template)", PAYMENT_RECEIVED: "Payment received acknowledgement", STATUS_UPDATE: "Visa stage changes", DOC_REQUEST: "Document upload links for new cases and document stages", APPOINTMENT_REMINDER: "Appointments within 24 hours", PNR_EXPIRY: "Ticketing deadlines within 24 hours", PAYMENT_REMINDER: "One reminder per overdue invoice due date" };
 export default function MessagingControls({ paymentTemplate, configured, canManage, rules, unmatched, customers }: {
   paymentTemplate: string; configured: boolean; canManage: boolean; rules: string[];
@@ -10,6 +11,7 @@ export default function MessagingControls({ paymentTemplate, configured, canMana
 }) {
   const router = useRouter();
   const [state,setState] = useState(configured ? "checking" : "manual");
+  const [inbound,setInbound] = useState<MetaInboundHealth|null>(null);
   const [template,setTemplate] = useState(paymentTemplate);
   const [savedTemplate,setSavedTemplate] = useState(paymentTemplate);
   const [notice,setNotice] = useState("");
@@ -19,7 +21,7 @@ export default function MessagingControls({ paymentTemplate, configured, canMana
   useEffect(()=>{
     if (!configured) return;
     let alive=true; const controller=new AbortController();
-    const check=async()=>{try { const r=await fetch("/api/whatsapp/connection",{signal:controller.signal}); if(r.ok){const d=await r.json();if(alive)setState(d.state);}else if(alive)setState("unreachable"); }catch{if(alive)setState("unreachable");}};
+    const check=async()=>{try { const r=await fetch("/api/whatsapp/connection",{signal:controller.signal}); if(r.ok){const d=await r.json();if(alive){setState(d.state);setInbound(d.inbound??null);}}else if(alive)setState("unreachable"); }catch{if(alive)setState("unreachable");}};
     void check(); const timer=setInterval(()=>{if(document.visibilityState==="visible"){void check();router.refresh();}},15000);
     return()=>{alive=false;controller.abort();clearInterval(timer);};
   },[configured,router]);
@@ -33,6 +35,10 @@ export default function MessagingControls({ paymentTemplate, configured, canMana
       <strong>{!configured?"Manual messaging mode":state==="open"?"WhatsApp connected":state==="checking"?"Checking WhatsApp connection…":"WhatsApp disconnected or unreachable"}</strong>
       <p className="mt-1 text-xs leading-5">{!configured?"Log messages here, then open WhatsApp to send. Delivery is not verified.":"Messages are queued on the server. Meta Cloud API uses approved utility templates for outbound updates; free-text replies need a verified customer message within 24 hours. STOP cancels pending messages. Delivery/read status comes from signed receipts. Media currently appears as a notice."}</p>
     </div>
+    {canManage&&inbound&&!inbound.contentAvailable&&["unsupported","unknown","text"].includes(inbound.type)&&<div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm">
+      <strong>WhatsApp did not provide readable message content</strong>
+      <p className="mt-1 text-xs leading-5">{inbound.errorCodes.length?`Meta error ${inbound.errorCodes.join(", ")}. `:""}Ask the sender to send a new plain-text message. If fresh text also fails, check the WhatsApp Business connection with Meta support using this error code. Opening Incoming documents cannot recover missing text.</p>
+    </div>}
     {configured&&canManage&&<details className="panel p-4"><summary className="cursor-pointer text-sm font-semibold">Automatic messages and unmatched replies</summary>
       <p className="my-3 text-xs leading-5 text-slate-600">Messages require customer consent. Meta automatic updates also need a mapped, approved utility template. Editing local wording does not edit or approve a Meta template. Booking, ticket, payment confirmations and document requests send immediately; other updates send between 09:00 and 20:00 India time. Sending STOP withdraws consent. New rules start disabled; review them before enabling.</p>
       <div className="space-y-3">{Object.entries(RULE_LABELS).map(([key,label])=><label key={key} className="flex items-center gap-3 text-sm"><input type="checkbox" checked={enabled.includes(key)} disabled={busy} onChange={async e=>{const next=e.target.checked?[...enabled,key]:enabled.filter(x=>x!==key);if(await save({rules:next}))setEnabled(next);}}/>{label}</label>)}</div>

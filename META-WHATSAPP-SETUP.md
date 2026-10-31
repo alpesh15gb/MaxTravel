@@ -128,3 +128,15 @@ Remove-Item Env:DATABASE_URL
 ```
 
 The test intercepts provider requests; it does not send real messages. It checks signature/challenge verification, account/phone isolation, inbound deduplication, reply-window gating, utility approval/category, opt-out, monotonic receipts and recovery after a lost send response. Real Meta test-number acceptance remains required.
+
+## Incoming messages show as unsupported
+
+The signed webhook reads normal text from `messages[].text.body`, quick-reply and list titles, and supported document/image captions. A missing text body must never be presented as a document waiting in Incoming documents. Meta's [official webhook examples](https://www.postman.com/meta/whatsapp-business-platform/documentation/wlk6lh4/whatsapp-cloud-api) also include `type: "unsupported"` events with error codes and no readable content.
+
+The WhatsApp desk now shows administrators a warning with the latest Meta error codes when the provider supplies an unavailable event. App logs contain a `[whatsapp:meta:inbound-unavailable]` entry with only the message type and numeric codes. These diagnostics exclude message text, phone numbers, message IDs, access tokens and raw payloads. Only the latest event summary for each configured business phone ID is retained; duplicate deliveries do not replace the summary or repeatedly log the notice.
+
+If a fresh plain-text message also arrives without readable content, retain its Meta error code and check the number's Cloud API registration/migration/coexistence setup with Meta support. Changing CRM display text cannot retrieve content Meta did not supply. Ask the sender to send a new plain-text message. No automatic customer reply is sent by this diagnostic path.
+
+If a later signed delivery of the same message ID contains readable text or a supported document/image, the CRM can replace its unavailable notice. Sender identity, original receipt time and unread count are preserved, STOP still withdraws consent, and an already readable message is never overwritten by a retry. Existing text that was never delivered cannot be reconstructed or silently backfilled.
+
+Run the isolated, synthetic regression suite with `npm run test:meta-inbound`. It creates and removes its own temporary SQLite database and performs no real Meta requests. This change requires no new database migration.
