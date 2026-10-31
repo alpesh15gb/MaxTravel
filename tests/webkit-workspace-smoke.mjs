@@ -83,16 +83,17 @@ await withFixtureCleanup(async () => {
     await page.getByRole("button", { name: "Sign in to workspace", exact: true }).click();
     await page.waitForURL("**/dashboard"); await page.locator("main h1").waitFor();
     // Route headings can precede client data. Require the actual seeded record, not a skeleton.
-    await page.locator(`main .attention-row a[href="/ticketing/${fixture.bookingId}"]:visible`).waitFor();
+    await page.locator(`main .work-service-deadlines a[href="/ticketing/${fixture.bookingId}"]:visible`).waitFor();
     await screenshot(`${name}-dashboard`);
     const mobile = name === "iphone-emulation";
     const navigation = mobile ? await openMobileDrawer() : page.locator("#workspace-navigation");
-    const customer = navigation.getByRole("link", { name: "Customers", exact: true });
+    const customer = navigation.getByRole("link", { name: "Cases", exact: true });
     const reachable = await customer.evaluate(node => { const r = node.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { top: r.top, bottom: r.bottom, height: innerHeight, hit: node === hit || node.contains(hit) }; });
-    assert(reachable.hit && reachable.top >= 0 && reachable.bottom <= reachable.height, "Customer navigation must be genuinely pointer-reachable");
+    assert(reachable.hit && reachable.top >= 0 && reachable.bottom <= reachable.height, "Case navigation must be genuinely pointer-reachable");
     if (mobile) await screenshot(`${name}-navigation`);
-    await customer.click(); await page.waitForURL("**/customers");
+    await customer.click(); await page.waitForURL("**/cases");
     if (mobile) await page.locator("#workspace-navigation").waitFor({ state: "hidden" });
+    await page.getByRole("navigation",{name:"Related client workspaces",exact:true}).getByRole("link",{name:"Customers",exact:true}).click();await page.waitForURL("**/customers");
     const seededCustomer = page.locator(`main a[href="/customers/${fixture.customerId}"]:visible`).filter({ hasText: "Meera Sharma" });
     await seededCustomer.waitFor();
     assert((await seededCustomer.innerText()).includes("Meera Sharma"), "Seeded customer content must render before capture");

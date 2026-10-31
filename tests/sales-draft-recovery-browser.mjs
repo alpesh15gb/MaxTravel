@@ -27,14 +27,14 @@ async function start(name,width=390){
  await page.goto(base+'/login');await page.getByLabel('Work email',{exact:true}).fill('review@visual.test');await page.getByLabel('Password',{exact:true}).fill('Review-Visual-2026!');await page.getByRole('button',{name:'Sign in to workspace',exact:true}).click();await page.waitForURL('**/dashboard');await page.locator('main h1').waitFor();
  const title=`Recovery ${name}`;const lead=await api(context,'/api/sales','POST',{action:'create',data:{customerId:fixture.customerId,title,source:'Synthetic recovery review',product:'HOTEL',budgetMinor:8000000,destination:'Kerala'}});
  const menu=page.getByRole('button',{name:'Open navigation',exact:true});if(await menu.isVisible())await menu.click();
- await page.locator('#workspace-navigation').getByRole('link',{name:'Enquiries & quotes',exact:true}).click();await page.waitForURL('**/sales');
+ await page.locator('#workspace-navigation').getByRole('link',{name:'Cases',exact:true}).click();await page.waitForURL('**/cases');await page.getByRole('navigation',{name:'Related client workspaces',exact:true}).getByRole('link',{name:'Enquiries & quotes',exact:true}).click();await page.waitForURL('**/sales');
  await page.getByRole('button',{name:`Open enquiry: ${title}`,exact:true}).click();await page.getByRole('button',{name:'New quote version',exact:true}).click();
  const field=page.getByLabel('Description / itinerary',{exact:true});await field.waitFor();
  await page.getByLabel('Price per unit (INR)',{exact:true}).fill('25000');await page.getByLabel('Terms and inclusions',{exact:true}).fill('Synthetic terms, not a booking or payment.');await page.getByLabel('Valid until',{exact:true}).fill('2099-12-01T12:00');
  const secret=`PRIVATE-${name}-last-keystroke-Z`;await field.fill(secret.slice(0,-1));await field.press('End');await page.keyboard.type('Z');
  return {context,title,id:lead.id,secret,writes};
 }
-async function back(){await page.goBack({waitUntil:'domcontentloaded',timeout:15000});await page.waitForURL('**/dashboard');}
+async function back(){await page.goBack({waitUntil:'domcontentloaded',timeout:15000});await page.waitForURL('**/cases');}
 async function forward(id,scoped=true){
  const checked=page.waitForResponse(response=>{const url=new URL(response.url());return url.pathname==='/api/sales'&&(!scoped||url.searchParams.get('leadId')===id)&&response.request().method()==='GET';},{timeout:15000});
  await page.goForward({waitUntil:'domcontentloaded',timeout:15000});await page.waitForURL('**/sales');return checked;
@@ -367,7 +367,7 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
  }
  // Full document replacement intentionally ends memory-only recovery.
  {
-  const s=await start('reload');await back();await page.reload({waitUntil:'domcontentloaded'});const menu=page.getByRole('button',{name:'Open navigation',exact:true});if(await menu.isVisible())await menu.click();await page.locator('#workspace-navigation').getByRole('link',{name:'Enquiries & quotes',exact:true}).click();await page.waitForURL('**/sales');await page.getByRole('button',{name:`Open enquiry: ${s.title}`,exact:true}).waitFor();await noCachedText(s.secret);assert.equal(await page.getByRole('button',{name:'Restore quotation',exact:true}).count(),0);await within(s.context.close(),3000,'reload context close');
+  const s=await start('reload');await back();await page.reload({waitUntil:'domcontentloaded'});await page.getByRole('navigation',{name:'Related client workspaces',exact:true}).getByRole('link',{name:'Enquiries & quotes',exact:true}).click();await page.waitForURL('**/sales');await page.getByRole('button',{name:`Open enquiry: ${s.title}`,exact:true}).waitFor();await noCachedText(s.secret);assert.equal(await page.getByRole('button',{name:'Restore quotation',exact:true}).count(),0);await within(s.context.close(),3000,'reload context close');
  }
  assert.deepEqual(report.errors,[]);assert.deepEqual(report.blocked,[]);report.passed=true;persist();
  })(),480000,'complete draft recovery fixture');}catch(error){report.failure=String(error);persist();if(page)await within(page.screenshot({path:path.join(out,'failure.png'),timeout:3000,mask:[page.locator('#sales-private-link')]}),3000,'failure screenshot').catch(()=>{});throw error;}
