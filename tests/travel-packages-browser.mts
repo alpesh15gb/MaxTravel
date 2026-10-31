@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { Browser } from "playwright";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -11,10 +11,12 @@ import { PrismaClient } from "@prisma/client";
 import { emptyPackage } from "../src/lib/travel-packages";
 import { packageDraftRecoveryBrowser } from "./package-draft-recovery-browser.mts";
 const { chromium } = await import("./browser.mjs");
-const dir = mkdtempSync(path.join(tmpdir(), "crm-package-browser-"));
-const databaseUrl = `file:${path.join(dir, "fixture.db")}`, origin = "http://127.0.0.1:3248";
+const fixtureRoot=path.resolve("tests/.runtime");mkdirSync(fixtureRoot,{recursive:true});
+const dir = mkdtempSync(path.join(fixtureRoot, "package-browser-"));
+const databaseUrl = `file:${path.join(dir, "fixture.db").replaceAll("\\", "/")}`, origin = "http://127.0.0.1:3248";
 const env = { ...process.env, DATABASE_URL: databaseUrl, APP_ORIGIN: origin, JWT_SECRET: randomBytes(48).toString("hex"), WA_PROVIDER: "manual", PACKAGE_MEDIA_ROOT: path.join(dir, "package-media"), UPLOAD_SCAN_REQUIRED: "false", CLAMAV_HOST: "" };
-const migration = spawnSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], { env, encoding: "utf8" }); assert.equal(migration.status, 0, migration.stderr);
+writeFileSync(path.join(dir,"fixture.db"),"",{flag:"wx"});
+const migration = spawnSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], { env, encoding: "utf8" }); assert.equal(migration.status, 0, migration.stdout+"\n"+migration.stderr);
 const db = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
 const password = randomBytes(24).toString("hex");
 const role = await db.role.create({ data: { key: "OWNER", name: "Owner", desc: "Fixture" } });
@@ -157,7 +159,7 @@ try {
   await page.getByLabel("Package title", { exact: true }).fill("Kerala new draft");
   page.once("dialog", dialog => dialog.dismiss()); await page.getByRole("button", { name: "Close editor", exact: true }).click();
   assert.equal(await page.getByLabel("Package title", { exact: true }).inputValue(), "Kerala new draft");
-  page.once("dialog", dialog => dialog.dismiss()); await page.getByRole("link", { name: "Today", exact: true }).click(); assert(page.url().endsWith("/travel-packages"));
+  page.once("dialog", dialog => dialog.dismiss()); await page.getByRole("link", { name: "Home", exact: true }).click(); assert(page.url().endsWith("/travel-packages"));
   await page.getByRole("button", { name: "Save draft", exact: true }).click(); await page.getByText("Draft saved. Any published version is unchanged.").waitFor();
   assert.equal((await (await fetch(origin + "/api/public/travel-packages/kerala-discovery")).json()).package.title, "Kerala discovery");
   const viewportEvidence: unknown[] = [];
@@ -200,5 +202,5 @@ try {
   console.log("Package browser: anonymous/branch denial, private create, publish, draft isolation, dirty cancel/navigation, mobile no-overflow, unpublish/archive/restore and honest load failure passed.");
   }
 } finally {
-  writeFileSync(path.join(output, "server.log"), logs); await browser?.close(); server.kill("SIGTERM"); await new Promise<void>(r => server.once("exit", () => r())); await db.$disconnect(); rmSync(dir, { recursive: true, force: true });
+  writeFileSync(path.join(output, "server.log"), logs); await browser?.close(); server.kill("SIGTERM"); await new Promise<void>(r => server.once("exit", () => r())); await db.$disconnect(); (assert(dir.startsWith(fixtureRoot+path.sep)&&path.basename(dir).startsWith("package-browser-")),rmSync(dir, { recursive: true, force: true }));
 }

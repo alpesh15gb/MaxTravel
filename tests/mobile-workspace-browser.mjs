@@ -23,13 +23,16 @@ try {
   }
   for (const [width, height] of [[390, 844], [1024, 900], [1440, 1000]]) {
     await page.setViewportSize({ width, height }); await page.goto(fixture.base + "/dashboard");
-    const first = page.locator(".attention-row").first(); await first.waitFor();
-    const action = await first.locator(".attention-actions > button").count() ? first.locator(".attention-actions > button").first() : first.locator(".attention-record-content > a");
+    const region=page.getByRole("region",{name:"Work needing attention",exact:true});await region.waitFor();
+    // Supplier holds and appointments legitimately precede the general task queue.
+    // Keep the original requirement: the first urgent action must be usable without scrolling.
+    const deadline=page.locator('.work-service-deadlines .work-source-alerts a').first();
+    const action=await deadline.count()?deadline:region.getByRole("link",{name:"Open work register →",exact:true});
     const box = await action.boundingBox(); geometry.push({ viewport: width, firstAction: box }); await capture(`dashboard-${width}`);
-    assert(box && box.y >= 0 && box.y + box.height <= height, `First priority action must be visible initially at ${width}px: ${JSON.stringify(box)}`);
+    assert(box && box.y >= 0 && box.y + box.height <= height, `The priority work queue action must be visible initially at ${width}px: ${JSON.stringify(box)}`);
   }
   await page.setViewportSize({ width: 390, height: 844 }); await page.goto(fixture.base + "/dashboard");
-  const breakdown = page.locator(".kpi-mobile-breakdown"); await breakdown.locator("summary").click(); assert(await breakdown.locator("p").isVisible()); await capture("dashboard-breakdown-open"); await breakdown.locator("summary").click();
+  const summary=page.locator('[aria-label="Daily work summary"]');await summary.waitFor({state:"visible"});assert.equal(await summary.locator("a").count(),4);for(const link of await summary.locator("a").all())assert(await link.isVisible());await capture("dashboard-work-summary");
   async function assertFocused(locator) {
     const handle = await locator.elementHandle(); assert(handle, "Expected focus target to exist");
     try { await page.waitForFunction(el => document.activeElement === el, handle, { timeout: 3000 }); }
@@ -45,15 +48,15 @@ try {
   await Promise.all([page.waitForURL(url => url.pathname !== "/dashboard"), result.click()]); assert.equal(await page.getByRole("combobox", { name: "Search your workspace", exact: true }).isVisible(), false, "Choosing a result closes the mobile panel");
   await page.goto(fixture.base + "/customers");
   const filters = page.getByRole("button", { name: /^Filters & view/ }); assert.equal(await filters.getAttribute("aria-expanded"), "false");
-  const firstCustomer = page.locator(".customer-mobile-cards").getByRole("link", { name: /Open customer/ }).first(); await firstCustomer.waitFor(); const customerBox = await firstCustomer.boundingBox(); geometry.push({ viewport: 390, firstCustomer: customerBox }); await capture("customers-mobile"); assert(customerBox && customerBox.y + customerBox.height <= 844, "First customer action must be in the initial mobile viewport");
+  const firstCustomer = page.locator(".customer-mobile-cards .board-card-title").first(); await firstCustomer.waitFor(); const customerBox = await firstCustomer.boundingBox(); geometry.push({ viewport: 390, firstCustomer: customerBox }); await capture("customers-mobile"); assert.match(await firstCustomer.getAttribute("href"),/^\/customers\/[^/]+$/);assert(customerBox && customerBox.height>=44 && customerBox.y + customerBox.height <= 844, "First customer action must be a full touch target in the initial mobile viewport");
   await capture("customers-mobile"); await filters.focus(); await filters.press("Enter"); assert.equal(await filters.getAttribute("aria-expanded"), "true");
   await page.getByRole("combobox", { name: "Customer type", exact: true }).selectOption("INDIVIDUAL"); await filters.click(); assert.equal(await filters.getAttribute("aria-expanded"), "false"); await page.getByLabel("Applied customer filters", { exact: true }).waitFor(); await capture("customers-filtered-mobile"); await page.getByRole("button", { name: "Clear filters", exact: true }).click(); assert(await page.getByRole("searchbox", { name: "Filter customers", exact: true }).evaluate(el => document.activeElement === el));
   await page.goto(fixture.base + "/reports"); const chooser = page.getByRole("combobox", { name: "Choose a report", exact: true }); await chooser.selectOption("receipts"); await page.getByRole("heading", { name: "Receipts & refunds", exact: true }).waitFor(); await capture("reports-mobile");
   await page.getByRole("button", { name: "Generate report", exact: true }).click(); await page.getByRole("list", { name: "Report record cards", exact: true }).waitFor(); await capture("reports-generated-mobile");
-  await page.setViewportSize({ width: 1440, height: 1000 }); assert.equal(await page.getByRole("button", { name: "Receipts & refunds", exact: true }).getAttribute("aria-pressed"), "true");
+  await page.setViewportSize({ width: 1440, height: 1000 });assert.equal(await chooser.inputValue(),"receipts");await page.getByRole("button",{name:"Browse report library",exact:true}).click();assert.equal(await page.getByRole("button", { name: "Receipts & refunds", exact: true }).getAttribute("aria-pressed"), "true");await page.getByRole("button",{name:"Close",exact:true}).click();
   await page.setViewportSize({ width: 390, height: 844 }); await page.goto(fixture.base + "/travel-packages"); await page.getByText("Your next great trip starts here", { exact: true }).waitFor(); await capture("packages-mobile");
   await page.getByRole("button", { name: "+ Create package", exact: true }).click(); assert(await page.getByRole("button", { name: "+ Create package", exact: true }).evaluate(el => el.classList.contains("btn-secondary"))); assert(await page.getByRole("button", { name: "Save draft", exact: true }).evaluate(el => el.classList.contains("btn-primary"))); const editorHeading = page.getByRole("heading", { name: "New package", exact: true }); await assertFocused(editorHeading); const editorBox = await editorHeading.boundingBox(); geometry.push({ editorHeading: editorBox }); assert(editorBox && editorBox.y >= 64 && editorBox.y + editorBox.height < 844, "New editor heading must be visible after Create"); const firstEditorField = await page.getByLabel("Package title", { exact: true }).boundingBox(); geometry.push({ firstEditorField }); assert(firstEditorField && firstEditorField.y >= 64 && firstEditorField.y + firstEditorField.height <= 844, "First editor field must be visible after Create without a test-driven scroll"); await capture("package-editor-mobile");
-  assert.deepEqual(errors, []); console.log("Mobile workspace: visible priority/customer actions, compact KPIs, breakdown disclosure, search focus/escape, applied-filter visibility, report state, editor CTA hierarchy and viewport bounds passed.");
+  assert.deepEqual(errors, []); console.log("Mobile workspace: visible priority/customer actions, complete work summary, search focus/escape, applied-filter visibility, report state, editor CTA hierarchy and viewport bounds passed.");
 } finally {
   fs.writeFileSync(path.join(out, "server.log"), logs); fs.writeFileSync(path.join(out, "geometry.json"), JSON.stringify({ geometry, errors }, null, 2));
   await page?.screenshot({ path: path.join(out, "terminal-state.png") }).catch(() => {});

@@ -49,8 +49,11 @@ try{
  const task=await post("/api/tasks",{title:"Regression follow-up",customerId:customer.id},cookie);assert.equal(task.response.status,200,JSON.stringify(task.data));
  const completed=await post("/api/tasks/status",{taskId:task.data.task.id,status:"DONE"},cookie);assert.equal(completed.response.status,200);
  const repeated=await post("/api/tasks/status",{taskId:task.data.task.id,status:"DONE"},cookie);assert.equal(repeated.data.task.completedAt,completed.data.task.completedAt,"Repeated completion preserves original timestamp");
- assert.equal(await prisma.auditLog.count({where:{entity:"Task",entityId:task.data.task.id,action:"STATUS"}}),1,"Each actual task transition is audited exactly once");
- const reopened=await post("/api/tasks/status",{taskId:task.data.task.id,status:"OPEN"},cookie);assert.equal(reopened.data.task.completedAt,null);
+ assert.equal(await prisma.auditLog.count({where:{entity:"Task",entityId:task.data.task.id,action:"COMPLETE"}}),1,"Each actual task transition is audited exactly once");
+ assert.equal(await prisma.workEvent.count({where:{taskId:task.data.task.id,kind:"COMPLETE"}}),1,"Repeated completion retains exactly one immutable work outcome");
+ const blockedReopen=await post("/api/tasks/status",{taskId:task.data.task.id,status:"OPEN"},cookie);assert.equal(blockedReopen.response.status,400,"Tracked work cannot be reopened without its required reason");
+ const finished=await prisma.task.findUniqueOrThrow({where:{id:task.data.task.id}});assert(finished.completedAt);
+ const reopened=await post(`/api/work/${finished.id}`,{requestKey:randomUUID(),version:finished.version,action:"REOPEN",note:"Customer requested a further follow-up after completion."},cookie);assert.equal(reopened.response.status,200,JSON.stringify(reopened.data));assert.equal((await prisma.task.findUniqueOrThrow({where:{id:finished.id}})).completedAt,null);
  const lostLead=await post("/api/sales",{action:"create",data:{customerId:customer.id,title:"Closed enquiry regression",source:"Fixture",product:"HOTEL",budgetMinor:10000}},cookie);
  const lostQuote=await post("/api/sales",{action:"quote",leadId:lostLead.data.id,baseRevision:(await currentSales(lostLead.data.id,cookie)).lead.baseRevision,items:[{description:"Fixture stay",quantity:1,priceMinor:10000,costMinor:7000}],terms:"No real reservation.",expiresAt:new Date(Date.now()+3600000).toISOString()},cookie);
  assert.equal((await post("/api/sales",{action:"stage",leadId:lostLead.data.id,baseRevision:(await currentSales(lostLead.data.id,cookie)).lead.baseRevision,stage:"LOST",lostReason:"Customer cancelled"},cookie)).response.status,200);
@@ -215,7 +218,8 @@ try{
 
  // Regression: branch-scoped mutation must not access a record with no branch.
  const unscopedTask=await prisma.task.create({data:{title:"Unscoped fixture",ownerId:user.id,creatorId:user.id}});
- assert.equal((await post("/api/tasks/status",{taskId:unscopedTask.id,status:"DONE"},outsideCookie)).response.status,403);
+ assert.equal((await post("/api/tasks/status",{taskId:unscopedTask.id,status:"DONE"},outsideCookie)).response.status,404,"Foreign task identifiers remain unavailable");
+ assert.equal((await prisma.task.findUniqueOrThrow({where:{id:unscopedTask.id}})).status,"OPEN","An out-of-scope transition cannot change the task");
  const opsRole=await prisma.role.upsert({where:{key:"OPERATIONS"},create:{key:"OPERATIONS",name:"Operations",desc:"Fixture role"},update:{}});
  const ops=await prisma.user.create({data:{employeeCode:`OPS-${suffix}`,name:"Scoped non-finance fixture",email:`ops-${suffix}@example.test`,phone:"",passwordHash:await bcrypt.hash(password,12),roleId:opsRole.id,branchId:branch.id}});
  const opsLogin=await post("/api/auth/login",{email:ops.email,password});assert.equal(opsLogin.response.status,200);

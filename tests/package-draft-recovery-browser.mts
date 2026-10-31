@@ -21,8 +21,8 @@ export async function packageDraftRecoveryBrowser({ browser, db, origin, ownerCo
     page.on("request", request => { if (/^\/api\/travel-packages(?:\/[^/]+)?$/.test(new URL(request.url()).pathname) && ["POST", "PATCH"].includes(request.method())) writes.push(request.method()); });
     await page.goto(origin + "/sales");
     const menu = page.getByRole("button", { name: "Open navigation", exact: true }); if (await menu.isVisible()) await menu.click();
-    const group = page.getByRole("button", { name: "Catalogue", exact: true }); if (await group.getAttribute("aria-expanded") !== "true") await group.click();
-    await page.locator("#workspace-navigation").getByRole("link", { name: "Travel packages", exact: true }).click();
+    await page.locator("#workspace-navigation").getByRole("link",{name:"Settings",exact:true}).click();await page.waitForURL("**/workspace/administration");
+    await page.getByRole("main").locator('a[href="/travel-packages"]').click();
     await page.waitForURL("**/travel-packages");
     if (unsavedNew) { await page.getByRole("button", { name: "+ Create package", exact: true }).click(); await page.getByLabel("Public URL slug", { exact: false }).fill(slug); }
     else await page.getByRole("button", { name: new RegExp(title + ".*Synthetic destination") }).click();
@@ -31,7 +31,7 @@ export async function packageDraftRecoveryBrowser({ browser, db, origin, ownerCo
     return { page, context, item, secret, slug, errors, writes, async close() { assert.deepEqual(errors, []); await context.close(); } };
   }
   const state = (page: Page, kind: string) => page.locator(`section[aria-label="Retained package draft"][data-recovery-state="${kind}"]`).waitFor();
-  async function back(page: Page) { await page.goBack({ waitUntil: "domcontentloaded" }); await page.waitForURL("**/sales"); }
+  async function back(page: Page) { await page.goBack({ waitUntil: "domcontentloaded" }); await page.waitForURL("**/workspace/administration"); }
   async function forward(page: Page) { await page.goForward({ waitUntil: "domcontentloaded" }); await page.waitForURL("**/travel-packages"); }
   const restore = (page: Page) => page.getByRole("button", { name: "Restore package edits", exact: true }).click();
   async function section(page: Page, name: string) { const select = page.getByLabel("Edit section", { exact: true }); if (await select.isVisible()) await select.selectOption(name); else await page.getByRole("button", { name, exact: true }).click(); }
