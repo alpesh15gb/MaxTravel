@@ -10,12 +10,12 @@ assert(new URL(process.env.DATABASE_URL).pathname.endsWith('/maxtravel_crm_previ
 const base=process.env.PREVIEW_BASE_URL??'http://127.0.0.1:3416';
 assert(/^http:\/\/127\.0\.0\.1:3416$|^https:\/\/maxtravel-crm-preview-[a-z0-9-]+\.vercel\.app$/.test(base),'Unexpected preview origin');
 const out=path.resolve('test-artifacts/cloud-preview');fs.mkdirSync(out,{recursive:true});
-const accessPath=path.resolve('test-artifacts/preview-access.json');
+const accessPath=path.resolve('.env.codex-preview-users.local');
 let access=fs.existsSync(accessPath)?JSON.parse(fs.readFileSync(accessPath,'utf8')):{password:randomBytes(24).toString('base64url')+'!7',owner:{email:'owner@maxtravel.example.test'},staff:{email:'staff@maxtravel.example.test'}};
 const saveAccess=()=>fs.writeFileSync(accessPath,JSON.stringify(access,null,2));saveAccess();
 function totp(secret){const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567',bits=[...secret].map(c=>alphabet.indexOf(c).toString(2).padStart(5,'0')).join(''),key=Buffer.from((bits.match(/.{8}/g)??[]).map(b=>parseInt(b,2))),counter=Buffer.alloc(8);counter.writeBigUInt64BE(BigInt(Math.floor(Date.now()/30000)));const mac=createHmac('sha1',key).update(counter).digest(),i=mac[19]&15;return String((mac.readUInt32BE(i)&0x7fffffff)%1000000).padStart(6,'0');}
 const db=new PrismaClient(),browser=await chromium.launch({headless:true});
-const report={checks:[],screens:[],errors:[]};
+const report={origin:base,checks:[],screens:[],errors:[]};
 async function post(context,url,data){const r=await context.request.post(base+url,{data}),b=await r.json();assert(r.ok(),`${url}: ${r.status()} ${b.error??''}`);return b;}
 async function session(person){const c=await browser.newContext({viewport:{width:1440,height:1000},timezoneId:'UTC'});if(process.env.PREVIEW_ACCESS_URL){const p=await c.newPage();await p.goto(process.env.PREVIEW_ACCESS_URL);await p.close();}let code;if(person.recovery?.length){code=person.recovery.shift();saveAccess();}else if(person.secret)code=totp(person.secret);await post(c,'/api/auth/login',{email:person.email,password:access.password,code});if(!person.secret){const enrol=await post(c,'/api/auth/security',{action:'enrol',password:access.password});person.secret=enrol.secret;saveAccess();const confirm=await post(c,'/api/auth/security',{action:'confirm',password:access.password,code:totp(person.secret)});person.recovery=confirm.recovery;saveAccess();}return c;}
 try{

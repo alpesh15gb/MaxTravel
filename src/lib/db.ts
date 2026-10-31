@@ -1,3 +1,4 @@
+import {normalizeTextSearch} from "./search-parity";
 import {PrismaClient as PostgresClient} from "@maxtravel/prisma-postgresql";
 import { PrismaClient } from "@prisma/client";
 import {installSensitiveEncryption} from "./sensitive-encryption";
@@ -15,5 +16,8 @@ export const prisma =
     transactionOptions: { maxWait: 10000, timeout: 20000,isolationLevel:"Serializable" },
   }) as unknown as PrismaClient;
 
-if(!globalForPrisma.prisma)installSensitiveEncryption(prisma);
+if(!globalForPrisma.prisma){
+ if(/^postgres(?:ql)?:/.test(process.env.DATABASE_URL??""))prisma.$use(async(params,next)=>{if(params.args?.where)params.args.where=normalizeTextSearch(params.args.where);return next(params);});
+ installSensitiveEncryption(prisma);
+}
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
