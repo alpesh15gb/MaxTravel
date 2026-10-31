@@ -194,6 +194,7 @@ export default async function WorkHome({ user }: { user: SessionUser }) {
                     <strong>{p.name}</strong>
                     <span>
                       {p.open} open · {p.overdue} overdue · {p.waiting} waiting
+                      {p.id!=="unassigned"&&<> · {p.completions} completions today</>}
                     </span>
                   </div>
                   {p.id !== "unassigned" && (
@@ -211,7 +212,7 @@ export default async function WorkHome({ user }: { user: SessionUser }) {
                       <strong>{e.title}</strong>
                       <span>{dateTimeLabel(e.at)}</span>
                     </div>
-                    <Link href={`/work?task=${e.taskId}`}>View result</Link>
+                    {e.canOpen?<Link href={`/work?task=${e.taskId}`}>View work</Link>:<span>Historical result</span>}
                   </div>
                 ))}
           {!report.people.length && manager && (
@@ -228,6 +229,7 @@ export default async function WorkHome({ user }: { user: SessionUser }) {
           )}
         </section>
       </div>
+      {manager&&<section className="work-home-section mt-6" aria-label="Recorded completions"><header><h2>Recorded completions today</h2><Link href="/work?view=done">All completed work →</Link></header>{report.events.filter(e=>["COMPLETE","APPROVE"].includes(e.kind)).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)).slice(0,5).map(e=><div className="work-home-row" key={e.id}><div><span>{e.caseNo}</span><strong>{e.title}</strong><span>{e.assignee} · {e.kind==="APPROVE"?"Approved by":"Completed by"} {e.actor}</span><span>{dateTimeLabel(e.at)}</span></div>{e.canOpen?<Link href={`/work?task=${e.taskId}`}>View work</Link>:<span>Historical result</span>}</div>)}{!report.summary.completedEvents&&<p className="p-5">No completion events recorded today. Completed work from earlier dates remains in the work register and reports.</p>}</section>}
       <section
         className="work-home-section mt-6"
         aria-label="Service exceptions"
