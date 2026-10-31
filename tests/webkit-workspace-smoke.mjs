@@ -184,10 +184,9 @@ await withFixtureCleanup(async () => {
     page.off("request", captureReportRead);
     const reportProof = { nativeInvalidEvents: 1, invalidReportReads: 0, validKeyboardReportReads: reportReads.length, customerId: fixture.customerId, closingBalance: statement.summary.find(item => item.label === "Closing balance").value, appliedDates, exports, draftPreservedAppliedExports: true };
     const menu = mobile ? await openMobileDrawer() : navigation;
-    const manage = menu.getByRole("button", { name: "Catalogue", exact: true });
-    if (await manage.getAttribute("aria-expanded") === "false") await manage.click();
-    await menu.getByRole("link", { name: "Travel packages", exact: true }).click(); await page.waitForURL("**/travel-packages");
+    await menu.getByRole("link", { name: "Settings", exact: true }).click();await page.waitForURL("**/workspace/administration");
     if (mobile) await page.locator("#workspace-navigation").waitFor({ state: "hidden" });
+    await page.getByRole("main").locator('a[href="/travel-packages"]').click();await page.waitForURL("**/travel-packages");
     await page.getByRole("button", { name: "+ Create package", exact: true }).click();
     const heading = page.getByRole("heading", { name: "New package", exact: true });
     await focused(heading);

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,existsSync,readFileSync,writeFileSync,mkdirSync,rmSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createServer} from 'node:net';
 import {randomUUID} from 'node:crypto';
 import {spawn,spawnSync,execFileSync,type ChildProcess} from 'node:child_process';
@@ -27,16 +27,16 @@ for(const root of [crm,booking]){
 }
 const revision=(root:string)=>execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
 const dir=mkdtempSync(path.join(tmpdir(),'two-app-package-proof-'));
-const databaseUrl=`file:${path.join(dir,'fixture.db')}`;
+const databaseUrl=`file:${path.join(dir,'fixture.db').replaceAll("\\", "/")}`;writeFileSync(path.join(dir,"fixture.db"),Buffer.alloc(0));
 const bridgeLog=path.join(dir,'bridge.jsonl');writeFileSync(bridgeLog,'');
 const servers:ChildProcess[]=[];const logs:Record<string,string>={};let db:PrismaClient|undefined;
-const cleanEnv={PATH:process.env.PATH,HOME:dir,TMPDIR:dir,NODE_ENV:'production',NODE_OPTIONS:'--preserve-symlinks',NEXT_TELEMETRY_DISABLED:'1'};
+const cleanEnv={PATH:process.env.PATH,SystemRoot:process.env.SystemRoot,TEMP:dir,TMP:dir,TMPDIR:dir,NODE_ENV:'production',NODE_OPTIONS:'--preserve-symlinks',NEXT_TELEMETRY_DISABLED:'1'};
 async function port(){return new Promise<number>((resolve,reject)=>{const server=createServer();server.on('error',reject);server.listen(0,'127.0.0.1',()=>{const address=server.address();assert(address&&typeof address!=='string');server.close(error=>error?reject(error):resolve(address.port));});});}
 const crmOrigin=`http://127.0.0.1:${await port()}`,bookingOrigin=`http://127.0.0.1:${await port()}`;
 assert.notEqual(crmOrigin,bookingOrigin);
 const proof={...run,phase:'execution',bookingFontMode:process.env.TWO_APP_FONT_FIXTURE==='1'?'Next Google font fixture; not visual equivalence':'normal build',crmRevision:revision(crm),bookingRevision:revision(booking),crmBuild:readFileSync(path.join(crm,'.next/BUILD_ID'),'utf8').trim(),bookingBuild:readFileSync(path.join(booking,'.next/BUILD_ID'),'utf8').trim(),stages:[] as string[]};
 function start(label:string,root:string,origin:string,env:NodeJS.ProcessEnv,preload?:string){
- logs[label]='';const args=[...(preload?['--import',preload]:[]),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',new URL(origin).port];
+ logs[label]='';const args=[...(preload?['--import',pathToFileURL(preload).href]:[]),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',new URL(origin).port];
  const child=spawn(process.execPath,args,{cwd:root,env:{...cleanEnv,...env},stdio:['ignore','pipe','pipe']});servers.push(child);
  child.stdout!.on('data',data=>logs[label]+=String(data));child.stderr!.on('data',data=>logs[label]+=String(data));return child;
 }
@@ -89,7 +89,7 @@ proof.status='passed';
  try {
   for(const [label,log]of Object.entries(logs))writeFileSync(path.join(output,`${label}.log`),log);
   writeFileSync(path.join(output,'bridge.jsonl'),readFileSync(bridgeLog));
-  rmSync(dir,{recursive:true,force:true});
+  assert.equal(path.dirname(realpathSync(dir)),realpathSync(tmpdir()));assert(path.basename(dir).startsWith("two-app-package-proof-"));rmSync(dir,{recursive:true,force:true});
  } catch(error) {proof.status='failed';throw error;}
  finally {writeFileSync(path.join(output,'proof.json'),JSON.stringify(proof,null,2));}
 }
