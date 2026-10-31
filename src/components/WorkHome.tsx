@@ -46,7 +46,7 @@ export default async function WorkHome({ user }: { user: SessionUser }) {
       },
       include: {
         owner: { select: { name: true } },
-        serviceCase: { select: { caseNo: true } },
+        serviceCase: { select: { caseNo: true,customer:{select:{name:true}} } },
       },
       orderBy: [
         { dueAt: { sort: "asc", nulls: "last" } },
@@ -142,7 +142,7 @@ export default async function WorkHome({ user }: { user: SessionUser }) {
               </Link>
             ))}
           </div>
-          <p className="work-muted">
+          <p className="work-muted p-4">
             Open the service register to review all holds and appointments.
           </p>
         </section>
@@ -159,7 +159,7 @@ export default async function WorkHome({ user }: { user: SessionUser }) {
           {priority.map((t) => (
             <div className="work-home-row" key={t.id}>
               <div>
-                <span>{t.serviceCase?.caseNo ?? "Internal / legacy"}</span>
+                <span>{t.serviceCase?.caseNo ?? "Internal / legacy"}{t.serviceCase?.customer?.name&&<> · {t.serviceCase.customer.name}</>}</span>
                 <strong>{t.title}</strong>
                 <span>
                   {t.unassigned ? "Needs an assignee" : t.owner.name} ·{" "}
@@ -210,7 +210,7 @@ export default async function WorkHome({ user }: { user: SessionUser }) {
                     <div>
                       <span>{e.caseNo}</span>
                       <strong>{e.title}</strong>
-                      <span>{dateTimeLabel(e.at)}</span>
+                      <time className="block work-muted" dateTime={e.at}>{dateTimeLabel(e.at)}</time>
                     </div>
                     {e.canOpen?<Link href={`/work?task=${e.taskId}`}>View work</Link>:<span>Historical result</span>}
                   </div>
@@ -229,7 +229,7 @@ export default async function WorkHome({ user }: { user: SessionUser }) {
           )}
         </section>
       </div>
-      {manager&&<section className="work-home-section mt-6" aria-label="Recorded completions"><header><h2>Recorded completions today</h2><Link href="/work?view=done">All completed work →</Link></header>{report.events.filter(e=>["COMPLETE","APPROVE"].includes(e.kind)).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)).slice(0,5).map(e=><div className="work-home-row" key={e.id}><div><span>{e.caseNo}</span><strong>{e.title}</strong><span>{e.assignee} · {e.kind==="APPROVE"?"Approved by":"Completed by"} {e.actor}</span><span>{dateTimeLabel(e.at)}</span></div>{e.canOpen?<Link href={`/work?task=${e.taskId}`}>View work</Link>:<span>Historical result</span>}</div>)}{!report.summary.completedEvents&&<p className="p-5">No completion events recorded today. Completed work from earlier dates remains in the work register and reports.</p>}</section>}
+      {manager&&<section className="work-home-section mt-6" aria-label="Recorded completions"><header><h2>Recorded completions today</h2><Link href="/work?view=done">All completed work →</Link></header>{report.events.filter(e=>["COMPLETE","APPROVE"].includes(e.kind)).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)).slice(0,5).map(e=><div className="work-home-row" key={e.id}><div><span>{e.caseNo}</span><strong>{e.title}</strong><span>{e.assignee} · {e.kind==="APPROVE"?"Approved by":"Completed by"} {e.actor}</span><time className="block work-muted" dateTime={e.at}>{dateTimeLabel(e.at)}</time></div>{e.canOpen?<Link href={`/work?task=${e.taskId}`}>View work</Link>:<span>Historical result</span>}</div>)}{!report.summary.completedEvents&&<p className="p-5">No completion events recorded today. Completed work from earlier dates remains in the work register and reports.</p>}</section>}
       <section
         className="work-home-section mt-6"
         aria-label="Service exceptions"
