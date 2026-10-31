@@ -37,3 +37,6 @@ jobs:
             --cap-drop ALL --security-opt no-new-privileges --no-healthcheck \
             --entrypoint node crm-production-smoke --input-type=commonjs - \
             < .github/scripts/production-image-smoke.cjs
+      - name: Boot on blank ephemeral SQLite and verify migrations and health
+        timeout-minutes: 3
+        run: node .github/scripts/fresh-image-boot.cjs
