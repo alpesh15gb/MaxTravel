@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 /** Case history records safe event labels; finance/doc details remain behind their source guards. */
-export async function recordCaseEventForEntity(tx:Prisma.TransactionClient,actorId:string|null,action:string,entity:string,id:string) {
+export async function recordCaseEventForEntity(tx:Prisma.TransactionClient,actorId:string|null,action:string,entity:string,id:string,summaryOverride?:string) {
   let caseId:string|null=null,reference="",href="",permission="";
   if(entity==="Booking"){const row=await tx.booking.findUnique({where:{id},select:{serviceCaseId:true,bookingNo:true,status:true}});caseId=row?.serviceCaseId??null;reference=row?`${row.bookingNo} · ${row.status.replaceAll("_"," ").toLowerCase()}`:"";href=`/ticketing/${id}`;permission="ticketing:view";}
   else if(entity==="VisaCase"){const row=await tx.visaCase.findUnique({where:{id},select:{serviceCaseId:true,caseNo:true,stage:{select:{name:true}}}});caseId=row?.serviceCaseId??null;reference=row?`${row.caseNo} · ${row.stage.name}`:"";href=`/visa/${id}`;permission="visa:view";}
@@ -19,5 +19,5 @@ export async function recordCaseEventForEntity(tx:Prisma.TransactionClient,actor
     if(visaCaseId)caseId=(await tx.visaCase.findUnique({where:{id:visaCaseId},select:{serviceCaseId:true}}))?.serviceCaseId??null;
     if(!href&&bookingId)href=`/ticketing/${bookingId}`;
   }
-  if(caseId)await tx.serviceCaseEvent.create({data:{caseId,actorId,kind:"RECORD",summary:`${reference}: ${action.replaceAll("_"," ").toLowerCase()}`,permission,href:href||null}});
+  if(caseId)await tx.serviceCaseEvent.create({data:{caseId,actorId,kind:"RECORD",summary:summaryOverride?`${reference}: ${summaryOverride}`.slice(0,1000):`${reference}: ${action.replaceAll("_"," ").toLowerCase()}`,permission,href:href||null}});
 }

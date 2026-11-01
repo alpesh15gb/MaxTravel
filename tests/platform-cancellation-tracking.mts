@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import {randomUUID} from "node:crypto";
+import {platformCancellationSummary as summary} from "../src/lib/platform-cancellation-tracking";
+const row={id:randomUUID(),status:"SUPPLIER_PENDING",supplierStatus:"CANCELLATION_PENDING",lastCheckedAt:"2026-11-01T10:00:00Z",nextCheckAt:"2026-11-02T10:00:00Z",followUpRequired:true,checkError:null};
+assert.equal(summary(undefined),undefined);assert.equal(summary([]),undefined);
+assert.match(summary([row])!,/needs staff follow-up/);assert.match(summary([row])!,/Next check.*IST/);assert.match(summary([row])!,/does not confirm a customer refund/);
+assert.match(summary([{...row,followUpRequired:false}])!,/awaiting supplier confirmation/);
+assert.match(summary([{...row,status:"CONFIRMED",followUpRequired:false,nextCheckAt:null}])!,/refunds are tracked separately/);
+for(const change of [{nextCheckAt:"invalid"},{status:"PAID"},{checkError:"raw private error"},{id:"bad"}])assert.throws(()=>summary([{...row,...change}]));
+console.log("PASS: cancellation follow-up summaries preserve IST timing, legacy compatibility and separate refund states.");
