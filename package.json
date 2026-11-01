@@ -40,6 +40,7 @@
     "test:travel-packages-http": "node --import tsx tests/travel-packages-browser.mts --http-only",
     "test:package-media": "node --import ./scripts/standalone-server.mjs --import tsx tests/package-media.mts",
     "test:two-app-packages": "node --import tsx tests/two-app-packages.mts",
+    "test:two-app-transactions": "node tests/two-app-transactions.mjs",
     "test:whatsapp-composer": "tsx tests/whatsapp-composer-memory.ts",
     "test:whatsapp-browser": "node --import tsx tests/whatsapp-recipient-context-browser.mts",
     "test:whatsapp-idempotency": "node --import tsx tests/whatsapp-manual-idempotency.mts",

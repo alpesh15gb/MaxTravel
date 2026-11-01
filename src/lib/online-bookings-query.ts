@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 export const ONLINE_BOOKINGS_PAGE_SIZE = 50;
-export const ONLINE_BOOKING_STATUSES = ["ENQUIRY", "QUOTE_SENT", "PNR_CREATED", "ON_HOLD", "PAYMENT_AWAITED", "TICKETED", "CANCELLED", "VOID", "REISSUE_REQUESTED", "REISSUED", "REFUND_REQUESTED", "REFUND_PENDING", "REFUNDED"] as const;
+export const ONLINE_BOOKING_STATUSES = ["ENQUIRY", "QUOTE_SENT", "PNR_CREATED", "ON_HOLD", "PAYMENT_AWAITED", "TICKETED", "CONFIRMED", "CANCELLED", "VOID", "REISSUE_REQUESTED", "REISSUED", "REFUND_REQUESTED", "REFUND_PENDING", "REFUNDED"] as const;
 type Cursor = { createdAt: string; id: string };
 export type OnlineBookingFilters = { q: string; product: string; status: string; cursor?: Cursor; direction: "older" | "newer"; invalid: boolean };
 export type SearchParams = Record<string, string | string[] | undefined>;

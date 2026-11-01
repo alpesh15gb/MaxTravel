@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
 import {runSyntheticJourney} from './synthetic-ui-journey-fixture.mjs';
 const out=path.resolve('test-artifacts/incoming-media-complete-journey');fs.mkdirSync(out,{recursive:true});const trace=path.join(out,'mock-provider.jsonl');fs.writeFileSync(trace,'');
 // NODE_OPTIONS affects only newly spawned fixture Node processes; this test process is not retroactively preloaded.
-const previous=process.env.NODE_OPTIONS;process.env.NODE_OPTIONS=`${previous??''} --import ${path.resolve('tests/incoming-media-provider-preload.mjs')}`.trim();process.env.CRM_SYNTHETIC_INCOMING='1';process.env.CRM_INCOMING_TRACE=trace;
+const previous=process.env.NODE_OPTIONS;process.env.NODE_OPTIONS=`${previous??''} --import ${pathToFileURL(path.resolve('tests/incoming-media-provider-preload.mjs')).href}`.trim();process.env.CRM_SYNTHETIC_INCOMING='1';process.env.CRM_INCOMING_TRACE=trace;
 try{await runSyntheticJourney('incoming-media-complete-journey',3397,async({base,db,fixture,session,capture,postResult,check})=>{
  const bytes=Buffer.from('%PDF-1.4\nSynthetic incoming document fixture only\n%%EOF'),expectedHash=createHash('sha256').update(bytes).digest('hex');
  for(const width of [1440,390]){

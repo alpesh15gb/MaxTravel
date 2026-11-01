@@ -1,0 +1,75 @@
+name: Booking to CRM transactions
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  signed-transactions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: fixture
+          POSTGRES_PASSWORD: disposable-ci-only
+          POSTGRES_DB: bridge_booking_verification
+        ports: ["55439:5432"]
+        options: >-
+          --health-cmd "pg_isready -U fixture -d bridge_booking_verification"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      mail:
+        image: axllent/mailpit:v1.27
+        ports: ["11025:1025"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: crm
+      - uses: actions/checkout@v4
+        with:
+          repository: alpesh15gb/MaxTripJack
+          # Known compatible booking contract, deliberately pinned for reproducibility.
+          ref: 8b5f7cedee590d57b56668522a9af4fb8ae19f6b
+          path: booking
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            crm/package-lock.json
+            booking/booking-platform/package-lock.json
+      - run: npm ci
+        working-directory: crm
+      - run: npm ci
+        working-directory: booking/booking-platform
+      - run: npx playwright install --with-deps chromium
+        working-directory: crm
+      - run: node -e "require('node:fs').writeFileSync('prisma/unused-build.db','',{flag:'wx'})" && npm run db:migrate && npm run build
+        working-directory: crm
+        env:
+          DATABASE_URL: file:./unused-build.db
+      - run: npm run build && npm run build:workers
+        working-directory: booking/booking-platform
+        env:
+          DATABASE_URL: postgresql://fixture:disposable-ci-only@127.0.0.1:55439/bridge_booking_verification
+          BETTER_AUTH_SECRET: synthetic-ci-build-only-0123456789abcdef
+          BETTER_AUTH_URL: http://127.0.0.1:3000
+      - name: Check real application transactions, workers, cases and finance
+        working-directory: crm
+        env:
+          BOOKING_FIXTURE_ROOT: ${{ github.workspace }}/booking/booking-platform
+          TEST_BOOKING_DATABASE_URL: postgresql://fixture:disposable-ci-only@127.0.0.1:55439/bridge_booking_verification
+          TEST_SMTP_PORT: "11025"
+        run: node tests/two-app-transactions.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: signed-transaction-evidence
+          path: |
+            crm/test-artifacts/two-app-transactions/proof.json
+            crm/test-artifacts/two-app-transactions/*.png
+          retention-days: 7
+          if-no-files-found: warn

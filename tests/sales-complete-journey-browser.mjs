@@ -5,7 +5,7 @@ import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {PrismaClient} from '@prisma/client';
 import {chromium} from './browser.mjs';
-import {within,withFixtureCleanup} from './fixture-lifecycle.mjs';
+import {within,withFixtureCleanup,stopFixtureChild} from './fixture-lifecycle.mjs';
 const port=3391,base=`http://127.0.0.1:${port}`,out=path.resolve('test-artifacts/sales-complete-journey');
 const metadata=path.resolve('tests/.runtime/visual-review-current.json');
 fs.mkdirSync(out,{recursive:true});fs.rmSync(metadata,{force:true});
@@ -105,6 +105,6 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
  })(),240000,'contiguous sales UI fixture');}catch(e){report.failure=String(e);persist();if(currentPage)await currentPage.screenshot({path:path.join(out,'failure.png'),timeout:3000,mask:[currentPage.locator('#sales-private-link')]}).catch(()=>{});throw e;}
 },async()=>{
  persist();const errors=[];if(browser)try{await within(browser.close(),3000,'browser close');}catch(e){errors.push(e);}if(db)try{await db.$disconnect();}catch(e){errors.push(e);}
- if(server.pid){const signal=s=>{try{process.kill(-server.pid,s);return true;}catch(e){if(e.code==='ESRCH')return false;throw e;}};const gone=async ms=>{const end=Date.now()+ms;while(Date.now()<end){if(!signal(0))return;await new Promise(r=>setTimeout(r,100));}if(signal(0))throw Error('Owned fixture still alive');};try{if(signal('SIGTERM'))try{await gone(3000);}catch{signal('SIGKILL');await gone(2000);}}catch(e){errors.push(e);}}
+ if(process.platform==="win32"){if(fixture?.serverPid)try{process.kill(fixture.serverPid);}catch(error){if(error.code!=="ESRCH")errors.push(error);}try{await stopFixtureChild(server);}catch(error){errors.push(error);}}else if(server.pid){const signal=s=>{try{process.kill(-server.pid,s);return true;}catch(e){if(e.code==='ESRCH')return false;throw e;}};const gone=async ms=>{const end=Date.now()+ms;while(Date.now()<end){if(!signal(0))return;await new Promise(r=>setTimeout(r,100));}if(signal(0))throw Error('Owned fixture still alive');};try{if(signal('SIGTERM'))try{await gone(3000);}catch{signal('SIGKILL');await gone(2000);}}catch(e){errors.push(e);}}
  if(errors.length)throw new AggregateError(errors,'Fixture cleanup incomplete');process.removeListener('exit',stopOwnedOnExit);
 },e=>{report.passed=false;report.cleanupFailure=String(e);persist();});

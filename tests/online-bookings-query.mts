@@ -10,7 +10,9 @@ import { scopeWhere } from "../src/lib/guard";
 import type { SessionUser } from "../src/lib/session";
 
 const dir = await mkdtemp(join(tmpdir(), "online-bookings-fixture-"));
-const url = `file:${join(dir, "fixture.db")}`;
+const url = `file:${join(dir, "fixture.db").replaceAll("\\", "/")}`;
+await writeFile(join(dir, "fixture.db"), "", { flag: "wx" });
+assert.equal(parse({product:"HOTEL",status:"CONFIRMED"}).status, "CONFIRMED");
 // Schema and database both live in a new temporary directory; never use configured application DB.
 await writeFile(join(dir, "schema.prisma"), await readFile(new URL("../prisma/schema.prisma", import.meta.url)));
 await cp(new URL("../prisma/migrations", import.meta.url), join(dir, "migrations"), { recursive: true });

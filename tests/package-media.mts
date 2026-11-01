@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, cpSync, readdirSync, rmSync, readFileSync, writeFileSync, symlinkSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, cpSync, readdirSync, rmSync, readFileSync, writeFileSync, symlinkSync, existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -8,8 +8,9 @@ import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
 import type { SessionUser } from "../src/lib/session";
 import { emptyPackage, safePackageImage } from "../src/lib/travel-packages";
-const dir = mkdtempSync(path.join(tmpdir(), "crm-package-media-"));
-process.env.DATABASE_URL = `file:${path.join(dir, "fixture.db")}`;
+const dir = realpathSync.native(mkdtempSync(path.join(tmpdir(), "crm-package-media-")));
+const fixtureFile=path.join(dir,"fixture.db");writeFileSync(fixtureFile,"",{flag:"wx"});
+process.env.DATABASE_URL = `file:${fixtureFile.replaceAll("\\", "/")}`;
 process.env.PACKAGE_MEDIA_ROOT = path.join(dir, "package-media");
 delete process.env.CLAMAV_HOST; delete process.env.UPLOAD_SCAN_REQUIRED;
 const db = new PrismaClient();

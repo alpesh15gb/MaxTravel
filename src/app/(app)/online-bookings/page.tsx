@@ -13,7 +13,7 @@ export default async function OnlineBookingsPage({ searchParams }: { searchParam
   const filters = parseOnlineBookingFilters(await searchParams);
   const results = await prisma.booking.findMany({
     ...onlineBookingQuery(filters, scopeWhere(user, user.branchId, "ownerId")),
-    include: { customer: { select: { id: true, name: true } }, payments: true, refunds: true },
+    include: { serviceCase: { select: { id: true, caseNo: true } }, customer: { select: { id: true, name: true } }, payments: true, refunds: true },
   });
   const { rows, hasOlder, hasNewer } = onlineBookingPage(results, filters);
   const links = await prisma.platformBookingLink.findMany({ where: { bookingId: { in: rows.map(row => row.id) } } });
@@ -54,7 +54,7 @@ export default async function OnlineBookingsPage({ searchParams }: { searchParam
         <tbody className="grid gap-3 md:table-row-group">{rows.map(row => {
           const link = platformLink(row.id), document = documentFor(row.id), amounts = financials(row);
           return <tr key={row.id} className="grid min-w-0 grid-cols-2 gap-x-3 rounded-xl border border-slate-200 bg-white p-4 align-top md:table-row md:rounded-none md:border-0 md:border-t md:border-slate-100 md:p-0">
-            <td className="col-span-2 block min-w-0 pb-3 md:table-cell md:min-w-72 md:p-4 [&_details]:min-w-0 [&_summary]:min-h-11 [&_summary]:py-3"><span className="mb-1 block text-xs text-slate-500 md:hidden">Reference</span><strong className="break-all">{row.bookingNo}</strong>{document&&<a className="mt-2 inline-flex min-h-11 items-center text-xs font-medium text-teal-700 underline" href={`/api/whatsapp/attachments/${document.id}`} target="_blank" rel="noopener noreferrer">Download booking PDF</a>}<PlatformActions bookingId={row.id} permissions={user.permissions}/></td>
+            <td className="col-span-2 block min-w-0 pb-3 md:table-cell md:min-w-72 md:p-4 [&_details]:min-w-0 [&_summary]:min-h-11 [&_summary]:py-3"><span className="mb-1 block text-xs text-slate-500 md:hidden">Reference</span><strong className="break-all">{row.bookingNo}</strong>{row.serviceCase && <Link className="mt-1 flex min-h-11 items-center text-sm font-medium text-blue-700 underline" href={`/cases/${row.serviceCase.id}`}>{row.serviceCase.caseNo}</Link>}{document&&<a className="mt-2 inline-flex min-h-11 items-center text-xs font-medium text-teal-700 underline" href={`/api/whatsapp/attachments/${document.id}`} target="_blank" rel="noopener noreferrer">Download booking PDF</a>}<PlatformActions bookingId={row.id} permissions={user.permissions}/></td>
             <td className="col-span-2 block min-w-0 pb-3 md:table-cell md:p-4"><span className="mb-1 block text-xs text-slate-500 md:hidden">Customer</span><Link href={`/customers/${row.customerId}`} className="break-words font-medium text-teal-700">{row.customer.name}</Link></td>
             <td className="block min-w-0 pb-3 md:table-cell md:whitespace-nowrap md:p-4"><span className="mb-1 block text-xs text-slate-500 md:hidden">Product</span>{enumLabel(row.product)}</td>
             <td className="block min-w-0 pb-3 md:table-cell md:p-4"><span className="mb-1 block text-xs text-slate-500 md:hidden">Synced platform status</span><Status>{link?.platformStatus ? enumLabel(link.platformStatus) : "No platform status"}</Status><span className="mt-2 block text-xs text-slate-500">CRM: {enumLabel(row.status)}</span>{link && <span className="mt-1 block text-xs text-slate-500">Snapshot received: {link.updatedAt.toISOString().replace("T", " ").slice(0, 16)} UTC</span>}</td>

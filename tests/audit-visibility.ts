@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {execFileSync} from "node:child_process";
-import {mkdtempSync,readFileSync,rmSync} from "node:fs";
+import {mkdtempSync,readFileSync,rmSync,writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import type {SessionUser} from "../src/lib/session";
@@ -9,7 +9,9 @@ async function run() {
  assert.deepEqual(changedFieldNames({phone:"old",password:"secret"},{phone:"private",password:"new-secret",documentText:"private document"},["phone"]),["phone"]);
  assert.deepEqual(changedFieldNames({phone:"same"},{phone:"same"},["phone"]),[]);
  const dir=mkdtempSync(path.join(tmpdir(),"maxtravel-audit-"));
- process.env.DATABASE_URL=`file:${dir}/test.db`;
+ const fixtureFile=path.join(dir,"test.db");
+ writeFileSync(fixtureFile,"",{flag:"wx"});
+ process.env.DATABASE_URL=`file:${fixtureFile.replaceAll("\\","/")}`;
  process.env.JWT_SECRET="audit-fixture-not-production-0123456789";
  execFileSync(process.execPath,["node_modules/prisma/build/index.js","migrate","deploy"],{env:process.env,stdio:"pipe"});
  const {prisma}=await import("../src/lib/db");

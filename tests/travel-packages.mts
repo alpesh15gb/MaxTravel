@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import "./package-draft-memory";
-import { mkdtempSync, cpSync, readdirSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, cpSync, readdirSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -9,7 +9,8 @@ import { emptyPackage, validatePackage, safePackageImage, publicPackage } from "
 import type { SessionUser } from "../src/lib/session";
 
 const dir = mkdtempSync(path.join(tmpdir(), "crm-packages-"));
-const url = `file:${path.join(dir, "fixture.db")}`;
+const fixtureFile=path.join(dir,"fixture.db");writeFileSync(fixtureFile,"",{flag:"wx"});
+const url = `file:${fixtureFile.replaceAll("\\", "/")}`;
 process.env.DATABASE_URL = url;
 function migrate(schema: string) {
   const p = spawnSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy", "--schema", schema], { env: { ...process.env, DATABASE_URL: url }, encoding: "utf8" });

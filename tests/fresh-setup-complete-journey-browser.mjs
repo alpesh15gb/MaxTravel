@@ -8,7 +8,7 @@ import {randomBytes} from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import {PrismaClient} from '@prisma/client';
 import {chromium} from './browser.mjs';
-import {within,withFixtureCleanup} from './fixture-lifecycle.mjs';
+import {within,withFixtureCleanup,stopFixtureChild} from './fixture-lifecycle.mjs';
 const root=process.cwd(),base='http://127.0.0.1:3403',out=path.resolve('test-artifacts/fresh-setup-complete-journey');fs.mkdirSync(out,{recursive:true});fs.mkdirSync(path.resolve('tests/.runtime'),{recursive:true});
 const report={scope:'Actual setup and owner login on genuinely empty disposable migrated databases; no live accounts or provider delivery',scenarios:[],errors:[],blocked:[],passed:false};
 for(const width of [1440,390]){
@@ -20,7 +20,7 @@ for(const width of [1440,390]){
  let server,browser,db,currentPage,logs='',phase='migrate empty database',spawnError='';
  const safe=value=>String(value).split(password).join('[REDACTED SYNTHETIC PASSWORD]').split(secret).join('[REDACTED SYNTHETIC KEY]');
  const persist=()=>{fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2));fs.writeFileSync(path.join(out,`server-${width}.log`),safe(logs));};
- const stopOwnedOnExit=()=>{if(server?.pid)try{process.kill(-server.pid,'SIGKILL');}catch{}};process.once('exit',stopOwnedOnExit);
+ const stopOwnedOnExit=()=>{if(server?.pid)try{process.platform==='win32'?server.kill('SIGKILL'):process.kill(-server.pid,'SIGKILL');}catch{}};process.once('exit',stopOwnedOnExit);
  await withFixtureCleanup(async()=>{try{await within((async()=>{
   execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{cwd:root,env,stdio:'pipe',timeout:60000});
   db=new PrismaClient({datasources:{db:{url:database}}});
@@ -47,7 +47,7 @@ for(const width of [1440,390]){
   phase='Back/reload and authenticated/anonymous setup revisit cannot create another owner';await page.goBack();await page.reload();await page.goto(base+'/setup');await page.waitForURL(/\/(login|dashboard)(?:\?|$)/);assert.equal(await page.getByRole('button',{name:'Create my workspace',exact:true}).count(),0);await stale.page.goto(base+'/setup');await stale.page.waitForURL('**/login');assert.equal(await db.user.count(),1);assert.equal(await db.branch.count(),1);assert.equal(await db.customer.count(),0);assert.equal(await db.booking.count(),0);
   report.scenarios.push({width,passed:true,emptyDatabase:true,successfulSetupRequests:requests,ownerCount:1,branchCount:1,ownerRole:'OWNER',createdBusinessRecords:0,nativeValidation:true,serverValidation:true,staleSetupStatus:409,sessionCookie:'HttpOnly and SameSite=Lax; production TLS/Secure not claimed'});persist();await within(staff.context.close(),3000,'owner context close');await within(stale.context.close(),3000,'stale setup context close');
  })(),180000,'fresh setup UI');}catch(error){report.failure={width,phase,error:safe(error)};persist();if(currentPage)await currentPage.screenshot({path:path.join(out,`failure-${width}.png`),timeout:3000,fullPage:true,mask:[currentPage.locator('input[type="password"]')]}).catch(()=>{});throw new Error(`Fresh setup UI failed at ${width}: ${phase}; see sanitized artifact.`);}},async()=>{
-  persist();const errors=[];if(browser)try{await within(browser.close(),3000,'browser close');}catch(e){errors.push(e);}if(db)try{await db.$disconnect();}catch(e){errors.push(e);}if(server?.pid){const signal=value=>{try{process.kill(-server.pid,value);return true;}catch(e){if(e.code==='ESRCH')return false;throw e;}};const gone=async ms=>{const end=Date.now()+ms;while(Date.now()<end){if(!signal(0))return;await new Promise(r=>setTimeout(r,100));}if(signal(0))throw Error('Owned setup fixture remains alive');};try{if(signal('SIGTERM'))try{await gone(3000);}catch{signal('SIGKILL');await gone(2000);}}catch(e){errors.push(e);}}
+  persist();const errors=[];if(browser)try{await within(browser.close(),3000,'browser close');}catch(e){errors.push(e);}if(db)try{await db.$disconnect();}catch(e){errors.push(e);}if(server)try{await stopFixtureChild(server);}catch(e){errors.push(e);}
   if(errors.length)throw new AggregateError(errors,'Setup cleanup incomplete');process.removeListener('exit',stopOwnedOnExit);
  });
 }
