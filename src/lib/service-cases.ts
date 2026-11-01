@@ -1,3 +1,4 @@
+import {isClosedCase} from "./case-constants";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { SessionUser } from "./session";
 import { ApiError, canTouchRecord, scopeWhere } from "./guard";
@@ -37,7 +38,7 @@ export async function resolveServiceCase(tx:Prisma.TransactionClient,user:Sessio
     const row=await caseFor(tx,user,input.caseId);
     const service=await tx.serviceWork.findUnique({where:{caseId_service:{caseId:row.id,service:input.service}}});
     if(row.customerId!==input.customerId||row.branchId!==input.branchId||row.service!==input.service&&!service)throw new ApiError(400,"Case customer and service must match this transaction.");
-    if(["COMPLETED","CANCELLED"].includes(row.status))throw new ApiError(409,"Reopen the case before adding work.");
+    if(isClosedCase(row))throw new ApiError(409,"Reopen the case before adding work.");
     return row;
   }
   const {caseId:unused,...data}=input;void unused;return createServiceCase(tx,data,user.id);
@@ -48,6 +49,7 @@ export async function customerForCase(tx:Prisma.TransactionClient,user:SessionUs
   if(!caseId)return customerFor(tx,user,customerId);
   if(typeof caseId!=="string")throw new ApiError(400,"Choose a valid case.");
   const journey=await caseFor(tx,user,caseId);
+  if(isClosedCase(journey))throw new ApiError(409,"Reopen the case before adding source work.");
   if(journey.customerId!==customerId)throw new ApiError(400,"Case customer must match this transaction.");
   const customer=await tx.customer.findUnique({where:{id:customerId}});
   if(!customer||customer.mergedIntoId)throw new ApiError(409,"Open the retained customer profile before adding work.");return customer;

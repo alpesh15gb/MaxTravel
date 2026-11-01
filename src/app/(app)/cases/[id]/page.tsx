@@ -1,3 +1,4 @@
+import {isClosedCase} from "@/lib/case-constants";
 import { taskScope } from "@/lib/work-engine";
 import { Suspense } from "react";
 import Link from "next/link";
@@ -342,13 +343,13 @@ export default async function CasePage({
                 Customer & travellers
               </Link>
             )}
-            {user.permissions.includes("customer:create") &&
+            {!isClosedCase(base) && user.permissions.includes("customer:create") &&
               services.some((w) => w.service !== "VISA") && (
                 <Link href={"/sales?action=new&case=" + base.id}>
                   Prepare quotation
                 </Link>
               )}
-            {!base.closedAt &&
+            {!isClosedCase(base) &&
               services.map((w) =>
                 w.service === "VISA"
                   ? user.permissions.includes("visa:create") && (

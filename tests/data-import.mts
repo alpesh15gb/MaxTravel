@@ -7,6 +7,8 @@ import {PrismaClient} from '@prisma/client';
 import {prepareImport,commitImport,undoImport,assertImportAccess,importDraftSchema,importDate,importPhone} from '../src/lib/data-import';
 import {parseImportFile,importWorkbook,csvMatrix,safeCsv,checkWorkbookZip} from '../src/lib/data-import-files';
 import {installSensitiveEncryption} from '../src/lib/sensitive-encryption';
+import {isClosedCase} from '../src/lib/case-constants';
+import {createWork,createWorkSchema} from '../src/lib/work-engine';
 import {ROLE_PERMISSIONS,type Permission} from '../src/lib/permissions';
 import type {SessionUser} from '../src/lib/session';
 
@@ -59,5 +61,11 @@ try{
  checks.push('Staff changes protect undo, empty/expired batches denied, closed historical cases create no new staff work, cross-branch staff rejected');
  const family=importDraftSchema.parse({requestKey:randomUUID(),source:'Shared family',branchId:branch.id,ownerId:owner.id,clients:[{externalId:'F1',name:'Family one',phone:'919000000089'},{externalId:'F2',name:'Family two',phone:'919000000089'}]});assert.equal((await prepareImport(db,family,actor)).status,'DRAFT');family.requestKey=randomUUID();family.clientLinks={F2:'CREATE_SEPARATE'};const fp=await prepareImport(db,family,actor);assert.equal(fp.status,'READY');assert.equal((await commitImport(db,fp.id,actor)).clients,2);assert.equal(await db.customer.count({where:{phone:'+919000000089'}}),2);await undoImport(db,fp.id,actor);
  checks.push('Shared family contacts require explicit review and can remain distinct clients');
+ const historical=await db.serviceCase.findFirstOrThrow({where:{importSource:'closed source'}});assert.equal(historical.closedAt,null);assert(isClosedCase(historical));await assert.rejects(()=>db.$transaction(tx=>createWork(tx,actor,createWorkSchema.parse({requestKey:randomUUID(),caseId:historical.id,title:'Must reopen first',ownerId:staff.id,dueAt:null}))),{status:409});checks.push('Closed historical status blocks new work without inventing an original closure date');
+ const atomic=draft();atomic.source='Atomic recovery';atomic.clients[0].phone='919000000099';atomic.travellers=[];const ap=await prepareImport(db,atomic,actor);assert.equal(ap.status,'READY');const beforeClients=await db.customer.count(),beforeCases=await db.serviceCase.count();
+ await db.user.update({where:{id:staff.id},data:{active:false}});await assert.rejects(()=>commitImport(db,ap.id,actor));await db.user.update({where:{id:staff.id},data:{active:true}});assert.equal(await db.customer.count(),beforeClients);
+ await db.$executeRawUnsafe("CREATE TRIGGER import_test_failure BEFORE INSERT ON ServiceCase BEGIN SELECT RAISE(ABORT, 'synthetic import failure'); END");
+ await assert.rejects(()=>commitImport(db,ap.id,actor));assert.equal(await db.customer.count(),beforeClients);assert.equal(await db.serviceCase.count(),beforeCases);assert.equal((await db.dataImportBatch.findUniqueOrThrow({where:{id:ap.id}})).status,'READY');await db.$executeRawUnsafe('DROP TRIGGER import_test_failure');
+ await commitImport(db,ap.id,actor);await undoImport(db,ap.id,actor);assert.equal(await db.customer.count(),beforeClients);checks.push('Changed staff eligibility blocks stale preview; injected case failure rolls back the whole batch and permits a safe retry');
  console.log('PASS data imports:',checks.join('; '));fs.writeFileSync(path.join(dir,'proof.json'),JSON.stringify({passed:true,checks},null,2));
 }finally{await db.$disconnect();}

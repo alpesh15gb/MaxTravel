@@ -1,3 +1,4 @@
+import {isClosedCase} from "./case-constants";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import type { SessionUser } from "./session";
@@ -300,13 +301,14 @@ export async function readWork(u: SessionUser, params: URLSearchParams) {
         })
       : [],
     prisma.serviceCase.findMany({
-      where: { AND: [serviceCaseScope(u), { closedAt: null }] },
+      where: { AND: [serviceCaseScope(u), { closedAt: null,status:{notIn:["COMPLETED","CANCELLED"]} }] },
       select: {
         id: true,
         caseNo: true,
         title: true,
         customerId: true,
         closedAt: true,
+        status: true,
         serviceWork: {
           select: {
             id: true,
@@ -329,6 +331,7 @@ export async function readWork(u: SessionUser, params: URLSearchParams) {
         title: true,
         customerId: true,
         closedAt: true,
+        status: true,
         serviceWork: {
           select: {
             id: true,
@@ -369,16 +372,13 @@ export async function readWork(u: SessionUser, params: URLSearchParams) {
         "work:review",
       ),
     })),
-    caseClosed: Boolean(
-      params.get("case") &&
-      cases.find((c) => c.id === params.get("case"))?.closedAt,
-    ),
+    caseClosed: isClosedCase(cases.find((c) => c.id === params.get("case"))),
     cases: cases
       .map((c) => ({
         ...c,
         serviceWork: c.serviceWork.filter((w) => canReadService(u, w.service)),
       }))
-      .filter((c) => !c.closedAt && c.serviceWork.length > 0),
+      .filter((c) => !isClosedCase(c) && c.serviceWork.length > 0),
     services: ["VISA", "FLIGHT", "HOTEL"].filter((s) => canReadService(u, s)),
     permissions: {
       finance: u.permissions.includes("payment:view"),

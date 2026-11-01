@@ -11,8 +11,6 @@ import { Field } from "./ui";
 import Modal from "./Modal";
 import DensityControl from "./DensityControl";
 import Brand from "./Brand";
-import {Suspense} from "react";
-import CaseContext from "./CaseContext";
 import WorkspaceGuide from "./WorkspaceGuide";
 import { availableSections, sectionForPath, type SectionId } from "@/lib/workspace-sections";
 export interface ShellUser { name: string; roleName: string; branchName: string | null; employeeCode: string; permissions: string[]; }
@@ -142,7 +140,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
         </div>
       </aside>
       <div className="workspace-main-shell flex min-w-0 flex-1 flex-col">
-        <main id="workspace-content" tabIndex={-1} data-workspace-area={activeSection?.title??"Today / My work"} className="min-w-0 flex-1"><WorkspaceGuide key={path} path={path}/><Suspense fallback={null}><CaseContext/></Suspense>{children}</main>
+        <main id="workspace-content" tabIndex={-1} data-workspace-area={activeSection?.title??"Today / My work"} className="min-w-0 flex-1"><WorkspaceGuide key={path} path={path}/>{children}</main>
         <footer className="no-print flex justify-between gap-3 border-t border-slate-200 px-6 py-3 text-small text-slate-600"><span>{agencyName} · Private agency workspace</span><span>Max Travel CRM</span></footer>
       </div>
     </div>

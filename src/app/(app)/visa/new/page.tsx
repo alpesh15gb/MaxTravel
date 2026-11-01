@@ -1,3 +1,4 @@
+import {isClosedCase} from "@/lib/case-constants";
 import {redirect} from "next/navigation";
 import {caseEntryContext} from "@/lib/service-cases";
 import { prisma } from "@/lib/db";
@@ -10,7 +11,7 @@ export default async function NewVisaCasePage({ searchParams }: { searchParams: 
   const user = await requirePage("visa:create");
   const input=await searchParams;const journey=await caseEntryContext(prisma,user,input.case);const customer=journey?.customerId??input.customer;
 
-  if(journey&&(journey.closedAt||!await prisma.serviceWork.count({where:{caseId:journey.id,service:"VISA"}})))redirect(`/cases/${journey.id}`);
+  if(journey&&(isClosedCase(journey)||!await prisma.serviceWork.count({where:{caseId:journey.id,service:"VISA"}})))redirect(`/cases/${journey.id}`);
   const where: Record<string, unknown> = {};
   if (user.accessMode === "BRANCH") where.branchId = user.branchId;
   if (user.accessMode === "ASSIGNED") where.OR = [{ assignedToId: user.id }, { id: user.id }];

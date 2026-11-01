@@ -451,7 +451,12 @@ async function run() {
   const storedPassport = (await prisma.traveller.findUniqueOrThrow({ where: { id: scopedTraveller.id } })).passportNumber;
   check("A refused passport edit leaves the stored number alone", () => assert.equal(storedPassport, null));
   const keptPassport = (await prisma.traveller.findUniqueOrThrow({ where: { id: aliceTraveller.id } })).passportNumber;
-  check("A permitted passport edit still saves", () => assert.equal(keptPassport, "P1234567"));
+  const passportPage = await (await get(`/customers/${alice.id}?tab=travellers`, owner.cookie)).text();
+  check("A permitted passport edit is readable to its owner and encrypted at rest when configured", () => {
+    if (/^[a-f0-9]{64}$/i.test(env.CRM_DATA_ENCRYPTION_KEY ?? "")) assert(keptPassport?.startsWith("enc:v1."));
+    else assert.equal(keptPassport, "P1234567");
+    assert(passportPage.includes("P1234567"));
+  });
 
   // An expired passport is ordinary data, not a mistake, and the traveller form always posts the
   // expiry. A rule that refused any past date would therefore block every other edit to the many

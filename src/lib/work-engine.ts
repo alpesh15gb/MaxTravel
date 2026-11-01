@@ -4,6 +4,7 @@ import type { Prisma, Task } from "@prisma/client";
 import type { SessionUser } from "./session";
 import { ApiError, canTouchRecord } from "./guard";
 import { ROLE_ACCESS, ROLE_PERMISSIONS, type RoleKey } from "./permissions";
+import {isClosedCase} from "./case-constants";
 import { caseFor } from "./service-cases";
 import {
   RESULT_TYPES,
@@ -406,7 +407,7 @@ export async function createWork(
   if (!u.permissions.includes("task:create"))
     throw new ApiError(403, "Your role cannot create work.");
   const journey = input.caseId ? await caseFor(tx, u, input.caseId) : null;
-  if (journey?.closedAt)
+  if (isClosedCase(journey))
     throw new ApiError(409, "Reopen the case before adding work.");
   const work = input.serviceWorkId
     ? await tx.serviceWork.findUnique({ where: { id: input.serviceWorkId } })
@@ -737,7 +738,7 @@ export async function changeWork(
           "Only an unlinked legacy item can be reconciled by a manager.",
         );
       const c = await caseFor(tx, u, input.caseId ?? "");
-      if (c.closedAt)
+      if (isClosedCase(c))
         throw new ApiError(
           409,
           "Reopen the case before linking additional work.",
@@ -984,7 +985,7 @@ export async function applyWorkTemplate(
   if (!canAssignWork(u))
     throw new ApiError(403, "Work delegation permission is required.");
   const c = await caseFor(tx, u, input.caseId);
-  if (c.closedAt || !canReadService(u, input.service))
+  if (isClosedCase(c) || !canReadService(u, input.service))
     throw new ApiError(409, "Choose a permitted open case service.");
   const config = readWorkConfig(
     (await tx.settings.findUnique({ where: { key: "work.configuration" } }))

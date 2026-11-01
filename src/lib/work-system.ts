@@ -64,7 +64,7 @@ export async function inboundWorkException(tx: Db, inboundId: string) {
   if (!filed) return;
   const customer = filed.thread.customer,
     cases = await tx.serviceCase.findMany({
-      where: { customerId: customer.id, closedAt: null },
+      where: { customerId: customer.id, closedAt: null,status:{notIn:["COMPLETED","CANCELLED"]} },
       take: 2,
     });
   const journey = cases.length === 1 ? cases[0] : null,
