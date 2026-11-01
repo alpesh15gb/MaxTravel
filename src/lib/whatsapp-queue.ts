@@ -219,7 +219,9 @@ async function reminderIsCurrent(rule: string, key: string, body: string, attach
     if(rule==="BOOKING_DOCUMENT"&&!await bookingDocumentIsCurrent(prisma,id,attachmentId))return false;
     const booking = await prisma.booking.findUnique({ where: { id } });
     if (!booking || ["CANCELLED","VOID","REFUNDED"].includes(booking.status)) return false;
-    return rule !== "BOOKING_CREATED" ? booking.status === "TICKETED" : !["TICKETED","REISSUED"].includes(booking.status);
+    const confirmed=booking.status==="TICKETED"||(booking.product==="HOTEL"&&booking.status==="CONFIRMED");
+    if((rule==="HOTEL_CONFIRMED"&&booking.product!=="HOTEL")||(rule==="TICKET_CONFIRMED"&&booking.product!=="FLIGHT"))return false;
+    return rule !== "BOOKING_CREATED" ? confirmed : !confirmed&&booking.status!=="REISSUED";
   }
   if (rule === "PAYMENT_RECEIVED") return Boolean(await prisma.payment.findUnique({ where: { id } }));
   if (rule === "APPOINTMENT_REMINDER") {

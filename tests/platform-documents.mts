@@ -1,4 +1,4 @@
-import { mkdtemp,rm } from "node:fs/promises";
+import { mkdtemp,rm,realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { processWhatsAppQueue, queueAutomation } from "../src/lib/whatsapp-queue";
@@ -7,7 +7,7 @@ import { createHmac,createHash,randomBytes,randomUUID } from "node:crypto";
 import { prisma } from "../src/lib/db";
 import { POST } from "../src/app/api/integrations/booking-platform/events/route";
 if(!process.env.DATABASE_URL?.includes("integration-test.db"))throw Error("Run only with the dedicated integration-test.db.");
-const root=await mkdtemp(path.join(os.tmpdir(),"maxtravel-crm-doc-"));process.env.UPLOAD_ROOT=root;const originalFetch=globalThis.fetch;
+const fixtureTmp=await realpath(os.tmpdir());const root=await mkdtemp(path.join(fixtureTmp,"maxtravel-crm-doc-"));process.env.UPLOAD_ROOT=root;const originalFetch=globalThis.fetch;
 const secret=randomBytes(32).toString("hex");process.env.BOOKING_PLATFORM_SIGNING_KEYS=JSON.stringify({test:secret});
 const suffix=randomUUID(),branch=await prisma.branch.create({data:{name:"Integration test",code:`TEST-${suffix}`,city:"Test"}}),role=await prisma.role.create({data:{key:`TEST-${suffix}`,name:"Test owner",desc:"Synthetic receiver test"}}),owner=await prisma.user.create({data:{employeeCode:`TEST-${suffix}`,name:"Integration owner",email:`owner-${suffix}@example.test`,phone:"",passwordHash:randomBytes(32).toString("hex"),roleId:role.id,branchId:branch.id}});
 process.env.BOOKING_PLATFORM_OWNER_ID=owner.id;process.env.BOOKING_PLATFORM_BRANCH_ID=branch.id;
@@ -59,9 +59,9 @@ try{
   if(url.endsWith("/messages")){sends++;throw Error("No stale document may be submitted");}
   assert.equal(init?.method,"GET");return Response.json({id:process.env.WA_CLOUD_PHONE_NUMBER_ID});
  };
- await processWhatsAppQueue();assert.equal(uploads,1);assert.equal(sends,0);
+ const queueResult=await processWhatsAppQueue();const observed=await prisma.whatsAppMessage.findUniqueOrThrow({where:{id:current.id}});assert.equal(uploads,1,JSON.stringify({queueResult,status:observed.status,lastError:observed.lastError}));assert.equal(sends,0);
  assert.equal((await prisma.whatsAppMessage.findUniqueOrThrow({where:{id:current.id}})).status,"CANCELLED","revision changing during upload must cancel before send");
- const partial={...base,revision:6,cancellations:[{partial:true,trips:[]}],cancellationRefundMinor:3000,refunds:[{id:refundId,reference:"rfnd_test",amountMinor:3000,status:"COMPLETED"}]};assert.equal((await send(partial)).response.status,200);assert.equal((await prisma.booking.findUniqueOrThrow({where:{id:mapped.bookingId}})).status,"TICKETED");assert.equal((await prisma.financialEntry.aggregate({where:{partyId:mapped.customerId},_sum:{amountMinor:true}}))._sum.amountMinor,0n);
+ const partial={...base,revision:6,cancellations:[{partial:true,trips:[]}],cancellationRefundMinor:3000,refunds:[{id:refundId,reference:"rfnd_test",amountMinor:3000,status:"COMPLETED"}]};assert.equal((await send(partial)).response.status,200);assert.equal((await prisma.booking.findUniqueOrThrow({where:{id:mapped.bookingId}})).status,"CONFIRMED");assert.equal((await prisma.financialEntry.aggregate({where:{partyId:mapped.customerId},_sum:{amountMinor:true}}))._sum.amountMinor,0n);
  assert.equal((await prisma.platformBookingLink.findUniqueOrThrow({where:{platformId:bookingId}})).documentsCurrent,false);
  globalThis.fetch=async(input,init)=>{assert.ok(String(input).startsWith("https://graph.facebook.com/"));assert.equal(init?.method,"GET");return Response.json({id:process.env.WA_CLOUD_PHONE_NUMBER_ID});};
  await processWhatsAppQueue();assert.equal((await prisma.whatsAppMessage.findUniqueOrThrow({where:{id:current.id}})).status,"CANCELLED");
@@ -70,4 +70,4 @@ try{
  assert.equal((await send({...base,revision:2})).response.status,200);assert.equal((await prisma.platformBookingLink.findUniqueOrThrow({where:{platformId:bookingId}})).revision,7);
  assert.equal((await prisma.booking.findUniqueOrThrow({where:{id:mapped.bookingId}})).status,"CANCELLED");
  console.log("PASS status-only delivery, unavailable-document truth, same-revision no-backfill, current-revision queue guards, revision-change-during-upload suppression, financial rollback; automatic PDF import, stable attachment/message deduplication and stale-document suppression; signed receiver, forged signature denial, duplicate event/payment prevention, stale revision protection, native hotel booking, refund and retained-charge journal reconciliation.");
-}finally{globalThis.fetch=originalFetch;const attachments=await prisma.whatsAppAttachment.findMany({where:{id:{startsWith:`platform-pdf-${bookingId}-`}},select:{id:true}});await prisma.whatsAppMessage.deleteMany({where:{attachmentId:{in:attachments.map(a=>a.id)}}});await prisma.whatsAppAttachment.deleteMany({where:{id:{in:attachments.map(a=>a.id)}}});if(!path.resolve(root).startsWith(path.join(os.tmpdir(),"maxtravel-crm-doc-")))throw Error("Invalid fixture cleanup root");await rm(root,{recursive:true,force:true});await prisma.$disconnect();}
+}finally{globalThis.fetch=originalFetch;const attachments=await prisma.whatsAppAttachment.findMany({where:{id:{startsWith:`platform-pdf-${bookingId}-`}},select:{id:true}});await prisma.whatsAppMessage.deleteMany({where:{attachmentId:{in:attachments.map(a=>a.id)}}});await prisma.whatsAppAttachment.deleteMany({where:{id:{in:attachments.map(a=>a.id)}}});if(!path.resolve(root).startsWith(path.join(fixtureTmp,"maxtravel-crm-doc-")))throw Error("Invalid fixture cleanup root");await rm(root,{recursive:true,force:true});await prisma.$disconnect();}
