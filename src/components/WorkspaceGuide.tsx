@@ -69,7 +69,7 @@ export default function WorkspaceGuide({ path }: { path: string }) {
             </ol>
             <Link
               className="btn-secondary"
-              href="/work"
+              href="/start-work"
               onClick={() => setOpen(false)}
             >
               Find another workflow

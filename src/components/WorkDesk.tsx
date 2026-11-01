@@ -57,6 +57,17 @@ export default function WorkDesk({
       null,
     );
   useEffect(() => {
+    if (params.get("new") === "1") setCreate(true);
+  }, [params]);
+  const closeCreate = () => {
+    setCreate(false);
+    if (params.get("new") === "1") {
+      const next = new URLSearchParams(params.toString());
+      next.delete("new");
+      router.replace(window.location.pathname + (next.size ? "?" + next.toString() : ""), { scroll: false });
+    }
+  };
+  useEffect(() => {
     const m = window.matchMedia("(min-width: 701px)");
     const resize = () => setFiltersOpen(m.matches);
     resize();
@@ -507,11 +518,11 @@ export default function WorkDesk({
           plan={setPlan}
         />
       )}
-      {create && (
+      {create && data.permissions.create && (
         <CreateWorkDialog
           data={data}
           caseId={caseId}
-          close={() => setCreate(false)}
+          close={closeCreate}
           saved={saved}
         />
       )}
