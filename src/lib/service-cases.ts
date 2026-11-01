@@ -19,16 +19,16 @@ export async function caseFor(db:Prisma.TransactionClient|PrismaClient,user:Sess
   const row=await db.serviceCase.findFirst({where:{AND:[serviceCaseScope(user),{OR:[{id},{caseNo:id}]}]}});
   if(!row)throw new ApiError(404,"Case not found or outside your access.");return row;
 }
-export async function createServiceCase(tx:Prisma.TransactionClient,input:{customerId:string;branchId:string;ownerId:string;service:string;title:string},actorId:string|null){
+export async function createServiceCase(tx:Prisma.TransactionClient,input:{customerId:string;branchId:string;ownerId:string;service:string;title:string},actorId:string|null,options:{preserveAssignedOwner?:boolean;planningTask?:boolean}={}){
   const config=readCaseConfig((await tx.settings.findUnique({where:{key:"case.configuration"}}))?.value);
   let ownerId=input.ownerId;
-  if(config.defaultOwnerId){const owner=await tx.user.findUnique({where:{id:config.defaultOwnerId},include:{role:true}});if(owner?.active&&owner.branchId===input.branchId&&roleCanOwnCase(owner.role.key))ownerId=owner.id;}
+  if(config.defaultOwnerId&&!options.preserveAssignedOwner){const owner=await tx.user.findUnique({where:{id:config.defaultOwnerId},include:{role:true}});if(owner?.active&&owner.branchId===input.branchId&&roleCanOwnCase(owner.role.key))ownerId=owner.id;}
   let caseNo="";
   for(let attempt=0;attempt<50;attempt++){const candidate=(await nextReference(tx,"CASE")).replace(/^CASE-/,config.referencePrefix+"-");if(!(await tx.serviceCase.count({where:{caseNo:candidate}}))){caseNo=candidate;break;}}
   if(!caseNo)throw new ApiError(409,"Could not allocate a case reference.");
   const row=await tx.serviceCase.create({data:{...input,createdById:actorId,ownerId,caseNo,nextFollowUpAt:config.followUpDays?new Date(Date.now()+config.followUpDays*86400000):null}});
   const work=await tx.serviceWork.create({data:{caseId:row.id,service:row.service,title:row.title}});
-  await tx.task.create({data:{title:'Plan '+row.service.toLowerCase()+' work',details:'Choose the service steps, assignees and deadlines from the case work plan.',ownerId:row.ownerId,creatorId:actorId,customerId:row.customerId,branchId:row.branchId,serviceCaseId:row.id,serviceWorkId:work.id,unassigned:true,workflowTracked:true,sourceKey:'plan:'+work.id}});
+  if(options.planningTask!==false)await tx.task.create({data:{title:'Plan '+row.service.toLowerCase()+' work',details:'Choose the service steps, assignees and deadlines from the case work plan.',ownerId:row.ownerId,creatorId:actorId,customerId:row.customerId,branchId:row.branchId,serviceCaseId:row.id,serviceWorkId:work.id,unassigned:true,workflowTracked:true,sourceKey:'plan:'+work.id}});
   await tx.serviceCaseEvent.create({data:{caseId:row.id,actorId,kind:"OPENED",summary:"Customer request registered"}});return row;
 }
 export async function resolveServiceCase(tx:Prisma.TransactionClient,user:SessionUser,input:{caseId?:unknown;customerId:string;branchId:string;ownerId:string;service:string;title:string}){

@@ -24,6 +24,7 @@
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs",
     "test": "node tests/login-readiness.mjs && node --import tsx tests/customer-sales-history.mts && node --import tsx tests/sales-attention.mts && node tests/sales-handoff-controller.mjs && tsx tests/workflow-regressions.ts && node tests/backup-restore.mjs && node --import tsx tests/export-format.ts && node --import tsx tests/export-routes.ts && tsx tests/reporting-workspace.ts && tsx tests/report-read.ts && node --test tests/reporting-diagnostics.test.mjs && tsx tests/reporting.ts && tsx tests/whatsapp-format.ts && tsx tests/whatsapp-composer-memory.ts && npm run test:meta-inbound && node tests/smoke.mjs && node tests/evolution.mjs && node tests/a11y-gate.mjs && node tests/ui-metrics.mjs && npm run test:workspace-sections && npm run test:case-workflow",
+    "test:imports": "node --import tsx tests/data-import.mts && node tests/data-import-browser.mjs",
     "test:crm-core": "tsx tests/staff-security.ts && tsx tests/sensitive-encryption.ts && tsx tests/customer-import.ts && tsx tests/upload-scan.mts && node --import ./scripts/standalone-server.mjs --import tsx tests/incoming-media.mts && node --import tsx tests/maintenance.mts && node --import tsx tests/search-parity.mts && node --import tsx --test tests/deployment-protection.mts",
     "test:staff-sales": "node --import tsx tests/staff-sales-flow.mts",
     "test:journeys": "node tests/journey-suite.mjs",

@@ -1,0 +1,63 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import {spawnSync} from 'node:child_process';
+import {randomBytes,randomUUID} from 'node:crypto';
+import {PrismaClient} from '@prisma/client';
+import {prepareImport,commitImport,undoImport,assertImportAccess,importDraftSchema,importDate,importPhone} from '../src/lib/data-import';
+import {parseImportFile,importWorkbook,csvMatrix,safeCsv,checkWorkbookZip} from '../src/lib/data-import-files';
+import {installSensitiveEncryption} from '../src/lib/sensitive-encryption';
+import {ROLE_PERMISSIONS,type Permission} from '../src/lib/permissions';
+import type {SessionUser} from '../src/lib/session';
+
+const dir=fs.mkdtempSync(path.resolve('tests/.runtime/import-')),url='file:'+path.join(dir,'test.db').replaceAll('\\','/');
+fs.writeFileSync(path.join(dir,'test.db'),'');
+process.env.CRM_DATA_ENCRYPTION_KEY=randomBytes(32).toString('hex');
+const m=spawnSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:{...process.env,DATABASE_URL:url},encoding:'utf8'});assert.equal(m.status,0,m.stderr);
+const db=new PrismaClient({datasources:{db:{url}}});installSensitiveEncryption(db);
+const checks:string[]=[];
+try{
+ const role=await db.role.create({data:{key:'OWNER',name:'Owner',desc:'Fixture'}}),staffRole=await db.role.create({data:{key:'TICKETING_EXECUTIVE',name:'Ticket staff',desc:'Fixture'}});
+ const branch=await db.branch.create({data:{name:'Import branch',code:'IMPORT',city:'Synthetic'}}),other=await db.branch.create({data:{name:'Other branch',code:'OTHER',city:'Synthetic'}});
+ const owner=await db.user.create({data:{employeeCode:'OWNER',name:'Import owner',email:'import-owner@example.test',phone:'',passwordHash:'unused-synthetic-hash',roleId:role.id,branchId:branch.id}});
+ const staff=await db.user.create({data:{employeeCode:'STAFF',name:'Import staff',email:'import-staff@example.test',phone:'',passwordHash:'unused-synthetic-hash',roleId:staffRole.id,branchId:branch.id}});
+ const actor:SessionUser={id:owner.id,name:owner.name,email:owner.email,role:'OWNER',roleName:'Owner',branchId:branch.id,branchName:branch.name,employeeCode:owner.employeeCode,accessMode:'ALL',permissions:ROLE_PERMISSIONS.OWNER as Permission[]};
+ assert.throws(()=>assertImportAccess({...actor,role:'TICKETING_EXECUTIVE'}));assert.equal(importPhone('9000000001'),'+919000000001');assert.throws(()=>importPhone('invalid'));assert.throws(()=>importDate('2026-02-30','Date'));assert.throws(()=>importDate('02/03/2026','Date'));
+ const csv='externalId,name,phone\r\nC1,"Demo, person",919000000001\r\n';assert.equal((await parseImportFile('clients.csv',Buffer.from(csv),'clients')).rows[0].name,'Demo, person');assert.throws(()=>csvMatrix('a,b\n"bad'));assert.throws(()=>checkWorkbookZip(Buffer.from('not a workbook')));assert(safeCsv([['=HYPERLINK("x")']]).startsWith('"\''));
+ const workbook=await importWorkbook();for(const entity of['clients','cases','travellers'] as const)assert.equal((await parseImportFile('template.xlsx',workbook,entity)).rows.length,1);
+ checks.push('CSV/XLSX templates and parser, malformed dates/files, formula-safe CSV and role denial');
+ const draft=()=>importDraftSchema.parse({requestKey:randomUUID(),source:'Legacy Office',branchId:branch.id,ownerId:owner.id,clients:[{externalId:'C1',name:'Imported person',phone:'919000000001'}],cases:[{externalId:'CASE1',clientRef:'C1',service:'FLIGHT',title:'Existing flight enquiry',openedOn:'2025-03-04',legacyReference:'OLD-FLIGHT-1',legacyStage:'Waiting for passport',ownerEmail:staff.email,nextAction:'Review original ticket request'}],travellers:[{externalId:'T1',clientRef:'C1',name:'Imported person',relation:'SELF',passportNumber:'SYNTH12345'}]});
+ let data=draft(),preview=await prepareImport(db,data,actor);assert.equal(preview.status,'READY');assert.equal(await db.customer.count(),0);assert.equal(await db.serviceCase.count(),0);assert.deepEqual((await prepareImport(db,data,actor)).id,preview.id);
+ const staged=await db.dataImportBatch.findUniqueOrThrow({where:{id:preview.id}});assert(!staged.payload.includes('Imported person'));assert(!staged.preview.includes('Imported person'));assert(!staged.payload.includes('SYNTH12345'));
+ const result=await commitImport(db,preview.id,actor);assert.equal(result.clients,1);assert.equal(result.cases,1);assert.equal(result.travellers,1);assert.equal(result.caseLinks[0].legacyReference,'OLD-FLIGHT-1');
+ const c=await db.serviceCase.findUniqueOrThrow({where:{id:result.caseLinks[0].id},include:{tasks:true,events:true}});assert.equal(c.createdAt.toISOString().slice(0,10),'2025-03-04');assert.equal(c.ownerId,staff.id);assert.equal(c.legacyStage,'Waiting for passport');assert.equal(c.tasks.length,1);assert.equal(c.tasks[0].ownerId,staff.id);assert.equal(c.tasks[0].requiresReview,true);assert.equal(c.tasks[0].reviewerId,owner.id);assert.equal(c.tasks[0].unassigned,false);assert.equal(c.tasks[0].workState,'TODO');assert.equal(c.events.filter(e=>e.kind==='IMPORTED').length,1);
+ assert.equal(await db.payment.count(),0);assert.equal(await db.invoice.count(),0);assert.equal(await db.booking.count(),0);assert.equal(await db.visaCase.count(),0);assert.equal(await db.financialEntry.count(),0);assert.equal((await db.customer.findFirstOrThrow()).whatsappOptIn,false);
+ const stored=await db.$queryRawUnsafe<{prefix:string}[]>('SELECT substr(passportNumber,1,4) AS prefix FROM Traveller');assert.equal(stored[0].prefix,'enc:');assert.equal((await db.traveller.findFirstOrThrow()).passportNumber,'SYNTH12345');
+ await commitImport(db,preview.id,actor);assert.equal(await db.customer.count(),1);assert.equal(await db.serviceCase.count(),1);
+ checks.push('Encrypted staging, preview without writes, original references/dates, staff review work, encrypted passport, no invented money/supplier records, same-batch replay');
+ const repeat=await prepareImport(db,{...draft(),requestKey:randomUUID()},actor);assert.equal(repeat.status,'READY');assert.equal(repeat.plan.counts.reuse,3);await commitImport(db,repeat.id,actor);assert.equal(await db.customer.count(),1);
+ const changed=draft();changed.clients[0].name='Changed source';assert.equal((await prepareImport(db,changed,actor)).status,'DRAFT');
+ const orphan=draft();orphan.cases[0].clientRef='UNKNOWN';assert((await prepareImport(db,orphan,actor)).plan.issues.some(i=>i.field==='clientRef'));
+ const wrongService=draft();wrongService.cases[0].service='VISA';assert((await prepareImport(db,wrongService,actor)).plan.issues.some(i=>i.field==='ownerEmail'));
+ const unknownOwner=draft();unknownOwner.cases[0].ownerEmail='missing@example.test';assert.equal((await prepareImport(db,unknownOwner,actor)).status,'DRAFT');
+ const invalid=draft();invalid.cases[0].openedOn='2026-02-30';assert.equal((await prepareImport(db,invalid,actor)).status,'DRAFT');
+ await assert.rejects(()=>commitImport(db,preview.id,{...actor,id:staff.id}));
+ checks.push('Stable source identity replay, changed-source conflicts, orphan clients, invalid dates, owner/service validation and actor isolation');
+ // A source contact matching an unrelated existing profile requires an explicit link.
+ const duplicate=draft();duplicate.source='Second system';duplicate.cases=[];duplicate.travellers=[];const duplicatePlan=await prepareImport(db,duplicate,actor);assert.equal(duplicatePlan.status,'DRAFT');const match=duplicatePlan.plan.rows.find(r=>r.entity==='clients')!.candidates![0];
+ duplicate.requestKey=randomUUID();duplicate.clientLinks={C1:match.id};const linked=await prepareImport(db,duplicate,actor);assert.equal(linked.status,'READY');assert.equal((await commitImport(db,linked.id,actor)).linked,1);assert.equal(await db.customer.count(),1);
+ // Used records cannot be undone, including a link created by a later import.
+ await assert.rejects(()=>undoImport(db,preview.id,actor));
+ const followOn=importDraftSchema.parse({...draft(),source:'Second system',requestKey:randomUUID(),clients:[],travellers:[]});const later=await prepareImport(db,followOn,actor);assert.equal(later.status,'READY');await commitImport(db,later.id,actor);await assert.rejects(()=>undoImport(db,linked.id,actor));await undoImport(db,later.id,actor);
+ await undoImport(db,linked.id,actor);await undoImport(db,preview.id,actor);assert.equal(await db.customer.count(),0);assert.equal(await db.serviceCase.count(),0);assert.equal(await db.traveller.count(),0);assert.equal((await undoImport(db,preview.id,actor)).replayed,true);
+ checks.push('Duplicate reconciliation, explicit existing-client links, downstream-use undo blocking, full unused-batch undo and replay');
+ data=draft();data.source='Third system';preview=await prepareImport(db,data,actor);await commitImport(db,preview.id,actor);const task=await db.task.findFirstOrThrow();await db.task.update({where:{id:task.id},data:{version:{increment:1},workState:'IN_PROGRESS'}});await assert.rejects(()=>undoImport(db,preview.id,actor));
+ const empty=await prepareImport(db,importDraftSchema.parse({requestKey:randomUUID(),source:'empty',branchId:branch.id,ownerId:owner.id}),actor);assert.equal(empty.status,'DRAFT');
+ const closed=draft();closed.source='Closed source';closed.clients[0].phone='919000000002';closed.clients[0].externalId='C2';closed.cases[0].clientRef='C2';closed.travellers=[];closed.cases[0].status='COMPLETED';const done=await prepareImport(db,closed,actor);const r=await commitImport(db,done.id,actor);assert.equal(await db.task.count({where:{serviceCaseId:r.caseLinks[0].id}}),0);
+ const expiry=draft();expiry.source='Expiry';const exp=await prepareImport(db,expiry,actor);await db.dataImportBatch.update({where:{id:exp.id},data:{expiresAt:new Date(0)}});await assert.rejects(()=>commitImport(db,exp.id,actor));
+ await assert.rejects(()=>prepareImport(db,{...draft(),branchId:other.id,ownerId:staff.id},actor));
+ checks.push('Staff changes protect undo, empty/expired batches denied, closed historical cases create no new staff work, cross-branch staff rejected');
+ const family=importDraftSchema.parse({requestKey:randomUUID(),source:'Shared family',branchId:branch.id,ownerId:owner.id,clients:[{externalId:'F1',name:'Family one',phone:'919000000089'},{externalId:'F2',name:'Family two',phone:'919000000089'}]});assert.equal((await prepareImport(db,family,actor)).status,'DRAFT');family.requestKey=randomUUID();family.clientLinks={F2:'CREATE_SEPARATE'};const fp=await prepareImport(db,family,actor);assert.equal(fp.status,'READY');assert.equal((await commitImport(db,fp.id,actor)).clients,2);assert.equal(await db.customer.count({where:{phone:'+919000000089'}}),2);await undoImport(db,fp.id,actor);
+ checks.push('Shared family contacts require explicit review and can remain distinct clients');
+ console.log('PASS data imports:',checks.join('; '));fs.writeFileSync(path.join(dir,'proof.json'),JSON.stringify({passed:true,checks},null,2));
+}finally{await db.$disconnect();}

@@ -97,6 +97,10 @@ model User {
 
 // One permanent request identity from first contact through service and aftercare.
 model ServiceCase {
+  legacyReference String?
+  legacyStage String?
+  importSource String?
+  importedAt DateTime? @db.Timestamptz(3)
   createdById String?
   id             String                @id @default(cuid())
   caseNo         String                @unique
@@ -124,6 +128,40 @@ model ServiceCase {
   @@index([branchId, ownerId, status])
   @@index([customerId, createdAt])
   @@index([nextFollowUpAt])
+}
+
+// Import staging is encrypted; identities make subsequent exports safe to replay.
+model DataImportBatch {
+  id String @id
+  actorId String
+  requestKey String
+  branchId String
+  source String
+  status String
+  inputHash String
+  planHash String
+  payload String
+  preview String
+  result String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+  committedAt DateTime? @db.Timestamptz(3)
+  @@unique([actorId, requestKey])
+  @@index([status, expiresAt])
+}
+
+model DataImportIdentity {
+  source String
+  entity String
+  externalId String
+  recordId String
+  batchId String
+  rowHash String
+  linked Boolean @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@id([source, entity, externalId])
+  @@index([batchId])
+  @@index([entity, recordId])
 }
 
 model ServiceCaseEvent {

@@ -252,6 +252,7 @@ export default async function CasePage({
           </Link>
         }
       />
+      {base.importedAt&&<section className="panel p-5 space-y-2" aria-label="Imported case provenance"><h2 className="font-semibold">Imported case history</h2><p className="break-words">Original reference: <strong>{base.legacyReference}</strong> · Source: {base.importSource}</p>{base.legacyStage&&<p>Original stage: {base.legacyStage}</p>}<p className="text-sm text-slate-600">Imported {dateTimeLabel(base.importedAt)}. Historical status is retained for context. Review the original documents and record supplier confirmations and financial transactions through the linked workflows.</p></section>}
       <div className="panel p-5 case-journey-summary">
         <div className="work-toolbar">
           <div>

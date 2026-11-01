@@ -101,6 +101,9 @@ jobs:
         id: agency_journeys
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         run: npm run test:journeys
+      - name: Verify reviewed client and case imports on desktop and mobile
+        if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
+        run: npm run test:imports
       - name: Verify contiguous customer proposal acceptance to CRM booking
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         timeout-minutes: 5

@@ -43,7 +43,8 @@ export const WORKSPACE_SECTIONS: WorkspaceSection[] = [
     { href: "/settings", label: "Agency settings", description: "Agency, case-management and invoicing defaults.", icon: "settings", permission: "settings:manage" },
     { href: "/checklists", label: "Visa checklists", description: "Requirements for each destination and visa type.", icon: "check", permission: "checklist:view" },
     { href: "/travel-packages", label: "Travel packages", description: "Prepare and publish the customer-facing catalogue.", icon: "compass", permission: "settings:manage" },
-    { href: "/customer-tools", label: "Customer import", description: "Preview and reconcile imported customer records.", icon: "customers", permission: "customer:create" },
+    { href: "/imports", label: "Client & case import", description: "Map existing clients, travellers and case journeys with a reviewed preview.", icon: "customers", permission: "settings:manage" },
+    { href: "/customer-tools", label: "Customer duplicate review", description: "Preview simple customer CSVs and review duplicate profiles.", icon: "customers", permission: "customer:create" },
     { href: "/audit", label: "Audit trail", description: "Review recorded changes and their actors.", icon: "audit", permission: "audit:view" },
   ] },
 ];
