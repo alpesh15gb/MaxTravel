@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {randomBytes,randomUUID} from 'node:crypto';
+import {deflateRawSync} from 'node:zlib';
+import ExcelJS from 'exceljs';
 import {PrismaClient} from '@prisma/client';
 import {prepareImport,commitImport,undoImport,assertImportAccess,importDraftSchema,importDate,importPhone} from '../src/lib/data-import';
 import {parseImportFile,importWorkbook,csvMatrix,safeCsv,checkWorkbookZip} from '../src/lib/data-import-files';
@@ -27,6 +29,8 @@ try{
  assert.throws(()=>assertImportAccess({...actor,role:'TICKETING_EXECUTIVE'}));assert.equal(importPhone('9000000001'),'+919000000001');assert.throws(()=>importPhone('invalid'));assert.throws(()=>importDate('2026-02-30','Date'));assert.throws(()=>importDate('02/03/2026','Date'));
  const csv='externalId,name,phone\r\nC1,"Demo, person",919000000001\r\n';assert.equal((await parseImportFile('clients.csv',Buffer.from(csv),'clients')).rows[0].name,'Demo, person');assert.throws(()=>csvMatrix('a,b\n"bad'));assert.throws(()=>checkWorkbookZip(Buffer.from('not a workbook')));assert(safeCsv([['=HYPERLINK("x")']]).startsWith('"\''));
  const workbook=await importWorkbook();for(const entity of['clients','cases','travellers'] as const)assert.equal((await parseImportFile('template.xlsx',workbook,entity)).rows.length,1);
+ const formulas=new ExcelJS.Workbook();formulas.addWorksheet('clients').addRows([['externalId','name'],['F1',{formula:'1+1',result:2}]]);await assert.rejects(async()=>parseImportFile('formula.xlsx',Buffer.from(await formulas.xlsx.writeBuffer()),'clients'),/formula/i);
+ const compressed=deflateRawSync(Buffer.alloc(17*1024*1024)),local=Buffer.alloc(31),central=Buffer.alloc(47),end=Buffer.alloc(22);local.writeUInt32LE(0x04034b50);local.writeUInt16LE(8,8);local.writeUInt32LE(compressed.length,18);local.writeUInt32LE(1,22);local.writeUInt16LE(1,26);local[30]=120;central.writeUInt32LE(0x02014b50);central.writeUInt16LE(8,10);central.writeUInt32LE(compressed.length,20);central.writeUInt32LE(1,24);central.writeUInt16LE(1,28);central[46]=120;end.writeUInt32LE(0x06054b50);end.writeUInt16LE(1,10);end.writeUInt32LE(central.length,12);end.writeUInt32LE(local.length+compressed.length,16);assert.throws(()=>checkWorkbookZip(Buffer.concat([local,compressed,central,end])),/16 MB/);
  checks.push('CSV/XLSX templates and parser, malformed dates/files, formula-safe CSV and role denial');
  const draft=()=>importDraftSchema.parse({requestKey:randomUUID(),source:'Legacy Office',branchId:branch.id,ownerId:owner.id,clients:[{externalId:'C1',name:'Imported person',phone:'919000000001'}],cases:[{externalId:'CASE1',clientRef:'C1',service:'FLIGHT',title:'Existing flight enquiry',openedOn:'2025-03-04',legacyReference:'OLD-FLIGHT-1',legacyStage:'Waiting for passport',ownerEmail:staff.email,nextAction:'Review original ticket request'}],travellers:[{externalId:'T1',clientRef:'C1',name:'Imported person',relation:'SELF',passportNumber:'SYNTH12345'}]});
  let data=draft(),preview=await prepareImport(db,data,actor);assert.equal(preview.status,'READY');assert.equal(await db.customer.count(),0);assert.equal(await db.serviceCase.count(),0);assert.deepEqual((await prepareImport(db,data,actor)).id,preview.id);

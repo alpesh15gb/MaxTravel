@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import {inflateRawSync} from 'node:zlib';
 
 import {IMPORT_ENTITIES,IMPORT_FIELDS,type ImportEntity,type ImportTable} from './data-import-fields';
 export {IMPORT_ENTITIES,IMPORT_FIELDS,REQUIRED_IMPORT_FIELDS,type ImportEntity,type ImportTable} from './data-import-fields';
@@ -37,7 +38,17 @@ export function checkWorkbookZip(data:Buffer){
  for(let i=0;i<entries;i++){
   if(at+46>end||data.readUInt32LE(at)!==0x02014b50)throw Error('Invalid workbook directory.');
   if(data.readUInt16LE(at+8)&1)throw Error('Remove the workbook password before importing.');
-  total+=data.readUInt32LE(at+24);if(total>16*1024*1024)throw Error('Workbook expands beyond the 16 MB import limit.');
+  const declared=data.readUInt32LE(at+24),compressed=data.readUInt32LE(at+20),method=data.readUInt16LE(at+10),local=data.readUInt32LE(at+42),limit=16*1024*1024;
+  if(declared>limit-total)throw Error('Workbook expands beyond the 16 MB import limit.');
+  if(local+30>offset||data.readUInt32LE(local)!==0x04034b50||data.readUInt16LE(local+8)!==method||(data.readUInt16LE(local+6)&1))throw Error('Invalid workbook entry.');
+  const start=local+30+data.readUInt16LE(local+26)+data.readUInt16LE(local+28);
+  if(start+compressed>offset)throw Error('Invalid workbook entry bounds.');
+  let actual:number;
+  if(method===0)actual=compressed;
+  else if(method===8){try{actual=inflateRawSync(data.subarray(start,start+compressed),{maxOutputLength:Math.max(1,limit-total)}).length;}catch{throw Error('Invalid compressed workbook or expansion beyond the 16 MB import limit.');}}
+  else throw Error('Unsupported workbook compression.');
+  if(actual!==declared||actual>limit-total)throw Error('Workbook expansion metadata is inconsistent or exceeds the 16 MB import limit.');
+  total+=actual;
   at+=46+data.readUInt16LE(at+28)+data.readUInt16LE(at+30)+data.readUInt16LE(at+32);
  }
  if(at!==offset+size)throw Error('Unsupported workbook directory.');
