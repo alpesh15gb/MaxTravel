@@ -17,6 +17,11 @@ HELPER_SHA = '5b88f65d42e5b006cdfecc092c254c9196669bb5762ef776a1e75027f44a5fac'
 KEEP = set('Branch Role User Settings VisaStage Checklist ChecklistItem QuickReply TravelPackage PackageMedia StaffSession StaffMfa StaffRecovery StaffAuthFailure AuditLog PlatformEvent _prisma_migrations'.split())
 BUSINESS = set('FinancialEntry ServiceCase DataImportBatch DataImportIdentity ServiceCaseEvent ServiceCaseMutation Customer Traveller VisaCase CaseTraveller VisaCaseStatus ChecklistLink Document DocumentAccessLog UploadLink Booking BookingTraveller Ticket Reissue Payment Invoice InvoiceCreditNote Supplier SupplierDue SupplierSettlement Refund Task ServiceWork WorkEvent WorkMutation TaskComment Note WhatsAppThread WhatsAppMessage CaseMessage WhatsAppAttachment Notification Activity WhatsAppInbound PlatformCommand PlatformCustomerLink PlatformBookingLink SalesLead SalesQuote IncomingMedia FinancialMutation'.split())
 
+# Human-readable business references only. Staff IDs and unknown/future counters stay intact.
+BUSINESS_COUNTERS = tuple('counter.'+prefix for prefix in ('CASE','C','VC','BK','INV','CN','RCP','RF','DOC'))
+BUSINESS_COUNTER_KEYS = frozenset(key.casefold() for key in BUSINESS_COUNTERS)
+DERIVED_SETTINGS_PREFIXES = ('wa.meta.inbound.health.',)
+
 class ResetError(Exception):
     pass
 
@@ -36,28 +41,60 @@ def inspect_database(db, email):
         raise ResetError('Database integrity or relations need review before resetting.')
     return owners[0][0], {t: db.execute('SELECT count(*) FROM ' + quote(t)).fetchone()[0] for t in sorted(tables)}
 
-def digest_table(db, table, excluded=None):
-    rows = db.execute('SELECT * FROM ' + quote(table) + (' WHERE id<>?' if excluded else ''), (excluded,) if excluded else ()).fetchall()
+def digest_table(db, table, excluded=None, settings_keys=(), settings_prefixes=()):
+    clauses = []
+    params = []
+    if excluded:
+        clauses.append('id<>?')
+        params.append(excluded)
+    if table == 'Settings':
+        if settings_keys:
+            clauses.append('LOWER("key") NOT IN ('+','.join('?' for _ in settings_keys)+')')
+            params.extend(key.casefold() for key in settings_keys)
+        for prefix in settings_prefixes:
+            clauses.append('"key" NOT LIKE ?')
+            params.append(prefix+'%')
+    rows = db.execute('SELECT * FROM '+quote(table)+(' WHERE '+' AND '.join(clauses) if clauses else ''), params).fetchall()
     encoded = sorted(json.dumps(r, default=lambda b: {'bytes': bytes(b).hex()}, separators=(',', ':')) for r in rows)
     return hashlib.sha256('\n'.join(encoded).encode()).hexdigest()
 
-def clean_candidate(path, email):
+def resettable_settings(db, reset_numbering):
+    rows = db.execute('SELECT "key" FROM Settings').fetchall()
+    return [key for (key,) in rows if (reset_numbering and key.casefold() in BUSINESS_COUNTER_KEYS) or any(key.casefold().startswith(prefix) for prefix in DERIVED_SETTINGS_PREFIXES)]
+
+def clean_candidate(path, email, clear_audit=False, reset_numbering=False):
     db = sqlite3.connect(path)
     try:
         owner, before = inspect_database(db, email)
-        preserved = {t: digest_table(db, t) for t in KEEP}
+        keys = BUSINESS_COUNTERS if reset_numbering else ()
+        preserved = {t: digest_table(db,t,settings_keys=keys,settings_prefixes=DERIVED_SETTINGS_PREFIXES) for t in KEEP if not (clear_audit and t == 'AuditLog')}
         schema = db.execute('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name').fetchall()
         audit = uuid.uuid4().hex
+        settings = resettable_settings(db,reset_numbering)
+        counters = sorted(key for key in settings if key.casefold() in BUSINESS_COUNTER_KEYS)
+        health_notices = sum(any(key.casefold().startswith(prefix) for prefix in DERIVED_SETTINGS_PREFIXES) for key in settings)
         db.execute('PRAGMA foreign_keys=OFF')
         db.execute('BEGIN IMMEDIATE')
         for table in sorted(BUSINESS):
-            db.execute('DELETE FROM ' + quote(table))
+            db.execute('DELETE FROM '+quote(table))
+        if clear_audit:
+            db.execute('DELETE FROM AuditLog')
+        if settings:
+            db.execute('DELETE FROM Settings WHERE "key" IN ('+','.join('?' for _ in settings)+')', settings)
+        cleared = {t:before[t] for t in sorted(BUSINESS)}
+        if clear_audit:
+            cleared['AuditLog'] = before['AuditLog']
+        detail = {'scope':'CRM business test records','cleared':cleared,'auditHistoryCleared':clear_audit,'businessNumberingReset':reset_numbering,'resetCounterKeys':counters,'clearedHistoricalNotices':health_notices}
         db.execute('INSERT INTO AuditLog(id,userId,action,entity,detail,at) VALUES(?,?,?,?,?,?)',
-                   (audit, owner, 'TEST_DATA_RESET', 'CRM', json.dumps({'scope': 'CRM business test data only', 'cleared': {t: before[t] for t in sorted(BUSINESS)}}), int(time.time()*1000)))
+                   (audit,owner,'TEST_DATA_RESET','CRM',json.dumps(detail),int(time.time()*1000)))
         for table, expected in preserved.items():
-            if digest_table(db, table, audit if table == 'AuditLog' else None) != expected:
+            if digest_table(db,table,audit if table == 'AuditLog' else None,settings_keys=keys,settings_prefixes=DERIVED_SETTINGS_PREFIXES) != expected:
                 raise ResetError('A preserved record changed. Candidate discarded.')
-        if any(db.execute('SELECT count(*) FROM ' + quote(t)).fetchone()[0] for t in BUSINESS):
+        if clear_audit and db.execute('SELECT count(*) FROM AuditLog').fetchone()[0] != 1:
+            raise ResetError('Expected one new reset audit entry.')
+        if resettable_settings(db,reset_numbering):
+            raise ResetError('Requested counter or historical notice cleanup was incomplete.')
+        if any(db.execute('SELECT count(*) FROM '+quote(t)).fetchone()[0] for t in BUSINESS):
             raise ResetError('Candidate still contains business records.')
         if db.execute('PRAGMA foreign_key_check').fetchall():
             raise ResetError('Candidate has broken references.')
@@ -66,9 +103,10 @@ def clean_candidate(path, email):
         db.commit()
         if db.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
             raise ResetError('Candidate integrity check failed.')
-        return {'cleared': {t: before[t] for t in sorted(BUSINESS)}, 'preserved': {t: before[t] for t in sorted(KEEP)}, 'resetAuditId': audit}
+        return {'cleared':cleared,'preserved':{t:(before[t]-len(settings) if t == 'Settings' else before[t]) for t in sorted(KEEP) if not (clear_audit and t == 'AuditLog')},'resetAuditId':audit,'businessNumberingReset':reset_numbering,'resetCounterKeys':counters,'clearedHistoricalNotices':health_notices}
     finally:
         db.close()
+
 
 def host_database(container, env):
     url = urlsplit(env.get('DATABASE_URL', ''))
@@ -124,16 +162,20 @@ def check_writers(job, path, stack):
             if mount.get('RW') and path.is_relative_to(Path(mount['Source']).resolve()) and row['id'] not in allowed:
                 raise ResetError('Another running container can write the CRM database. Review that writer before resetting; no service changed.')
 
-def reset_crm(job, email, apply, audit_only=False):
+def reset_crm(job, email, apply, audit_only=False, clear_audit=False, reset_numbering=False):
+    if audit_only and (clear_audit or reset_numbering):
+        raise ResetError('Audit-only mode cannot clear business data or reset business numbering.')
     stack = job.snapshot('max-travel-crm-app-1', 'max-travel-crm')
     container = next(c for c in stack['containers'] if c['Name'].lstrip('/') == stack['app'])
     path = host_database(container, stack['env'])
     check_writers(job, path, stack)
     with closing(readonly(path)) as db:
         _, counts = inspect_database(db, email)
+        settings_to_clear = [] if audit_only else resettable_settings(db,reset_numbering)
     print('Reset scope: '+('CRM audit history only; one new cleanup entry records this operation.' if audit_only else 'entire CRM workspace business test records, across staff and branches.')+' Booking is untouched.', flush=True)
-    print('Rows to clear: '+json.dumps({'AuditLog':counts['AuditLog']} if audit_only else {t:counts[t] for t in sorted(BUSINESS)}), flush=True)
-    print('Preserved: '+('all business records and other tables.' if audit_only else 'staff/logins/MFA, branches, settings/credentials/counters, templates/catalogue, security audit and booking event deduplication.'), flush=True)
+    print('Rows to clear: '+json.dumps({'AuditLog':counts['AuditLog']} if audit_only else {t:counts[t] for t in sorted(BUSINESS | ({'AuditLog'} if clear_audit else set()))}), flush=True)
+    print('Requested options: '+json.dumps({'clearAuditHistory':clear_audit or audit_only,'restartBusinessNumbering':reset_numbering,'keepStaffNumbering':True,'businessCounterRowsToReset':sum(key.casefold() in BUSINESS_COUNTER_KEYS for key in settings_to_clear),'historicalWhatsAppNoticesToClear':sum(any(key.casefold().startswith(prefix) for prefix in DERIVED_SETTINGS_PREFIXES) for key in settings_to_clear)}),flush=True)
+    print('Preserved: '+('all business records and other tables.' if audit_only else 'staff/logins/MFA/numbering, branches, configuration/credentials, templates/catalogue and booking event deduplication. Only requested business counters and historical inbound notices are removed from settings.'), flush=True)
     if not apply:
         print('Inspection only. No service stopped; application data and configuration unchanged.')
         return
@@ -154,7 +196,9 @@ def reset_crm(job, email, apply, audit_only=False):
         candidate = job.directory/'empty-business-candidate.db'
         with closing(readonly(path)) as source, closing(sqlite3.connect(candidate)) as target:
             source.backup(target)
-        report = clean_audit_candidate(candidate, email) if audit_only else clean_candidate(candidate, email)
+        report = clean_audit_candidate(candidate,email) if audit_only else clean_candidate(candidate,email,clear_audit,reset_numbering)
+        with closing(readonly(candidate)) as db:
+            retained_hashes = {table:digest_table(db,table) for table in KEEP}
         job.write('reset-plan-and-verification.json', report)
         with closing(readonly(candidate)) as source, closing(sqlite3.connect(path, timeout=30)) as destination:
             # Native backup installation handles the destination journal/WAL atomically;
@@ -172,7 +216,9 @@ def reset_crm(job, email, apply, audit_only=False):
         with closing(readonly(path)) as db:
             if db.execute('PRAGMA integrity_check').fetchall() != [('ok',)] or db.execute('PRAGMA foreign_key_check').fetchall():
                 raise ResetError('Installed database verification failed; services remain stopped for recovery.')
-            if audit_only and db.execute('SELECT count(*) FROM AuditLog').fetchone()[0] != 1:
+            if any(digest_table(db,table) != expected for table,expected in retained_hashes.items()):
+                raise ResetError('Installed preserved records differ from the verified candidate.')
+            if (audit_only or clear_audit) and db.execute('SELECT count(*) FROM AuditLog').fetchone()[0] != 1:
                 raise ResetError('Installed audit cleanup verification failed.')
             if not audit_only and any(db.execute('SELECT count(*) FROM '+quote(t)).fetchone()[0] for t in BUSINESS):
                 raise ResetError('Installed database contains unexpected business rows.')
@@ -181,8 +227,12 @@ def reset_crm(job, email, apply, audit_only=False):
         workers = [s for s in stack['services'] if s != 'app']
         if workers:
             job.run(job.compose(stack, stack['before'], 'up', '-d', '--no-deps', '--no-build', '--pull', 'never', *workers))
-        job.write('reset-completed.json', {'complete': True, 'auditOnly': audit_only, 'bookingUntouched': True, 'backupRestoreVerified': True})
+        job.write('reset-completed.json', {'complete':True,'auditOnly':audit_only,'auditHistoryCleared':audit_only or clear_audit,'businessNumberingReset':reset_numbering,'staffNumberingRetained':True,'bookingUntouched':True,'backupRestoreVerified':True})
         print(('CRM audit history cleared; one new cleanup entry retained.' if audit_only else 'CRM test business data cleared.')+' App healthy. Previously active CRM workers resumed. Booking unchanged. No messages or supplier/payment operations were initiated.', flush=True)
+        if clear_audit:
+            print('Previous audit history cleared; one new reset entry retained.',flush=True)
+        if reset_numbering:
+            print('Business numbering restarts at 0001 under the existing reference prefixes. Staff numbering and settings retained.',flush=True)
         print('Private backups and old unreferenced uploads retained for recovery: '+str(job.directory), flush=True)
     except BaseException:
         if paused and not installed:
@@ -197,7 +247,10 @@ def main():
     parser.add_argument('--helper', required=True)
     parser.add_argument('--owner-email', required=True)
     parser.add_argument('--apply', action='store_true')
-    parser.add_argument('--audit-only', action='store_true', help='Clear only AuditLog history, retaining one new cleanup entry and every other table.')
+    audit_mode = parser.add_mutually_exclusive_group()
+    audit_mode.add_argument('--audit-only', action='store_true', help='Clear only audit history, retaining one new cleanup entry and every other table.')
+    audit_mode.add_argument('--clear-audit', action='store_true', help='Clear audit history together with business test data, retaining one new reset entry.')
+    parser.add_argument('--reset-business-numbering', action='store_true', help='Restart known business references; keep staff and unknown counters.')
     args = parser.parse_args()
     if os.name != 'posix' or os.geteuid() != 0:
         raise ResetError('Run from the Linux VPS root terminal.')
@@ -210,7 +263,7 @@ def main():
     spec.loader.exec_module(module)
     job = module.Update()
     print('Private CRM reset recovery directory: '+str(job.directory), flush=True)
-    return reset_crm(job, args.owner_email, args.apply, args.audit_only)
+    return reset_crm(job,args.owner_email,args.apply,args.audit_only,args.clear_audit,args.reset_business_numbering)
 
 if __name__ == '__main__':
     try:
