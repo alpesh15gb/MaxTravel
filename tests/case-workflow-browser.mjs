@@ -98,7 +98,7 @@ try {
       where: { email: "review@visual.test" },
     }),
     role = await db.role.findUniqueOrThrow({
-      where: { key: "VISA_EXECUTIVE" },
+      where: { key: "TICKETING_EXECUTIVE" },
     });
   const staff = await db.user.create({
     data: {
@@ -108,7 +108,7 @@ try {
       phone: "",
       passwordHash: owner.passwordHash,
       roleId: role.id,
-      branchId: owner.branchId,
+      branchId: null,
     },
   });
   browser = await chromium.launch({ headless: true });
@@ -161,10 +161,57 @@ try {
   await d
     .getByLabel("Instructions")
     .fill("Confirm requirements and record the next agreed action.");
+  const candidate = d.locator(`select[name="ownerId"] option[value="${staff.id}"]`);
+  await page.waitForFunction(id => document.querySelector(`dialog select[name="ownerId"] option[value="${id}"]`)?.disabled === true, staff.id);
+  assert.equal(await candidate.evaluate(option => option.disabled), true);
+  assert.match(await candidate.textContent(), /Visa access required/);
+  const employeePage = await context.newPage();
+  await employeePage.goto(base + "/employees", { waitUntil: "networkidle" });
+  const staffRow = employeePage.getByRole("row").filter({ hasText: staff.email });
+  await staffRow.getByRole("button", { name: "Edit", exact: true }).click();
+  const profile = employeePage.getByRole("dialog");
+  const combinedRole = await db.role.findUniqueOrThrow({ where: { key: "TRAVEL_EXECUTIVE" } });
+  await profile.getByLabel("Role *").selectOption(combinedRole.id);
+  await profile.getByRole("button", { name: "Save changes", exact: true }).click();
+  assert(await profile.isVisible(), "A branch is required before saving operational staff");
+  assert.equal((await db.user.findUniqueOrThrow({ where: { id: staff.id } })).roleId, role.id);
+  await profile.getByLabel("Branch *").selectOption(owner.branchId);
+  await profile.getByRole("button", { name: "Save changes", exact: true }).click();
+  await profile.waitFor({ state: "hidden" });
+  await employeePage.close();
+  assert.equal(await candidate.evaluate(option => option.disabled), true, "Open work form keeps its initial snapshot until refreshed");
+  await d.getByRole("button", { name: "Refresh staff list", exact: true }).click();
+  await d.getByRole("button", { name: "Refresh staff list", exact: true }).waitFor();
+  await page.waitForFunction(id => document.querySelector(`dialog select[name="ownerId"] option[value="${id}"]`)?.disabled === false, staff.id);
+  assert.equal(await candidate.evaluate(option => option.disabled), false);
+  assert.match(await candidate.textContent(), /Visa & Ticketing Executive/);
+  assert.equal(await d.getByLabel("Next action *").inputValue(), "Prepare family visa review");
+  assert.equal(await d.getByLabel("Instructions").inputValue(), "Confirm requirements and record the next agreed action.");
+  assert.equal(await d.getByLabel("Linked service record").inputValue(), source.id);
+  report.checks.push("Staff setup explains visa eligibility, requires a branch, saves combined role and refreshes an open work form without losing its draft");
   await d.getByLabel("Assignee").selectOption(staff.id);
   const plannedDue=future(15);await d.getByLabel("Due time *").fill(plannedDue);
   await d.getByLabel("Require a separate review").check();
   await d.getByLabel("Reviewer *").selectOption(owner.id);
+  const workRefreshUrl = url => url.pathname === "/api/work";
+  const failRefresh = route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Synthetic staff refresh unavailable." }) });
+  await page.route(workRefreshUrl, failRefresh);
+  await d.getByRole("button", { name: "Refresh staff list", exact: true }).click();
+  await d.getByRole("alert").filter({ hasText: "Your draft is kept." }).waitFor();
+  assert.equal(await d.getByLabel("Assignee").inputValue(), staff.id);
+  assert.equal(await d.getByLabel("Instructions").inputValue(), "Confirm requirements and record the next agreed action.");
+  await page.unroute(workRefreshUrl, failRefresh);
+  await db.user.update({ where: { id: staff.id }, data: { active: false } });
+  await d.getByRole("button", { name: "Refresh staff list", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('dialog select[name="ownerId"]')?.validity.valid === false);
+  await d.getByRole("button", { name: "Create work item", exact: true }).click();
+  assert.equal(await db.task.count({ where: { title: "Prepare family visa review" } }), 0, "Unavailable selected staff must not silently create unassigned work");
+  await db.user.update({ where: { id: staff.id }, data: { active: true } });
+  await d.getByRole("button", { name: "Refresh staff list", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('dialog select[name="ownerId"]')?.validity.valid === true);
+  assert.equal(await d.getByLabel("Assignee").inputValue(), staff.id);
+  await d.getByLabel("Instructions").fill("Confirm requirements and record the next agreed action.");
+  report.checks.push("Failed staff refresh retains the draft; deactivated selected staff blocks submission instead of silently unassigning; reactivation restores eligibility");
   await d
     .getByRole("button", { name: "Create work item", exact: true })
     .click();

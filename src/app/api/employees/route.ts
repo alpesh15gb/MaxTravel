@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { ROLE_ACCESS, type RoleKey } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { requireSession,jsonError,ApiError } from "@/lib/guard";
 import { optionalId,nextReference,money,transactionAudit } from "@/lib/transactions";
@@ -33,6 +34,7 @@ export async function POST(req:Request){let checkedContext:string|undefined;try{
  const roleId=optionalId(b.roleId)??existing?.roleId;if(!roleId)throw new ApiError(400,"Choose a role.");const role=await tx.role.findUnique({where:{id:roleId}});if(!role)throw new ApiError(400,"Role not found.");if(!admin&&! ["HR","READ_ONLY"].includes(role.key))throw new ApiError(403,"HR may manage HR and read-only roles. Ask the agency owner to assign operational or administrator access.");
  const name=b.name===undefined?existing?.name:optionalId(b.name),email=b.email===undefined?existing?.email:optionalId(b.email)?.toLowerCase();if(!name||name.length>150||!email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new ApiError(400,"Enter a name and valid work email.");const dup=await tx.user.findUnique({where:{email}});if(dup&&dup.id!==existing?.id)throw new ApiError(400,"Email is already in use.");
  const branchId=b.branchId===undefined?existing?.branchId??user.branchId:optionalId(b.branchId);if(branchId&&!(await tx.branch.findUnique({where:{id:branchId}})))throw new ApiError(400,"Branch not found.");const active=b.active===undefined?existing?.active??true:b.active;if(typeof active!=="boolean")throw new ApiError(400,"Active status must be true or false.");
+ if(active&&["ASSIGNED","BRANCH"].includes(ROLE_ACCESS[role.key as RoleKey])&&!branchId)throw new ApiError(400,"Choose a branch for active operational staff so they can receive case assignments.");
  if(existing?.id===user.id&&(!active||role.key!==user.role))throw new ApiError(400,"You cannot deactivate yourself or change your own role.");
  if(existing?.active&&["OWNER","SUPER_ADMIN"].includes(existing.role.key)&&(!active||!["OWNER","SUPER_ADMIN"].includes(role.key))&&await tx.user.count({where:{active:true,id:{not:existing.id},role:{key:{in:["OWNER","SUPER_ADMIN"]}}}})===0)throw new ApiError(400,"Keep at least one active owner or super administrator.");
  const data={name,email,phone:b.phone===undefined?existing?.phone??"":String(b.phone),roleId,branchId,active,...(passwordHash?{passwordHash}:{}),...(user.permissions.includes("hr:view")?{salary:b.salary===undefined?existing?.salary:b.salary===null||b.salary===""?null:money(b.salary,"Salary"),bankAccount:b.bankAccount===undefined?existing?.bankAccount:optionalId(b.bankAccount)}:{})};

@@ -10,6 +10,7 @@ import type { WorkData, WorkDetail, WorkRow } from "@/lib/work-read";
 import { WAITING_REASONS, resultsForService } from "@/lib/work-config";
 import { dateTimeLabel } from "@/lib/dates";
 import { enumLabel } from "@/lib/labels";
+import { assignmentUnavailable } from "@/lib/work-assignment";
 
 export const workStateLabel = (s: string) =>
   ({
@@ -100,8 +101,11 @@ export default function WorkDesk({
       const d = await readJson<WorkData>(`/api/work?${query()}`, c.signal);
       if (!c.signal.aborted) setData(d);
     } catch (e) {
-      if (!c.signal.aborted)
-        setError(e instanceof Error ? e.message : "Could not refresh.");
+      if (!c.signal.aborted) {
+        const message = e instanceof Error ? e.message : "Could not refresh.";
+        setError(message);
+        return message;
+      }
     } finally {
       if (!c.signal.aborted) setRefreshing(false);
     }
@@ -522,6 +526,8 @@ export default function WorkDesk({
         <CreateWorkDialog
           data={data}
           caseId={caseId}
+          refreshPeople={load}
+          refreshing={refreshing}
           close={closeCreate}
           saved={saved}
         />
@@ -887,6 +893,7 @@ function WorkItem({
                     <AssignmentFields
                       data={data}
                       service={t.serviceWork?.service}
+                      branchId={t.branchId}
                       ownerId={t.unassigned ? null : t.owner.id}
                       dueAt={t.dueAt}
                       reviewerId={t.reviewerId}
@@ -995,6 +1002,7 @@ function WorkItem({
 function AssignmentFields({
   data,
   service,
+  branchId,
   ownerId,
   dueAt,
   reviewerId,
@@ -1003,6 +1011,7 @@ function AssignmentFields({
 }: {
   data: WorkData;
   service?: string;
+  branchId?: string | null;
   ownerId: string | null;
   dueAt: string | null;
   reviewerId?: string | null;
@@ -1011,24 +1020,28 @@ function AssignmentFields({
 }) {
   const [owner, setOwner] = useState(ownerId ?? ""),
     [review, setReview] = useState(Boolean(requiresReview));
+  const selectRef = useRef<HTMLSelectElement>(null);
+  const selectedPerson = data.people.find((p) => p.id === owner);
+  const ownerIssue = !owner ? null : selectedPerson
+    ? assignmentUnavailable(selectedPerson, service, branchId)
+    : "This colleague is no longer available. Choose another assignee.";
+  useEffect(() => { selectRef.current?.setCustomValidity(ownerIssue ?? ""); }, [ownerIssue]);
   return (
     <>
-      <Field label="Assignee">
+      <Field label="Assignee" hint={ownerIssue ?? "Unavailable colleagues show the role or branch that needs updating."}>
         <select
+          ref={selectRef}
+          aria-invalid={ownerIssue ? true : undefined}
           name="ownerId"
           value={owner}
           onChange={(e) => setOwner(e.target.value)}
         >
           <option value="">Unassigned — coordinator to allocate</option>
-          {data.people
-            .filter(
-              (p) => p.canWork && (!service || p.services.includes(service)),
-            )
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
+          {owner && !selectedPerson && <option value={owner} disabled>Previously selected colleague is unavailable</option>}
+          {data.people.map((p) => {
+            const reason = assignmentUnavailable(p, service, branchId);
+            return <option key={p.id} value={p.id} disabled={Boolean(reason)}>{p.name} · {p.roleName}{reason ? ` — ${reason}` : ""}</option>;
+          })}
         </select>
       </Field>
       <Field label={owner ? "Due time *" : "Due time"} hint="India time (IST)">
@@ -1060,9 +1073,7 @@ function AssignmentFields({
               {data.people
                 .filter(
                   (p) =>
-                    p.canReview &&
-                    p.id !== owner &&
-                    (!service || p.services.includes(service)),
+                    p.id !== owner && !assignmentUnavailable(p, service, branchId, true),
                 )
                 .map((p) => (
                   <option key={p.id} value={p.id}>
@@ -1144,16 +1155,21 @@ function CaseFields({
 function CreateWorkDialog({
   data,
   caseId,
+  refreshPeople,
+  refreshing,
   close,
   saved,
 }: {
   data: WorkData;
   caseId?: string;
+  refreshPeople: () => Promise<string | undefined>;
+  refreshing: boolean;
   close: () => void;
   saved: () => void;
 }) {
   const w = useWorkWrite(),
     [selection, setSelection] = useState({ caseId: caseId ?? "", service: "" });
+  const [refreshError, setRefreshError] = useState("");
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -1228,6 +1244,7 @@ function CreateWorkDialog({
             <AssignmentFields
               data={data}
               service={selection.service || undefined}
+              branchId={data.cases.find((c) => c.id === selection.caseId)?.branchId ?? data.branchId}
               ownerId={null}
               dueAt={null}
             />
@@ -1236,6 +1253,11 @@ function CreateWorkDialog({
               <input type="datetime-local" name="dueAt" required />
             </Field>
           )}
+          {data.permissions.assign && <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+            <button type="button" className="btn-secondary" disabled={refreshing} onClick={async () => { setRefreshError(""); setRefreshError(await refreshPeople() ?? ""); }}>{refreshing ? "Refreshing staff…" : "Refresh staff list"}</button>
+            {data.permissions.configure && <Link href="/employees" target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">Staff roles & branches <span className="sr-only">(opens in a new tab)</span></Link>}
+            {refreshError && <p role="alert" className="text-red-700">{refreshError} Your draft is kept.</p>}
+          </div>}
           <Field label="Required result">
             <select name="resultType" defaultValue="NOTE">
               {resultsForService(selection.service)

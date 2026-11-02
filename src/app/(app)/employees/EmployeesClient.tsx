@@ -9,6 +9,8 @@ import Modal from "@/components/Modal";
 import { useToast } from "@/lib/useToast";
 import { acknowledgeEmployeeAttempt, createEmployeeOperationGuard, employeeMatches, employeeOutcome, employeeRetryAllowed, isEmployeeRecord, type EmployeeAttempt, type EmployeeRecord } from "@/lib/employee-recovery";
 
+type StaffRole = { id: string; name: string; requiresBranch: boolean; combinedServices: boolean };
+
 type E = {
   revision: string;
   id: string; employeeCode: string; name: string; email: string; phone: string;
@@ -20,8 +22,8 @@ type E = {
 
 const money = (n: number | null) => (n == null ? "—" : inrAmount(Math.round(n)));
 
-export default function EmployeesClient({ employees, roles, branches, canManage, canResetPassword, recoveryContext }: {
-  recoveryContext: string; employees: E[]; roles: { id: string; name: string }[]; branches: { id: string; name: string }[]; canManage: boolean; canResetPassword: boolean;
+export default function EmployeesClient({ employees, roles, branches, defaultBranchId, canManage, canResetPassword, recoveryContext }: {
+  recoveryContext: string; employees: E[]; roles: StaffRole[]; defaultBranchId: string | null; branches: { id: string; name: string }[]; canManage: boolean; canResetPassword: boolean;
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -211,7 +213,7 @@ export default function EmployeesClient({ employees, roles, branches, canManage,
       </div>
 
       {filtered.length === 0 && <div className="mt-5"><EmptyState icon="customers" title="No matching team members" description="Try another name, email or role." /></div>}
-      {modal && <EmployeeForm key={modal.mode === "edit" ? modal.emp.id : "create"} modal={modal} roles={roles} branches={branches} hrVisible={modal.mode === "edit" ? modal.emp.hrVisible : showHr} canResetPassword={canResetPassword} onClose={closeForm} action={action} checkCurrent={checkCurrent} writeEmployee={writeEmployee} finishReview={finishReview} />}
+      {modal && <EmployeeForm key={modal.mode === "edit" ? modal.emp.id : "create"} modal={modal} roles={roles} branches={branches} defaultBranchId={defaultBranchId} hrVisible={modal.mode === "edit" ? modal.emp.hrVisible : showHr} canResetPassword={canResetPassword} onClose={closeForm} action={action} checkCurrent={checkCurrent} writeEmployee={writeEmployee} finishReview={finishReview} />}
       {toast}
     </div>
   );
@@ -253,18 +255,20 @@ function StaffRecovery({ action, checkCurrent, focusOnChange = false }: { action
   </section>;
 }
 
-function EmployeeForm({ modal, roles, branches, hrVisible, canResetPassword, onClose, action, checkCurrent, writeEmployee, finishReview }: {
+function EmployeeForm({ modal, roles, branches, defaultBranchId, hrVisible, canResetPassword, onClose, action, checkCurrent, writeEmployee, finishReview }: {
   action: StaffAction | null; checkCurrent: () => void; finishReview: (refresh?: boolean) => void;
   writeEmployee: (body: Record<string, unknown>, attempt: EmployeeAttempt) => Promise<string | null>;
   modal: { mode: "create" } | { mode: "edit"; emp: E };
-  roles: { id: string; name: string }[]; branches: { id: string; name: string }[]; hrVisible: boolean; canResetPassword: boolean; onClose: () => void;
+  roles: StaffRole[]; defaultBranchId: string | null; branches: { id: string; name: string }[]; hrVisible: boolean; canResetPassword: boolean; onClose: () => void;
 }) {
   const emp = modal.mode === "edit" ? modal.emp : null;
   const [form, setForm] = useState({
     name: emp?.name ?? "", email: emp?.email ?? "", phone: emp?.phone ?? "",
-    roleId: emp?.roleId ?? "", branchId: emp?.branchId ?? "",
+    roleId: emp?.roleId ?? "", branchId: emp ? emp.branchId ?? "" : defaultBranchId ?? "",
     password: "", salary: emp?.salary?.toString() ?? "", bankAccount: emp?.bankAccount ?? "",
   });
+  const selectedRole = roles.find((role) => role.id === form.roleId);
+  const needsBranch = Boolean(selectedRole?.requiresBranch && (emp?.active ?? true));
   const [baseRevision, setBaseRevision] = useState(emp?.revision);
   const busy = action?.phase === "saving" || action?.phase === "checking";
   const [err, setErr] = useState<string | null>(null);
@@ -308,13 +312,14 @@ function EmployeeForm({ modal, roles, branches, hrVisible, canResetPassword, onC
               {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </Field>
-          <Field label="Branch">
-            <select value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
+          <Field label={needsBranch ? "Branch *" : "Branch"} hint={needsBranch ? "Choose the branch whose cases this person will handle." : undefined}>
+            <select required={needsBranch} value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
               <option value="">No branch</option>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </Field>
         </div>
+        {selectedRole?.combinedServices && <p className="text-xs leading-6 text-slate-600">Handles assigned visa applications and flight/hotel bookings, including passport documents. Finance, staff management and work approval remain restricted.</p>}
         {!emp && (
           <Field label="Initial password *" hint="At least 12 characters.">
             <input type="password" minLength={12} maxLength={72} autoComplete="new-password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />

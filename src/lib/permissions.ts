@@ -46,7 +46,7 @@ export const ALL_PERMISSIONS: Permission[] = [
 
 export type RoleKey =
   | "SUPER_ADMIN" | "OWNER" | "BRANCH_MANAGER" | "VISA_MANAGER" | "VISA_EXECUTIVE"
-  | "TICKETING_MANAGER" | "TICKETING_EXECUTIVE" | "SALES_EXECUTIVE"
+  | "TICKETING_MANAGER" | "TICKETING_EXECUTIVE" | "TRAVEL_EXECUTIVE" | "SALES_EXECUTIVE"
   | "ACCOUNTS" | "HR" | "OPERATIONS" | "READ_ONLY";
 
 export type AccessMode = "ALL" | "BRANCH" | "ASSIGNED";
@@ -59,6 +59,7 @@ export const ROLE_ACCESS: Record<RoleKey, AccessMode> = {
   VISA_EXECUTIVE: "ASSIGNED",
   TICKETING_MANAGER: "BRANCH",
   TICKETING_EXECUTIVE: "ASSIGNED",
+  TRAVEL_EXECUTIVE: "ASSIGNED",
   SALES_EXECUTIVE: "ASSIGNED",
   ACCOUNTS: "ALL",
   HR: "ALL",
@@ -158,6 +159,17 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "task:view", "task:create", "task:edit",
     "whatsapp:view", "whatsapp:send",
     "supplier:view",
+  ),
+  // Combined operational role; all record access remains assignment-scoped.
+  TRAVEL_EXECUTIVE: R(
+    "dashboard:view", "search:use",
+    "customer:view", "customer:edit",
+    "traveller:view", "traveller:create", "traveller:edit",
+    "visa:view", "visa:create", "visa:edit", "checklist:view",
+    "ticketing:view", "ticketing:create", "ticketing:edit", "reissue:manage",
+    "document:view", "document:upload", "document:verify", "sensitive:view",
+    "task:view", "task:create", "task:edit",
+    "whatsapp:view", "whatsapp:send", "supplier:view",
   ),
   SALES_EXECUTIVE: R(
     "dashboard:view", "search:use",

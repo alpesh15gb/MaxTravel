@@ -150,6 +150,7 @@ function serializeTask(
 ) {
   return {
     id: t.id,
+    branchId: t.branchId,
     title: t.title,
     details: t.details,
     state: stateOf(t),
@@ -296,7 +297,7 @@ export async function readWork(u: SessionUser, params: URLSearchParams) {
                   ],
                 }),
           },
-          select: { id: true, name: true, role: { select: { key: true } } },
+          select: { id: true, name: true, branchId: true, role: { select: { key: true, name: true } } },
           orderBy: { name: "asc" },
         })
       : [],
@@ -307,6 +308,7 @@ export async function readWork(u: SessionUser, params: URLSearchParams) {
         caseNo: true,
         title: true,
         customerId: true,
+        branchId: true,
         closedAt: true,
         status: true,
         serviceWork: {
@@ -330,6 +332,7 @@ export async function readWork(u: SessionUser, params: URLSearchParams) {
         caseNo: true,
         title: true,
         customerId: true,
+        branchId: true,
         closedAt: true,
         status: true,
         serviceWork: {
@@ -353,6 +356,9 @@ export async function readWork(u: SessionUser, params: URLSearchParams) {
     people: people.map((p) => ({
       id: p.id,
       name: p.name,
+      roleName: p.role.name,
+      branchId: p.branchId,
+      allBranches: ROLE_ACCESS[p.role.key as RoleKey] === "ALL",
       services: [
         ...((ROLE_PERMISSIONS[p.role.key as RoleKey] ?? []).includes(
           "visa:view",
@@ -392,6 +398,7 @@ export async function readWork(u: SessionUser, params: URLSearchParams) {
       export: u.permissions.includes("export:data"),
     },
     userId: u.id,
+    branchId: u.branchId,
     scope: params.get("case")
       ? "This case"
       : !u.permissions.includes("work:team")

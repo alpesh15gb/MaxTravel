@@ -65,6 +65,17 @@ await withFixtureCleanup(async () => {
     assert.equal((await db.user.findUniqueOrThrow({ where: { id: "target" } })).passwordHash, passwordHash); assert.equal(await db.auditLog.count(), before + 1);
     const legacy = await request(owner, "", { id: "target", phone: "9000000333" }, null); assert.equal(legacy.response.status, 200); assert.equal((await db.user.findUniqueOrThrow({ where: { id: "target" } })).phone, "9000000333");
     report.checks.push("Existing HR password/promotion restrictions and self-deactivation denial preserved; ordinary headerless client writes remain compatible");
+    const combinedRole = await db.role.findUniqueOrThrow({ where: { key: "TRAVEL_EXECUTIVE" } });
+    const profile = (await request(owner, "?employeeId=target")).body.employee;
+    const missingBranch = await request(owner, "", { id: "target", roleId: combinedRole.id, branchId: null, baseRevision: profile.revision });
+    assert.equal(missingBranch.response.status, 400); assert.match(missingBranch.body.error, /Choose a branch/);
+    const deniedCombined = await request(hr, "", { id: "target", roleId: combinedRole.id, branchId: "fixture-branch", baseRevision: profile.revision });
+    assert.equal(deniedCombined.response.status, 403);
+    const promoted = await request(owner, "", { id: "target", roleId: combinedRole.id, branchId: "fixture-branch", baseRevision: profile.revision });
+    assert.equal(promoted.response.status, 200);
+    const assigned = await db.user.findUniqueOrThrow({ where: { id: "target" } });
+    assert.equal(assigned.roleId, combinedRole.id); assert.equal(assigned.branchId, "fixture-branch"); assert.equal(assigned.passwordHash, passwordHash);
+    report.checks.push("Owner can assign combined visa/ticketing work with a branch; missing branch and HR promotion reject without changing passwords");
     report.passed = true; console.log(`PASS employee recovery HTTP: ${report.checks.length} access/response/revision contract groups`);
   } catch (error) { report.failure = String(error); throw error; }
 }, async () => { await writeFile(join(out, "report.json"), JSON.stringify(report, null, 2)); await writeFile(join(out, "server.log"), logs); if (server) await stopFixtureChild(server); await db.$disconnect(); await rm(dir, { recursive: true, force: true }); }, (error: unknown) => { report.passed = false; report.failure += `\nCleanup: ${String(error)}`; writeFileSync(join(out, "report.json"), JSON.stringify(report, null, 2)); });

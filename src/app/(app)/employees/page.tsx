@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { requirePage } from "@/lib/guard";
 import { can } from "@/lib/rbac";
+import { ROLE_ACCESS, type RoleKey } from "@/lib/permissions";
 import EmployeesClient from "./EmployeesClient";
 import { employeeReadScope, employeeRecoveryContext, employeeRevision } from "@/lib/employee-recovery-server";
 
@@ -36,7 +37,8 @@ export default async function EmployeesPage() {
         hrVisible: can(user.permissions, "hr:view"),
         workload: { tasks: e.tasks.length, visaCases: e.visaCases.length, bookings: e.bookings.length },
       }))}
-      roles={roles.map((r) => ({ id: r.id, name: r.name }))}
+      roles={roles.map((r) => ({ id: r.id, name: r.name, requiresBranch: ["ASSIGNED", "BRANCH"].includes(ROLE_ACCESS[r.key as RoleKey]), combinedServices: r.key === "TRAVEL_EXECUTIVE" }))}
+      defaultBranchId={user.branchId}
       branches={branches.map((b) => ({ id: b.id, name: b.name }))}
       canManage={can(user.permissions, "employee:manage")}
       // Resetting somebody's password hands over their whole account, so the route only allows it for

@@ -522,3 +522,14 @@ Work down the list. Do not skip to the fix.
 Before creating or replacing any destination, restore verifies the source database checksum, SQLite integrity and foreign keys, every declared numeric row count, and every actual `PackageMedia` row against the verified media tree (filename, byte size and SHA-256). A v1 label cannot bypass missing media when its database contains media rows. Genuine pre-media v1 backups remain supported; historical `null` row counts mean unavailable counts, not a verified zero, while integrity and actual media-reference checks still run. Numeric strings and invalid counts are rejected.
 
 SQLite verification opens a private disposable copy, never the source backup; source recovery sidecars and source/destination symlinks are rejected. The copy is removed after verification. Existing destination DB, uploads and media remain untouched on preflight failure. Operators must still keep the application stopped and use a fresh restore directory: post-copy checks detect I/O failures but cannot make arbitrary hardware failures transactional.
+
+
+## 9. Enable private import storage without rotating the encryption key
+
+An Imports warning about private staging means the running application lacks a valid `CRM_DATA_ENCRYPTION_KEY` (64 hexadecimal characters). Do not paste this key into chat, browser fields, source control or command-line arguments. Keep the same key when updating or restoring the CRM.
+
+Use the reviewed `scripts/vps-enable-encryption.py` from a Linux root terminal with its exact checksummed updater helper. The default invocation inspects only. `--apply` snapshots the actual live Compose configuration, checks database writers, reuses a consistent existing service/private-file key, verifies a full CRM backup and restore, and checks existing ciphertext before starting the same app image. It generates a new key only when no original key and no encrypted records exist. The data inspection runs again after active CRM services stop.
+
+The tool retains the key as root-only `/opt/max-travel-crm-secrets/data-encryption.key` and sets the same key on the app and configured CRM workers. Only previously active workers resume. It does not update booking, change logins or grants, require MFA, migrate/backfill records, reset data, build images or enable payments. Retain the key file with protected off-site backups. Reload `/imports` after successful setup.
+
+If an original key is missing while encrypted records exist, restore that original key from the agency's private backup; generating another key cannot recover the data. If startup is attempted with the new key and later fails, keep that key and candidate configuration: the app may already have encrypted new writes. The tool intentionally avoids reverting to a missing key in that state. Private recovery paths and aggregate counts are printed; key values and client fields are not.

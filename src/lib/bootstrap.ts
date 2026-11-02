@@ -8,6 +8,7 @@ export const ROLE_DEFINITIONS = [
   ["VISA_EXECUTIVE", "Visa Executive", "Assigned visa cases"],
   ["TICKETING_MANAGER", "Ticketing Manager", "Ticketing desk management"],
   ["TICKETING_EXECUTIVE", "Ticketing Executive", "Assigned bookings"],
+  ["TRAVEL_EXECUTIVE", "Visa & Ticketing Executive", "Assigned visa applications and flight/hotel bookings"],
   ["SALES_EXECUTIVE", "Sales Executive", "Assigned customer relationships"],
   ["ACCOUNTS", "Accounts", "Payments, invoices and refunds"],
   ["HR", "HR", "Employee and HR administration"],

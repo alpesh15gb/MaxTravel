@@ -47,7 +47,7 @@
     "test:whatsapp-idempotency": "node --import tsx tests/whatsapp-manual-idempotency.mts",
     "test:meta-inbound": "node --import ./scripts/standalone-server.mjs --import tsx tests/meta-inbound.mts",
     "test:workspace-sections": "node tests/workspace-sections-browser.mjs",
-    "test:case-workflow": "node --import tsx tests/work-migration.mts && node --import ./scripts/standalone-server.mjs --import tsx tests/work-engine.mts && node tests/case-workflow-browser.mjs",
+    "test:case-workflow": "node --import tsx tests/work-migration.mts && node --import ./scripts/standalone-server.mjs --import tsx tests/travel-executive.mts && node --import ./scripts/standalone-server.mjs --import tsx tests/work-engine.mts && node tests/case-workflow-browser.mjs",
     "db:migrate:postgres": "node scripts/prisma-database.mjs migrate-postgres",
     "postinstall": "node scripts/prisma-database.mjs generate"
   },
