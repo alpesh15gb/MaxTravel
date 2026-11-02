@@ -13,3 +13,7 @@ If backup/candidate preparation fails, original services resume with original da
 The helper file must match SHA-256 `5b88f65d42e5b006cdfecc092c254c9196669bb5762ef776a1e75027f44a5fac` (the pinned two-app updater from MaxTripJack commit `3412b7d0438e27ae9cca25f2b4e2e98af1c38b58`). Supply it with `--helper PATH`. Pass the owner work email privately on the VPS with `--owner-email EMAIL`. Do not share private backups, settings or logs.
 
 Tests: `python3 -B -m unittest discover -s tests -p test_vps_reset_crm.py`. They apply every committed SQLite migration to disposable databases and cover preserved authentication/settings/audit/deduplication, complete business clearing, unknown schemas, wrong/inactive owners, unresolved commands, transaction rollback, existing WAL files, persistent-mount validation, inspection-only behaviour, backup-before-reset/restart ordering, backup failure recovery and unknown writers.
+
+## Separate audit-history cleanup
+
+Use `--audit-only` to clear only the CRM AuditLog history, without repeating the business reset. It uses the same verified full backup, offline candidate, atomic SQLite installation and healthy restart procedure. Every other table, including any new business records created after the previous reset, must remain unchanged. One new `AUDIT_HISTORY_CLEARED` entry records the actor, time and cleared-row count. Without `--apply`, this option only prints the audit-row count. Subsequent normal activity can create further new audit entries.

@@ -62,6 +62,17 @@ class ResetTests(unittest.TestCase):
         with self.assertRaises(reset.ResetError): reset.clean_candidate(self.path,'owner@example.test')
         self.assertEqual(self.db.execute('SELECT count(*) FROM Customer').fetchone()[0],1)
 
+    def test_audit_only_removes_history_without_changing_business_or_auth(self):
+        before={t:reset.digest_table(self.db,t) for t in reset.KEEP|reset.BUSINESS if t!='AuditLog'}
+        result=reset.clean_audit_candidate(self.path,'owner@example.test')
+        self.assertEqual(result['cleared']['AuditLog'],1)
+        self.assertEqual(self.db.execute('SELECT action FROM AuditLog').fetchall(),[('AUDIT_HISTORY_CLEARED',)])
+        for table,value in before.items():self.assertEqual(reset.digest_table(self.db,table),value)
+
+    def test_audit_only_wrong_owner_cannot_clear_history(self):
+        with self.assertRaises(reset.ResetError):reset.clean_audit_candidate(self.path,'unknown@example.test')
+        self.assertEqual(self.db.execute('SELECT action FROM AuditLog').fetchone()[0],'LOGIN')
+
     def test_unknown_schema_refused(self):
         self.db.execute('CREATE TABLE FutureBusiness(id TEXT)'); self.db.commit()
         with self.assertRaises(reset.ResetError): reset.clean_candidate(self.path,'owner@example.test')
@@ -130,6 +141,13 @@ class ResetTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()),self.assertRaises(reset.ResetError):reset.reset_crm(job,'owner@example.test',True)
         self.assertEqual(self.db.execute('SELECT count(*) FROM Customer').fetchone()[0],1)
         self.assertTrue(any('up' in c and 'app' in c and 'worker' in c for c in calls))
+
+    def test_audit_only_orchestration_does_not_repeat_business_reset(self):
+        job,calls=self.fake_job()
+        with contextlib.redirect_stdout(io.StringIO()):reset.reset_crm(job,'owner@example.test',True,audit_only=True)
+        self.assertEqual(self.db.execute('SELECT count(*) FROM Customer').fetchone()[0],1)
+        self.assertEqual(self.db.execute('SELECT count(*) FROM FinancialEntry').fetchone()[0],1)
+        self.assertEqual(self.db.execute('SELECT action FROM AuditLog').fetchone()[0],'AUDIT_HISTORY_CLEARED')
 
     def test_unknown_writer_blocks_before_stop(self):
         job,calls=self.fake_job();original=job.run

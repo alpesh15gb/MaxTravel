@@ -85,6 +85,30 @@ def host_database(container, env):
         raise ResetError('Unexpected CRM database mount path.')
     return path.resolve()
 
+def clean_audit_candidate(path, email):
+    db = sqlite3.connect(path)
+    try:
+        owner, counts = inspect_database(db, email)
+        preserved = {t:digest_table(db,t) for t in KEEP | BUSINESS if t != 'AuditLog'}
+        audit = uuid.uuid4().hex
+        db.execute('PRAGMA foreign_keys=ON')
+        db.execute('BEGIN IMMEDIATE')
+        db.execute('DELETE FROM AuditLog')
+        db.execute('INSERT INTO AuditLog(id,userId,action,entity,detail,at) VALUES(?,?,?,?,?,?)',
+                   (audit,owner,'AUDIT_HISTORY_CLEARED','CRM',json.dumps({'clearedRows':counts['AuditLog'],'scope':'AuditLog only; business data and accounts unchanged'}),int(time.time()*1000)))
+        if any(digest_table(db,t)!=value for t,value in preserved.items()):
+            raise ResetError('Audit cleanup changed another table. Candidate discarded.')
+        if db.execute('PRAGMA foreign_key_check').fetchall():
+            raise ResetError('Audit cleanup has broken references.')
+        if db.execute('SELECT count(*) FROM AuditLog').fetchone()[0] != 1:
+            raise ResetError('Audit cleanup did not produce exactly one new cleanup entry.')
+        db.commit()
+        if db.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
+            raise ResetError('Audit cleanup candidate integrity check failed.')
+        return {'cleared':{'AuditLog':counts['AuditLog']},'newCleanupEntry':audit,'preservedTableCount':len(preserved)}
+    finally:
+        db.close()
+
 def readonly(path):
     return sqlite3.connect(path.as_uri()+'?mode=ro', uri=True)
 
@@ -100,16 +124,16 @@ def check_writers(job, path, stack):
             if mount.get('RW') and path.is_relative_to(Path(mount['Source']).resolve()) and row['id'] not in allowed:
                 raise ResetError('Another running container can write the CRM database. Review that writer before resetting; no service changed.')
 
-def reset_crm(job, email, apply):
+def reset_crm(job, email, apply, audit_only=False):
     stack = job.snapshot('max-travel-crm-app-1', 'max-travel-crm')
     container = next(c for c in stack['containers'] if c['Name'].lstrip('/') == stack['app'])
     path = host_database(container, stack['env'])
     check_writers(job, path, stack)
     with closing(readonly(path)) as db:
         _, counts = inspect_database(db, email)
-    print('Reset scope: entire CRM workspace business test records, across staff and branches. Booking is untouched.', flush=True)
-    print('Rows to clear: '+json.dumps({t:counts[t] for t in sorted(BUSINESS)}), flush=True)
-    print('Preserved: staff/logins/MFA, branches, settings/credentials/counters, templates/catalogue, security audit and booking event deduplication.', flush=True)
+    print('Reset scope: '+('CRM audit history only; one new cleanup entry records this operation.' if audit_only else 'entire CRM workspace business test records, across staff and branches.')+' Booking is untouched.', flush=True)
+    print('Rows to clear: '+json.dumps({'AuditLog':counts['AuditLog']} if audit_only else {t:counts[t] for t in sorted(BUSINESS)}), flush=True)
+    print('Preserved: '+('all business records and other tables.' if audit_only else 'staff/logins/MFA, branches, settings/credentials/counters, templates/catalogue, security audit and booking event deduplication.'), flush=True)
     if not apply:
         print('Inspection only. No service stopped; application data and configuration unchanged.')
         return
@@ -130,7 +154,7 @@ def reset_crm(job, email, apply):
         candidate = job.directory/'empty-business-candidate.db'
         with closing(readonly(path)) as source, closing(sqlite3.connect(candidate)) as target:
             source.backup(target)
-        report = clean_candidate(candidate, email)
+        report = clean_audit_candidate(candidate, email) if audit_only else clean_candidate(candidate, email)
         job.write('reset-plan-and-verification.json', report)
         with closing(readonly(candidate)) as source, closing(sqlite3.connect(path, timeout=30)) as destination:
             # Native backup installation handles the destination journal/WAL atomically;
@@ -148,15 +172,17 @@ def reset_crm(job, email, apply):
         with closing(readonly(path)) as db:
             if db.execute('PRAGMA integrity_check').fetchall() != [('ok',)] or db.execute('PRAGMA foreign_key_check').fetchall():
                 raise ResetError('Installed database verification failed; services remain stopped for recovery.')
-            if any(db.execute('SELECT count(*) FROM '+quote(t)).fetchone()[0] for t in BUSINESS):
+            if audit_only and db.execute('SELECT count(*) FROM AuditLog').fetchone()[0] != 1:
+                raise ResetError('Installed audit cleanup verification failed.')
+            if not audit_only and any(db.execute('SELECT count(*) FROM '+quote(t)).fetchone()[0] for t in BUSINESS):
                 raise ResetError('Installed database contains unexpected business rows.')
         job.run(job.compose(stack, stack['before'], 'up', '-d', '--no-deps', '--no-build', '--pull', 'never', 'app'))
         job.health(stack)
         workers = [s for s in stack['services'] if s != 'app']
         if workers:
             job.run(job.compose(stack, stack['before'], 'up', '-d', '--no-deps', '--no-build', '--pull', 'never', *workers))
-        job.write('reset-completed.json', {'complete': True, 'bookingUntouched': True, 'backupRestoreVerified': True})
-        print('CRM test business data cleared and app healthy. Previously active CRM workers resumed. Booking unchanged. No messages or supplier/payment operations were initiated.', flush=True)
+        job.write('reset-completed.json', {'complete': True, 'auditOnly': audit_only, 'bookingUntouched': True, 'backupRestoreVerified': True})
+        print(('CRM audit history cleared; one new cleanup entry retained.' if audit_only else 'CRM test business data cleared.')+' App healthy. Previously active CRM workers resumed. Booking unchanged. No messages or supplier/payment operations were initiated.', flush=True)
         print('Private backups and old unreferenced uploads retained for recovery: '+str(job.directory), flush=True)
     except BaseException:
         if paused and not installed:
@@ -171,6 +197,7 @@ def main():
     parser.add_argument('--helper', required=True)
     parser.add_argument('--owner-email', required=True)
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--audit-only', action='store_true', help='Clear only AuditLog history, retaining one new cleanup entry and every other table.')
     args = parser.parse_args()
     if os.name != 'posix' or os.geteuid() != 0:
         raise ResetError('Run from the Linux VPS root terminal.')
@@ -183,7 +210,7 @@ def main():
     spec.loader.exec_module(module)
     job = module.Update()
     print('Private CRM reset recovery directory: '+str(job.directory), flush=True)
-    return reset_crm(job, args.owner_email, args.apply)
+    return reset_crm(job, args.owner_email, args.apply, args.audit_only)
 
 if __name__ == '__main__':
     try:
