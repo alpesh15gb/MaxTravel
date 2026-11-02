@@ -49,6 +49,8 @@ jobs:
         run: npm run lint
       - name: Verify employee recovery outcome and generation contracts
         run: node --import tsx tests/employee-recovery.ts
+      - name: Verify owner-requested CRM reset and recovery protections
+        run: python3 -B -m unittest discover -s tests -p test_vps_reset_crm.py
 
   build:
     name: Production build
