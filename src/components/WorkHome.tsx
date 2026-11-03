@@ -11,7 +11,7 @@ import { computePulse } from "@/lib/pulse";
 import { taskScope } from "@/lib/work-engine";
 import { dateTimeLabel, dayChipLabel } from "@/lib/dates";
 
-export default async function WorkHome({ user }: { user: SessionUser }) {
+export default async function WorkHome({ user, denied = false }: { user: SessionUser; denied?: boolean }) {
   const manager = user.permissions.includes("work:team"),
     services = [
       ...(user.permissions.includes("visa:create") ? ["VISA"] : []),
@@ -71,6 +71,7 @@ export default async function WorkHome({ user }: { user: SessionUser }) {
     .slice(0, 4);
   return (
     <div className="workspace-page work-desk">
+      {denied && <p role="alert" className="form-error mb-5">Your role does not allow that page. Choose one of the sections in the menu.</p>}
       <PageHeader
         eyebrow={`${dayChipLabel(new Date())} · ${data.scope}`}
         title={manager ? "Agency overview" : "My day"}
