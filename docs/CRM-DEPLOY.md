@@ -34,7 +34,8 @@ cd /opt/max-travel-crm && ./deploy/crm-deploy.sh
 ```
 
 It fast-forwards the checkout, builds a new tagged image, backs up using the image that is
-currently running, swaps the app and worker, waits for the health check and rolls back by itself
+currently running, applies any new database migrations (the CRM env file turns off automatic
+migration, so the script does it), swaps the app and worker, waits for the health check and rolls back by itself
 if the new image is not healthy. It prints the previous image tag for a manual rollback:
 
 ```bash

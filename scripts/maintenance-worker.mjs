@@ -8,7 +8,7 @@ process.on("SIGINT",()=>{stopping=true;});
 while (!stopping) {
   try {
     const r = await fetch(url,{method:"POST",headers:{Authorization:`Bearer ${secret}`},signal:AbortSignal.timeout(240000)});
-    if (!r.ok) console.error(`[maintenance-worker] App returned HTTP ${r.status}`);
+    if (!r.ok) console.error(`[maintenance-worker] App returned HTTP ${r.status}${r.status===503?" "+(await r.text().catch(()=>"")).slice(0,200):""}`);
   } catch { console.error("[maintenance-worker] Could not reach the CRM worker endpoint."); }
   for(let n=0;n<15&&!stopping;n++) await new Promise(r=>setTimeout(r,1000));
 }

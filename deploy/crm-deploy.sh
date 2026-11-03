@@ -46,6 +46,12 @@ echo "== Backing up (using the known-good running image)"
 install -d -o 1000 -g 1000 -m 700 "$CRM_BACKUP_DIR"
 CRM_IMAGE="${previous:-$tag}" compose --profile maintenance run --interactive=false --rm backup
 
+# The CRM env file may set RUN_MIGRATIONS=false, so the container never migrates itself.
+# Apply committed migrations here, after the backup and before the new image serves traffic.
+# They only run forward; a failed migration stops the deploy with the old CRM still running.
+echo "== Applying database migrations"
+CRM_IMAGE="$tag" compose run --interactive=false --rm --no-deps --entrypoint ./node_modules/.bin/prisma app migrate deploy
+
 echo "== Starting $tag"
 CRM_IMAGE="$tag" compose up -d app worker
 if wait_healthy; then
