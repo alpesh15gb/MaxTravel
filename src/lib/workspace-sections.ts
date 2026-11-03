@@ -47,9 +47,9 @@ const LEGACY_SECTIONS: WorkspaceSection[] = [
 
 const legacy=(id:SectionId)=>LEGACY_SECTIONS.find(s=>s.id===id)!;
 export const WORKSPACE_SECTIONS:WorkspaceSection[]=[
- {...legacy("customers"),title:"Masters",href:"/masters",description:"Customer details, travellers, documents and staff activity.",links:[{href:"/masters",label:"Customer masters",description:"Complete customer and traveller profiles.",icon:"customers",permission:"customer:view"},{href:"/email",label:"Customer email",description:"Queued updates, failures and delivery review.",icon:"message",permission:"email:send"},...legacy("operations").links.filter(l=>l.href==="/documents")]},
- {...legacy("operations"),title:"Bookings",href:"/ticketing",description:"Create and manage travel bookings and visa work.",links:legacy("operations").links.filter(l=>["/ticketing","/online-bookings","/visa"].includes(l.href)).concat(legacy("customers").links.filter(l=>["/cases","/sales"].includes(l.href)),legacy("finance").links.filter(l=>l.href!=="/suppliers"))},
- {...legacy("today"),title:"Tasks & follow-ups",href:"/work",description:"Assign, perform and follow up daily work.",links:[{href:"/work",label:"Work register",description:"One queue for assigned work.",icon:"tasks",permission:"task:view"},...legacy("today").links,...legacy("operations").links.filter(l=>l.href==="/work/service-alerts")]},
+ {...legacy("customers"),title:"Masters",href:"/masters",description:"Customer details, travellers, documents and staff activity.",links:[{href:"/masters",label:"Customers",description:"Find or add a customer, their travellers and documents.",icon:"customers",permission:"customer:view"},{href:"/email",label:"Customer email",description:"Queued updates, failures and delivery review.",icon:"message",permission:"email:send"},...legacy("operations").links.filter(l=>l.href==="/documents")]},
+ {...legacy("operations"),title:"Bookings",href:"/ticketing",description:"Enquiry, quote, booking, visa and payment for each customer, in order.",links:(()=>{const all=[...legacy("operations").links,...legacy("customers").links,...legacy("finance").links],names:Record<string,string>={"/sales":"Enquiries & quotes","/ticketing":"Travel bookings","/visa":"Visa","/online-bookings":"Online","/payments":"Payments & invoices","/refunds":"Refunds","/advances":"Advances","/cases":"Max IDs"};return Object.keys(names).map(h=>all.find(l=>l.href===h)).filter((l):l is WorkspaceLink=>!!l).map(l=>({...l,label:names[l.href]}));})()},
+ {...legacy("today"),title:"Tasks & follow-ups",href:"/work",description:"Everything to do today: assigned work, follow-ups and alerts.",links:[{href:"/work",label:"Tasks & follow-ups",description:"One queue: assign, do and follow up work.",icon:"tasks",permission:"task:view"},{href:"/dashboard",label:"Today",description:"What needs a decision today.",icon:"dashboard",permission:"dashboard:view"},{...legacy("operations").links.find(l=>l.href==="/work/service-alerts")!,label:"Alerts"}]},
  {...legacy("finance"),title:"Suppliers",href:"/suppliers",description:"Supplier accounts, due dates and settlements.",links:legacy("finance").links.filter(l=>l.href==="/suppliers")},
  {...legacy("reports"),title:"Reporting",href:"/reports/work",description:"Operational and financial reports and exports."},
 ];
@@ -59,7 +59,7 @@ export function availableSections(permissions: readonly string[]) {
 }
 export const findSection = (id: string) => WORKSPACE_SECTIONS.find(section => section.id === id) ?? LEGACY_SECTIONS.find(section=>section.id===id);
 export function sectionForPath(path: string) {
-  if(path==="/team-chat")return findSection("today");
+  if(path==="/team-chat"||path==="/notifications"||path==="/tasks")return findSection("today");
   if(path==="/customers"||path.startsWith("/customers/"))return findSection("customers");
   if(path.startsWith("/settings")||path.startsWith("/employees")||path.startsWith("/audit")||path.startsWith("/imports")||path.startsWith("/checklists")||path.startsWith("/work/settings")) return findSection("administration");
   return WORKSPACE_SECTIONS.find(section => path === section.href || section.links.some(link => path === link.href || path.startsWith(link.href + "/"))) ??

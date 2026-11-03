@@ -15,11 +15,10 @@ import WorkspaceGuide from "./WorkspaceGuide";
 import { availableSections, sectionForPath } from "@/lib/workspace-sections";
 export interface ShellUser { name: string; roleName: string; branchName: string | null; employeeCode: string; permissions: string[]; }
 const QUICK: { href: string; label: string; icon: IconName; perm: string }[] = [
-  { href:"/visa/new",label:"New visa case",icon:"visa",perm:"visa:create" },
+  { href:"/masters?action=new",label:"New customer",icon:"customers",perm:"customer:create" },
   { href:"/ticketing/new",label:"New booking",icon:"plane",perm:"ticketing:create" },
-  { href:"/sales",label:"Enquiries & quotes",icon:"customers",perm:"customer:view" },
-  { href:"/masters",label:"Find a customer",icon:"customers",perm:"customer:view" },
-  { href:"/work?new=1",label:"Add a follow-up task",icon:"tasks",perm:"task:create" },
+  { href:"/visa/new",label:"New visa case",icon:"visa",perm:"visa:create" },
+  { href:"/work?new=1",label:"New task",icon:"tasks",perm:"task:create" },
 ];
 function initials(name: string) { return name.split(" ").filter(Boolean).map(n => n[0]).slice(0, 2).join("").toUpperCase(); }
 function useDismiss(ref: React.RefObject<HTMLDivElement | null>, open: boolean, close: () => void) {
@@ -106,10 +105,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
             {/* Density lives in the account menu rather than a module toolbar: it applies to every
                 screen, and this is the one control reachable from all of them at every width. */}
             <DensityControl mode="menu" />
-            {user.permissions.includes("employee:view")&&<Link role="menuitem" className="menu-item" href="/employees" onClick={()=>setUserOpen(false)}>Team & access</Link>}
-            {user.permissions.includes("settings:manage")&&<Link role="menuitem" className="menu-item" href="/settings" onClick={()=>setUserOpen(false)}>Agency settings</Link>}
-            {user.permissions.includes("settings:manage")&&<Link role="menuitem" className="menu-item" href="/imports" onClick={()=>setUserOpen(false)}>Client & Max ID import</Link>}
-            {user.permissions.includes("audit:view")&&<Link role="menuitem" className="menu-item" href="/audit" onClick={()=>setUserOpen(false)}>Audit history</Link>}
+            {["settings:manage","employee:view","audit:view"].some(p=>user.permissions.includes(p))&&<Link role="menuitem" className="menu-item" href="/workspace/administration" onClick={()=>setUserOpen(false)}>Settings</Link>}
             <Link role="menuitem" className="menu-item" href="/account-security" onClick={()=>setUserOpen(false)}>Account security</Link>
             <button role="menuitem" className="menu-item" onClick={() => { setUserOpen(false); setPwOpen(true); }}><Icon name="shield" size={16} className="text-slate-500" />Change password</button>
             <button role="menuitem" className="menu-item text-rose-700" onClick={() => { setUserOpen(false); logout(); }}><Icon name="logout" size={16} />Sign out</button>
