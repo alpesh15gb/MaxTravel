@@ -65,6 +65,10 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
       }
       continue;
     }
+    if(b.travelDate&&b.travelDate.getTime()>=now&&b.travelDate.getTime()<now+3*24*H&&["PNR_CREATED","CONFIRMED","TICKETED"].includes(b.status)){
+      const href=`/ticketing/${b.id}`,due=bookingCharge(b)-netReceived(b.payments.reduce((s,p)=>s+p.amount,0),b.refunds);
+      items.push({id:`travel:${b.id}`,kind:"TRAVEL_SOON",severity:can("payment:view")&&due>0?"HIGH":"MEDIUM",title:`Travelling ${dateTimeLabel(b.travelDate)} · ${b.bookingNo}`,detail:`${b.customer.name} · ${b.sector??"Route pending"}${can("payment:view")&&due>0?` · Balance ${money(due)} still due`:""}`,href,at:b.travelDate.toISOString(),actions:[open("Open booking",href)]});
+    }
     if(!airlineDeadlineEligible(b,true)||!b.ticketingDeadline)continue;
     const hours=(b.ticketingDeadline.getTime()-now)/H;if(hours>warn)continue;
     const href=`/ticketing/${b.id}`,balance=bookingCharge(b)-netReceived(b.payments.reduce((s,p)=>s+p.amount,0),b.refunds);
