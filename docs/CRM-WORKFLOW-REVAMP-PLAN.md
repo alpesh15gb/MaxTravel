@@ -213,7 +213,7 @@ Administrator settings cover service templates, assignment defaults, working cal
 
 Begin with manual assignment and reusable templates. Automatic distribution is optional after eligibility, leave/availability and workload rules are proven. Triggered tasks and notifications use stable source IDs; repeated booking/payment webhooks or worker retries must not create duplicate tasks, sends or receipts.
 
-Persist timestamps in UTC, display/aggregate agency days in Asia/Kolkata and require business hours/holiday settings before business-hour escalation. In-app staff notifications work independently of WhatsApp. Client communication continues through the authorized provider/consent rules; coexistence eligibility is a separate account project.
+Persist timestamps in UTC, display/aggregate agency days in Asia/Kolkata and require business hours/holiday settings before business-hour escalation. In-app staff notifications work independently of customer email. Client communication uses the scoped email workflow; private documents follow the payment/release rules.
 
 ## 13. Delivery sequence and release gates
 
@@ -240,7 +240,7 @@ Use an expand/contract rollout and compatible APIs. New work states must not dis
 5. Routine task completion does not require unnecessary approval; actual supplier, visa and financial outcomes still use their original controls.
 6. Reassignment, due-date changes, cancellation and reopening preserve history and produce correct current and historical reports.
 7. A paid-but-unconfirmed online booking creates one owned exception even when provider callbacks are retried.
-8. A missing/unavailable WhatsApp message becomes actionable staff work without claiming its text has been recovered or that the Business app is connected.
+8. Failed or uncertain customer email remains visible for staff review without claiming delivery or silently repeating an uncertain send.
 9. Every overview count reconciles with its filtered list and complete export, including more records than any attention-list limit.
 10. Owner, branch manager, visa/ticketing staff, accounts and read-only flows work at desktop and phone widths, with keyboard support and preserved list context.
 11. A migration rehearsal on a backup preserves IDs, source balances, ownership and completed history; ambiguous records remain visible for resolution.

@@ -48,22 +48,14 @@ An identical completed command returns its recorded response. Reusing its UUID f
 
 The existing booking CRM worker generates a stable confirmation PDF for confirmed flights/hotels and flight service receipts, then includes its filename, SHA-256 and base64 bytes in the signed event. The worker verifies the booking revision before freezing the event. The generated PDF transport ceiling is 512 KiB; event transport remains limited to 1 MiB. Errors remain in the existing monitored outbox retry flow.
 
-CRM verifies the signature, PDF format, size and hash, then stores it privately under the existing uploads volume. The native booking/customer association and attachment/message deduplication are transactional. Current PDFs can be downloaded from Online bookings. A cancelled/superseded booking does not automatically send an old confirmation.
+CRM verifies the signature, PDF format, size and hash, then stores it privately under the existing uploads volume. The native booking/customer association and attachment deduplication are transactional. Current PDFs can be downloaded from Online bookings. A cancelled/superseded booking does not automatically send an old confirmation.
 
-To enable automatic WhatsApp PDF sending:
-
-1. Configure Meta Cloud API as described in META-WHATSAPP-SETUP.md.
-2. Obtain approval for a **UTILITY template with a DOCUMENT header**.
-3. Add a `BOOKING_DOCUMENT` entry to `WA_CLOUD_TEMPLATES`, for example parameters `["customer","reference"]` in the approved body's positional order.
-4. Enable **Send confirmed booking PDF automatically** in WhatsApp automation settings before test bookings are confirmed.
-5. Record the customer's actual WhatsApp permission. Missing consent, STOP, inactive accounts and missing template approval prevent sending.
-
-The worker rechecks booking eligibility before dispatch. A newer cancellation or replacement suppresses an unsent automatic document. Unknown sends retain the existing no-resubmission protection. Header/button variants other than the supported document header remain unsupported. No incoming-media download is added by this feature.
+Current booking PDFs are private staff downloads at `/api/private-pdfs/[id]`. Client ticket delivery continues through the separate payment-checked, revocable delivery link; importing a PDF does not send a message.
 
 The PDF is a booking confirmation/service receipt, not a GST tax invoice or a substitute for airline-issued ticket numbers. Ticket numbers/PNRs appear only when returned by the supplier.
 
 ## Verification and acceptance
 
-Local simulated checks cover signed commands, mapped/revoked permissions, duplicate/colliding IDs, scoped targets, cancellation review/offer acceptance guards, lost-response recovery, generated-PDF stability, signed PDF import, duplicate message prevention and stale-document suppression. Real TripJack/Razorpay, deployed app-to-CRM and Meta messaging tests remain pending. The local preview was not replaced; previous access/approval blocks remain in effect.
+Local simulated checks cover signed commands, mapped/revoked permissions, duplicate/colliding IDs, scoped targets, cancellation review/offer acceptance guards, lost-response recovery, generated-PDF stability, signed PDF import, duplicate event prevention and stale-document suppression. Real TripJack/Razorpay, deployed app-to-CRM and SMTP tests remain pending. The local preview was not replaced; previous access/approval blocks remain in effect.
 
-Booking checks: `npm run test:crm-commands`, `npm run test:checkout`, existing cancellation/refund tests, lint/type checks, build and worker bundling. CRM checks use the isolated test database and `tests/platform-documents.mts`, `tests/platform-receiver.mts`, `tests/meta-cloud.mts` and `tests/meta-pdf.mts`.
+Booking checks: `npm run test:crm-commands`, `npm run test:checkout`, existing cancellation/refund tests, lint/type checks, build and worker bundling. CRM checks use the isolated test database and `tests/platform-documents.mts`, `tests/platform-receiver.mts`.

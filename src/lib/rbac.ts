@@ -31,7 +31,6 @@ export const MODULE_PERMISSION: Record<string, Permission> = {
   refunds: "refund:view",
   suppliers: "supplier:view",
   tasks: "task:view",
-  whatsapp: "whatsapp:view",
   employees: "employee:view",
   settings: "settings:manage",
   audit: "audit:view",

@@ -20,7 +20,7 @@ const dt = (s: string | null | undefined) => (s ? dateTimeLabel(s) : "—");
 const dOnly = (s: string | null | undefined) => (s ? dateLabel(s) : "—");
 
 export type Perms = {
-  sensitive: boolean; send: boolean; record: boolean; createVisa: boolean;
+  sensitive: boolean; record: boolean; createVisa: boolean;
   createTicket: boolean; createTask: boolean; requestDocs: boolean;
   addTraveller?: boolean; editTraveller?: boolean; export?: boolean;
   invoice?: boolean; finance?: boolean; visibleTabs?: string[]; editCustomer?: boolean;
@@ -31,7 +31,7 @@ type Tone = "neutral" | "success" | "warning" | "danger" | "info";
 const TABS = [
   ["overview", "Overview"], ["travellers", "Travellers"], ["visa", "Visa Cases"], ["tickets", "Tickets"],
   ["trips", "Trips"], ["documents", "Documents"], ["payments", "Payments"], ["refunds", "Refunds"],
-  ["whatsapp", "WhatsApp"], ["tasks", "Tasks"], ["notes", "Notes"], ["activity", "Activity Timeline"],
+  ["tasks", "Tasks"], ["notes", "Notes"], ["activity", "Activity Timeline"],
 ] as const;
 
 // One tone per meaning, shared with the rest of the app's status badges.
@@ -50,11 +50,10 @@ export default function Customer360View({ data, perms, initialTab, permsExtra, o
       ? initialTab
       : "overview")
   );
-  const [modal, setModal] = useState<null | "payment" | "task" | "upload" | "wa" | "traveller" | { travellerEdit: Data["travellers"][number] }>(null);
+  const [modal, setModal] = useState<null | "payment" | "task" | "upload" | "traveller" | { travellerEdit: Data["travellers"][number] }>(null);
   const { show, toast } = useToast();
   const c = data.customer;
 
-  function wa() { location.assign(`/whatsapp?customer=${c.id}`); }
 
   return (
     <div className="workspace-page">
@@ -88,10 +87,9 @@ export default function Customer360View({ data, perms, initialTab, permsExtra, o
           <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
             {p.editCustomer && <RecordEditor title="Edit customer" buttonLabel="Edit customer" endpoint={`/api/customers/${c.id}`} values={{name:c.name,phone:c.phone,email:c.email,city:c.city,address:c.address,companyName:c.companyName,type:c.type,status:c.status,assignedToId:c.manager?.id??"",handoverWork:false}} fields={[{key:"name",label:"Customer name",required:true},{key:"phone",label:"Phone",type:"tel",required:true},{key:"email",label:"Email",type:"email"},{key:"city",label:"City"},{key:"address",label:"Address",type:"textarea"},{key:"companyName",label:"Company"},{key:"type",label:"Customer type",type:"select",options:["INDIVIDUAL","CORPORATE","SUB_AGENT"].map(value=>({value,label:value.replaceAll("_"," ")}))},{key:"status",label:"Relationship status",type:"select",options:["ACTIVE","LEAD","INACTIVE"].map(value=>({value,label:value}))},...(owners.length?[{key:"assignedToId",label:"Relationship manager",type:"select" as const,options:owners.map(o=>({value:o.id,label:o.name}))},{key:"handoverWork",label:"Hand over open enquiries, existing bookings, visa cases and open tasks",type:"checkbox" as const}]:[])]}/>}
             {perms.record && <QuickBtn primary onClick={() => location.assign(`/payments?action=record&customer=${c.id}`)}>Record payment</QuickBtn>}
-            {(perms.send || perms.createTask || perms.requestDocs || p.invoice) && <details className="customer-tools" onClick={e => { if ((e.target as HTMLElement).closest("button")) e.currentTarget.removeAttribute("open"); }} onKeyDown={e => { if (e.key === "Escape") { e.currentTarget.removeAttribute("open"); e.currentTarget.querySelector("summary")?.focus(); } }}>
+            {(perms.createTask || perms.requestDocs || p.invoice) && <details className="customer-tools" onClick={e => { if ((e.target as HTMLElement).closest("button")) e.currentTarget.removeAttribute("open"); }} onKeyDown={e => { if (e.key === "Escape") { e.currentTarget.removeAttribute("open"); e.currentTarget.querySelector("summary")?.focus(); } }}>
               <summary className="btn-secondary">Customer actions<Icon name="chevronDown" size={14} /></summary>
               <div className="customer-tool-list">
-                {perms.send && <QuickBtn onClick={wa}>Open WhatsApp desk</QuickBtn>}
                 {perms.createTask && <QuickBtn onClick={() => setModal("task")}>Create Task</QuickBtn>}
                 {perms.requestDocs && <QuickBtn onClick={requestDocs}>Request Documents</QuickBtn>}
                 {perms.requestDocs && <QuickBtn onClick={() => setModal("upload")}>Share upload link</QuickBtn>}
@@ -145,7 +143,6 @@ export default function Customer360View({ data, perms, initialTab, permsExtra, o
       {tab === "documents" && <Documents data={data} perms={perms} onToast={show} />}
       {tab === "payments" && <Payments data={data} />}
       {tab === "refunds" && <Refunds data={data} />}
-      {tab === "whatsapp" && <WhatsApp data={data} />}
       {tab === "tasks" && <Tasks data={data} />}
       {tab === "notes" && <Notes data={data} canEdit={!!p.editCustomer} />}
       {tab === "activity" && <Activity data={data} />}
@@ -206,7 +203,6 @@ function Panel({ title, children, action }: { title: string; children: React.Rea
 }
 
 function Overview({ data, onSelect }: { data: Data; onSelect: (tab: string) => void }) {
-  const wa = data.whatsapp[0];
   const openTasks = data.tasks.filter(t => ["OPEN", "IN_PROGRESS"].includes(t.status)).slice(0, 5);
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
@@ -237,18 +233,6 @@ function Overview({ data, onSelect }: { data: Data; onSelect: (tab: string) => v
             ))}
           </ul>
         ) : <p className="customer-overview-empty">No open tasks. Create a follow-up from Customer actions.</p>}
-      </Panel>
-      <Panel title="Latest WhatsApp" action={<span className="text-small text-slate-500">{data.summary.lastWhatsApp ? dt(data.summary.lastWhatsApp) : "No messages yet"}</span>}>
-        {wa ? (
-          <div className="max-h-64 space-y-2 overflow-y-auto tos-scroll">
-            {wa.messages.slice(-4).map((m) => (
-              <div key={m.id} className={`max-w-[85%] rounded-xl px-3 py-2 text-xs ${m.direction === "IN" ? "bg-slate-100" : "ml-auto border border-teal-200 bg-teal-50"}`}>
-                {m.body}
-                <div className="mt-0.5 text-small text-slate-500">{dt(m.at)}</div>
-              </div>
-            ))}
-          </div>
-        ) : <p className="py-4 text-small text-slate-500">No conversation recorded for this customer.</p>}
       </Panel>
       </div>
       <Panel title="Customer details">
@@ -561,35 +545,13 @@ function Refunds({ data }: { data: Data }) {
   );
 }
 
-function WhatsApp({ data }: { data: Data }) {
-  return (
-    <div className="space-y-4">
-      {data.whatsapp.map((t) => (
-        <section key={t.id} className="panel p-5">
-          <div className="mb-4 text-xs text-slate-500">{t.phone} · {t.messages.length} messages</div>
-          <div className="space-y-2.5">
-            {t.messages.map((m) => (
-              <div key={m.id} className={`max-w-[80%] rounded-xl px-3.5 py-2.5 text-sm ${m.direction === "IN" ? "bg-slate-100" : "ml-auto border border-teal-200 bg-teal-50"}`}>
-                {m.body}
-                <div className="mt-1 text-right text-small text-slate-500">{dt(m.at)} {m.direction === "OUT" ? `· ${m.status}` : ""}</div>
-                {m.template && <div className="mt-0.5 text-small text-sky-700">template: {m.template}</div>}
-              </div>
-            ))}
-          </div>
-        </section>
-      ))}
-      {data.whatsapp.length === 0 && <Empty>No WhatsApp history.</Empty>}
-    </div>
-  );
-}
-
 function Tasks({ data }: { data: Data }) {
   return (
     <div className="panel divide-y divide-slate-100 overflow-hidden">
       {data.tasks.map((t) => (
         <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div className="min-w-0">
-            <Link href={`/tasks?focus=${t.id}`} className="text-sm font-medium text-teal-700 hover:underline">{t.title}</Link>
+            <Link href={`/work?task=${t.id}`} className="text-sm font-medium text-teal-700 hover:underline">{t.title}</Link>
             <div className="mt-0.5 text-xs text-slate-500">{t.owner} · due {dOnly(t.dueAt)}</div>
           </div>
           <div className="flex gap-2">

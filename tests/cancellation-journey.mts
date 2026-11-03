@@ -10,7 +10,7 @@ const role = await prisma.role.upsert({ where: { key: "OWNER" }, create: { key: 
 const branch = await prisma.branch.create({ data: { code: suffix, name: "Synthetic ticketing branch", city: "Test" } });
 const user = await prisma.user.create({ data: { employeeCode: suffix, email: `${suffix}@example.test`, name: "Synthetic operator", phone: "", passwordHash: await bcrypt.hash(password, 12), roleId: role.id, branchId: branch.id } });
 const customer = await prisma.customer.create({ data: { code: suffix, name: "Synthetic ticket customer", phone: "", city: "Test", branchId: branch.id, assignedToId: user.id, travellers: { create: [{ fullName: "Same Name" }, { fullName: "Same Name" }] } }, include: { travellers: true } });
-const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", "3231", "-H", "127.0.0.1"], { env: { ...process.env, APP_ORIGIN: origin, JWT_SECRET: randomBytes(48).toString("hex"), WA_PROVIDER: "manual" }, stdio: ["ignore", "pipe", "pipe"] });
+const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", "3231", "-H", "127.0.0.1"], { env: { ...process.env, APP_ORIGIN: origin, JWT_SECRET: randomBytes(48).toString("hex") }, stdio: ["ignore", "pipe", "pipe"] });
 let logs = "", cookie = "";
 server.stdout.on("data", v => logs += v); server.stderr.on("data", v => logs += v);
 async function post(path: string, body: unknown, expected = 200) {

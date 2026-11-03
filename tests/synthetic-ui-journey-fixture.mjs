@@ -11,7 +11,7 @@ export async function runSyntheticJourney(name,port,work){
  assert(Number.isInteger(port)&&port>1024&&port<32768);fs.mkdirSync(out,{recursive:true});fs.rmSync(metadata,{force:true});
  const report={scope:'Synthetic real UI and disposable SQLite; no provider delivery, real money or production data',checks:[],errors:[],blocked:[],passed:false};
  let logs='',spawnError='',browser,db,fixture,currentPage;
- const server=spawn(process.execPath,['tests/visual-review-server.mjs'],{detached:true,stdio:['ignore','pipe','pipe'],env:{...process.env,REVIEW_PORT:String(port),REVIEW_DEV:'0',APP_ORIGIN:base,WA_PROVIDER:'manual'}});
+ const server=spawn(process.execPath,['tests/visual-review-server.mjs'],{detached:true,stdio:['ignore','pipe','pipe'],env:{...process.env,REVIEW_PORT:String(port),REVIEW_DEV:'0',APP_ORIGIN:base}});
  // Exit hook is synchronous and targets only this detached process group; errors still fail normally.
  const stopOwnedOnExit=()=>{if(server.pid)try{process.kill(-server.pid,'SIGKILL');}catch{}};process.once('exit',stopOwnedOnExit);
  server.stdout.on('data',v=>logs+=v);server.stderr.on('data',v=>logs+=v);server.on('error',e=>spawnError=String(e));

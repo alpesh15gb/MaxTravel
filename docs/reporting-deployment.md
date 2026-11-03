@@ -2,11 +2,7 @@
 
 Local implementation, 13 October 2026. This does not update the VPS automatically.
 
-This release also formats WhatsApp document requests with a greeting, bold section labels,
-numbered document lines, a standalone private URL and an expiry labelled IST. The worker upgrades
-valid unsent automatic requests from the previous paragraph layout when claiming them for delivery;
-it does not create duplicate messages or change messages already sent. Manual built-in document
-templates use the same numbered list. Agency-authored custom templates remain agency-controlled.
+The reporting checks below remain useful after the 2026-11-03 messaging retirement. Use the current [VPS rollout guidance](vps-nginx-deploy.md) and [retirement notes](MESSAGING-RETIREMENT.md) for deployment. Customer email and private documents are separate from reporting exports.
 
 ## What ships
 
@@ -28,7 +24,7 @@ The journal does not change existing charge/refund policy: priced enquiries rema
 
 ## Deploy using the existing container workflow
 
-Use the compose files already active on the server. Preserve Evolution overrides if installed; do not replace them with a different compose invocation. Follow [VPS deployment instructions](vps-nginx-deploy.md) and [Evolution instructions](evolution-pilot.md).
+For an existing VPS, use the current pinned updater from the [VPS deployment instructions](vps-nginx-deploy.md). It preserves private configuration and database/upload mounts while converting the active worker to the generic maintenance endpoint. Do not reintroduce retired provider overrides.
 
 After backup and updating the source, rebuild/recreate the app using that existing workflow. The container entrypoint applies committed migrations before serving. New runtime dependencies include PDFKit, ExcelJS and a bundled Noto Sans font; use the updated lockfile and rebuild the image. Do not copy only `.next` into an old image.
 
@@ -44,7 +40,7 @@ For example, on the existing single-file VPS configuration:
 docker compose -f compose.vps.yaml exec app node scripts/reconcile-reporting.mjs
 ```
 
-For an active Evolution compose setup use its existing `docker compose exec app ...` invocation instead. The reconcile command reads data and exits nonzero on a mismatch; it does not repair anything or rewrite financial history.
+For a deployment using private generated Compose files, use its verified current `docker compose exec app ...` invocation instead. The reconcile command reads data and exits nonzero on a mismatch; it does not repair anything or rewrite financial history.
 
 ## Deploy without Docker
 
@@ -80,7 +76,7 @@ Run with the application's configured environment. Never run migrations against 
 - Only INR is supported; non-INR bookings and their cash movements are excluded rather than converted using invented exchange rates.
 - Supplier financial reports require agency-wide finance scope because existing supplier dues carry no branch ownership. Mixed-owner customer accounts are not exposed as misleading partial statements.
 - This release does not introduce a general ledger, statutory P&L/GST/TDS reporting, expense entry, commission settlement, foreign-exchange accounting, customer-credit allocation, automated statement delivery or quantified partial supplier-refund recoveries. Those need additional financial workflows and policy decisions.
-- Reports are not automatically sent to clients. Download/preview statements first. Document-request WhatsApp messages now use numbered lists, separate link/expiry lines and clear spacing. Valid unsent legacy automatic requests are reformatted when processed; already sent messages are unchanged.
+- Reports are not automatically sent to clients. Download and preview statements first. Customer email and document release require their own permissions and payment/release checks.
 - Reporting calculations currently read scoped source/journal records in a consistent snapshot and paginate the response. Large datasets still require profiling and database aggregation before multi-office scaling.
 - PDF embeds a Latin Noto Sans font. Test the actual customer names used by your agency; broader script coverage requires additional fonts.
 - Existing development dependency audit advisories remain. The new Excel export uses a patched UUID override rather than introducing the vulnerable transitive version.

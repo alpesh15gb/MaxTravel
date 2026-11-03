@@ -42,7 +42,7 @@ type B = {
   reissueOf: { id: string; bookingNo: string; pnr: string | null } | null;
 };
 
-type Perms = { customerMaster:boolean;email:boolean;audit: boolean; invoice: boolean; edit: boolean; record: boolean; send: boolean; reissue: boolean; money: boolean; refund: boolean };
+type Perms = { customerMaster:boolean;email:boolean;audit: boolean; invoice: boolean; edit: boolean; record: boolean; reissue: boolean; money: boolean; refund: boolean };
 type SupplierOpt = { id: string; name: string };
 type Tone = "neutral" | "success" | "warning" | "danger" | "info";
 
@@ -100,7 +100,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({}));
       if (r.ok) {
-        show(d.status === "LOGGED" ? "Message logged—not sent. Open WhatsApp desk to send it." : okMsg);
+        show(okMsg);
         router.refresh();
       } else {
         show(d.error ?? "That change was not saved.", "error");

@@ -18,8 +18,6 @@ on:
       - 'src/lib/manual-hotel.ts'
       - 'src/lib/booking-deadline.ts'
       - 'src/lib/pulse.ts'
-      - 'src/lib/whatsapp-queue.ts'
-      - 'src/app/api/whatsapp/send/route.ts'
       - 'src/lib/customer360.ts'
       - 'src/app/(app)/customers/**'
       - 'src/app/(app)/ticketing/**'
@@ -38,7 +36,6 @@ jobs:
       DATABASE_URL: file:./ci.db
       JWT_SECRET: ci-only-manual-hotel-fixture-never-real-0123456789abcdef
       NEXT_TELEMETRY_DISABLED: '1'
-      WA_PROVIDER: manual
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

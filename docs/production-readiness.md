@@ -1,5 +1,7 @@
 # Production-readiness pass — what changed and how it was verified
 
+> Historical review notes. Messaging features described below were removed in the 2026-11-03 release; use [the current maintenance-worker guide](MESSAGING-RETIREMENT.md) for deployment.
+
 **Date:** 7 October 2026
 **Scope:** every defect and friction point found in [ux-transaction-review.md](ux-transaction-review.md),
 plus a coherence and hardening sweep on the same code paths, and refund truthfulness (§1.4).

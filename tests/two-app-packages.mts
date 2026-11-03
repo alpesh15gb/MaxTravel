@@ -44,7 +44,7 @@ async function request(origin:string,pathname:string,init?:RequestInit){assert([
 async function ready(origin:string,pathname:string,child:ChildProcess){await within((async()=>{while(true){if(child.exitCode!==null)throw Error(`Fixture server exited: ${origin}`);try{if((await request(origin,pathname)).ok)return;}catch{}await new Promise(resolve=>setTimeout(resolve,150));}})(),30000,'fixture readiness');}
 try {
 await withFixtureCleanup(async()=>{
- const env={DATABASE_URL:databaseUrl,APP_ORIGIN:crmOrigin,JWT_SECRET:'two-app-fixture-only-placeholder-not-valid-anywhere-real-0123456789',WA_PROVIDER:'manual',PACKAGE_MEDIA_ROOT:path.join(dir,'media'),UPLOAD_ROOT:path.join(dir,'uploads')};
+ const env={DATABASE_URL:databaseUrl,APP_ORIGIN:crmOrigin,JWT_SECRET:'two-app-fixture-only-placeholder-not-valid-anywhere-real-0123456789',PACKAGE_MEDIA_ROOT:path.join(dir,'media'),UPLOAD_ROOT:path.join(dir,'uploads')};
  const migrated=spawnSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{cwd:crm,env:{...cleanEnv,...env},encoding:'utf8',timeout:60000});assert.equal(migrated.status,0,migrated.stderr);
  db=new PrismaClient({datasources:{db:{url:databaseUrl}}});
  const role=await db.role.create({data:{key:'OWNER',name:'Synthetic owner',desc:'Disposable two-app fixture'}});

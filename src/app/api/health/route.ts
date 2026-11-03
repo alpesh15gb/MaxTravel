@@ -41,8 +41,9 @@ export async function GET() {
   const schema = database
     ? await within(Promise.all([
       prisma.$queryRawUnsafe("SELECT COUNT(*) FROM \"_prisma_migrations\""),
-      prisma.$queryRawUnsafe("SELECT t.\"workState\",t.\"version\",t.\"resultType\",w.\"templateVersion\",e.\"taskTitle\",e.\"caseNo\",m.\"bodyHash\",c.\"messageId\" FROM \"Task\" t,\"ServiceWork\" w,\"WorkEvent\" e,\"WorkMutation\" m,\"CaseMessage\" c LIMIT 0"),
-      prisma.$queryRawUnsafe("SELECT s.\"id\", m.\"lastStep\", r.\"tokenHash\", l.\"title\", q.\"items\", i.\"documentId\", t.\"passportLookup\", d.\"sensitive\", a.\"keyHash\" FROM \"StaffSession\" s, \"StaffMfa\" m, \"StaffRecovery\" r, \"SalesLead\" l, \"SalesQuote\" q, \"IncomingMedia\" i, \"Traveller\" t, \"Document\" d, \"StaffAuthFailure\" a LIMIT 0"),
+      prisma.$queryRawUnsafe("SELECT t.\"workState\",t.\"version\",t.\"resultType\",w.\"templateVersion\",e.\"taskTitle\",e.\"caseNo\",m.\"bodyHash\" FROM \"Task\" t,\"ServiceWork\" w,\"WorkEvent\" e,\"WorkMutation\" m LIMIT 0"),
+      prisma.$queryRawUnsafe("SELECT s.\"id\", m.\"lastStep\", r.\"tokenHash\", l.\"title\", q.\"items\", t.\"passportLookup\", d.\"sensitive\", a.\"keyHash\" FROM \"StaffSession\" s, \"StaffMfa\" m, \"StaffRecovery\" r, \"SalesLead\" l, \"SalesQuote\" q, \"Traveller\" t, \"Document\" d, \"StaffAuthFailure\" a LIMIT 0"),
+      prisma.$queryRawUnsafe("SELECT a.\"storageKey\" FROM \"PrivatePdfAttachment\" a LIMIT 0"),
       prisma.$queryRawUnsafe("SELECT v.\"visaCaseId\" FROM \"SupplierDue\" v LIMIT 0"),
       prisma.$queryRawUnsafe("SELECT c.\"profileData\",t.\"profileData\",l.\"memberNumber\",i.\"documentNumber\",m.\"bodyHash\" FROM \"Customer\" c,\"Traveller\" t,\"TravellerLoyaltyMembership\" l,\"TravellerIdentityDocument\" i,\"MasterMutation\" m LIMIT 0"),
       prisma.$queryRawUnsafe("SELECT t.\"nextSequence\",m.\"lastReadSequence\",s.\"sequence\",s.\"body\" FROM \"StaffChatThread\" t,\"StaffChatMember\" m,\"StaffChatMessage\" s LIMIT 0"),

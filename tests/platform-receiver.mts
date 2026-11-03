@@ -15,14 +15,14 @@ try{
  assert.equal((await prisma.booking.findUniqueOrThrow({where:{id:mapped.bookingId}})).hotelName,"Confirmed Test Hotel");
  const imported=await prisma.booking.findUniqueOrThrow({where:{id:mapped.bookingId}});assert.equal(imported.supplierCostConfirmed,true);assert.equal(imported.supplierCost,90);assert.equal(imported.travelEndDate?.toISOString().slice(0,10),"2026-12-22");
  assert.equal(await prisma.booking.count({where:{id:mapped.bookingId}}),1);assert.equal(await prisma.payment.count({where:{bookingId:mapped.bookingId}}),1);
- const outboundBefore=await prisma.whatsAppMessage.count({where:{thread:{customerId:mapped.customerId}}});
+ const emailBefore=await prisma.clientEmail.count({where:{customerId:mapped.customerId}});
  const tracking={id:randomUUID(),status:"SUPPLIER_PENDING",supplierStatus:"CANCELLATION_PENDING",lastCheckedAt:"2026-11-01T10:00:00Z",nextCheckAt:"2026-11-02T10:00:00Z",followUpRequired:true,checkError:null};
  const pending={...base,revision:2,itinerary:{...base.itinerary,cancellationTracking:[tracking]}};
  const pendingEvent=await send(pending,randomUUID(),true,"cancellation.follow_up_required");assert.equal(pendingEvent.response.status,200);assert.equal((await pendingEvent.repeat()).status,200);
  const linked=await prisma.booking.findUniqueOrThrow({where:{id:mapped.bookingId}});
  const caseHistory=await prisma.serviceCaseEvent.findMany({where:{caseId:linked.serviceCaseId!}});
  assert.equal(caseHistory.filter(e=>e.summary.includes("Cancellation needs staff follow-up")).length,1);assert.ok(caseHistory.some(e=>e.summary.includes("Next check")&&e.summary.includes("IST")));
- assert.equal(await prisma.payment.count({where:{bookingId:mapped.bookingId}}),1);assert.equal(await prisma.whatsAppMessage.count({where:{thread:{customerId:mapped.customerId}}}),outboundBefore);
+ assert.equal(await prisma.payment.count({where:{bookingId:mapped.bookingId}}),1);assert.equal(await prisma.clientEmail.count({where:{customerId:mapped.customerId}}),emailBefore);
  const malformed={...pending,revision:3,itinerary:{...pending.itinerary,cancellationTracking:[{...tracking,nextCheckAt:"invalid"}]}};
  assert.equal((await send(malformed,randomUUID(),true,"cancellation.status_updated")).response.status,400);
  console.log("PASS: signed cancellation escalation appears once in the case history with the next IST check; no duplicate receipt/notification or implied refund.");

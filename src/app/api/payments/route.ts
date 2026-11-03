@@ -3,7 +3,6 @@ import { boundedJson } from "@/lib/bounded-json";
 import { inrAmount } from "@/lib/money";
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { prisma } from "@/lib/db";
-import { queuePaymentAcknowledgement } from "@/lib/whatsapp-queue";
 import { customerFor, relatedFor, optionalId, nextReference, money, transactionAudit } from "@/lib/transactions";
 import { bookingCharge, hasCancellationAllocation, isWithdrawnBooking, netOfRefundTotal } from "@/lib/receivables";
 
@@ -82,7 +81,6 @@ export async function POST(req: Request) {
       }
       await tx.activity.create({ data: { customerId, actorId: user.id, type: "PAYMENT", summary: `Payment ${inrAmount(amount)} recorded (${mode}) — ${record.receiptNo}`, link: `/customers/${customerId}?tab=payments` } });
       await transactionAudit(tx, user, "RECORD", "Payment", record.id, `${record.receiptNo} ₹${amount}`);
-      await queuePaymentAcknowledgement(tx, record.id);
       const response = { ok: true, receiptNo: record.receiptNo, payment: requestKey ? { id: record.id, receiptNo: record.receiptNo, amount: record.amount, mode: record.mode, customerId, bookingId, visaCaseId, invoiceId } : record };
       await rememberFinancialRequest(tx, user.id, "PAYMENT_CREATE", requestKey, requestHash, response);
       return response;

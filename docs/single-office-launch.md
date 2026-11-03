@@ -3,8 +3,7 @@
 Target: one office, one application server, up to 20 staff. Use local SSD storage,
 one application instance and durable backups. Staff count is not a capacity guarantee:
 run the simultaneous-use checks below on the chosen server. The app records receipts;
-it does not process card payments. Optional Evolution integration sends WhatsApp
-messages through a separate instance; see [evolution-pilot.md](evolution-pilot.md).
+hosted payment collection depends on configured and approved provider support. Customer email and scheduled business work use the authenticated maintenance worker.
 
 ## Prepare
 

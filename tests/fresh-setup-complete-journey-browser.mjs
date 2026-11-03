@@ -15,8 +15,8 @@ for(const width of [1440,390]){
  const runtime=fs.mkdtempSync(path.join(path.resolve('tests/.runtime')+path.sep,'fresh-setup-')),database=`file:${path.join(runtime,'test.db')}`;
  const password=`Synthetic-${randomBytes(18).toString('hex')}!`,secret=randomBytes(48).toString('hex'),email=`first-owner-${width}@example.test`,agency=`Synthetic Fresh Agency ${width}`;
  fs.writeFileSync(path.join(runtime,'test.db'),Buffer.alloc(0));
- const env={...process.env,DATABASE_URL:database,JWT_SECRET:secret,APP_ORIGIN:base,UPLOAD_ROOT:path.join(runtime,'uploads'),NEXT_TELEMETRY_DISABLED:'1',WA_PROVIDER:'manual'};
- for(const key of Object.keys(env))if(/^(WA_CLOUD_|WA_WORKER_|EVOLUTION_|CRM_REQUIRE_MFA$|CRM_DATA_ENCRYPTION_KEY$)/.test(key))delete env[key];
+ const env={...process.env,DATABASE_URL:database,JWT_SECRET:secret,APP_ORIGIN:base,UPLOAD_ROOT:path.join(runtime,'uploads'),NEXT_TELEMETRY_DISABLED:'1'};
+ for(const key of Object.keys(env))if(/^(CRM_WORKER_SECRET$|SMTP_|MAIL_FROM$|CRM_REQUIRE_MFA$|CRM_DATA_ENCRYPTION_KEY$)/.test(key))delete env[key];
  let server,browser,db,currentPage,logs='',phase='migrate empty database',spawnError='';
  const safe=value=>String(value).split(password).join('[REDACTED SYNTHETIC PASSWORD]').split(secret).join('[REDACTED SYNTHETIC KEY]');
  const persist=()=>{fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2));fs.writeFileSync(path.join(out,`server-${width}.log`),safe(logs));};

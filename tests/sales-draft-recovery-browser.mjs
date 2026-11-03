@@ -10,7 +10,7 @@ const port=3373,base=`http://127.0.0.1:${port}`,out=path.resolve('test-artifacts
 const ephemeral=fs.readFileSync('/proc/sys/net/ipv4/ip_local_port_range','utf8').trim().split(/\s+/).map(Number);
 assert(ephemeral.length===2&&ephemeral.every(Number.isInteger)&&(port<ephemeral[0]||port>ephemeral[1]));
 const metadata=path.resolve('tests/.runtime/visual-review-current.json');fs.mkdirSync(out,{recursive:true});fs.rmSync(metadata,{force:true});
-const server=spawn(process.execPath,['tests/visual-review-server.mjs'],{detached:true,stdio:['ignore','pipe','pipe'],env:{...process.env,REVIEW_PORT:String(port),REVIEW_DEV:'0',APP_ORIGIN:base,WA_PROVIDER:'manual'}});
+const server=spawn(process.execPath,['tests/visual-review-server.mjs'],{detached:true,stdio:['ignore','pipe','pipe'],env:{...process.env,REVIEW_PORT:String(port),REVIEW_DEV:'0',APP_ORIGIN:base}});
 const report={scope:'Synthetic Chromium Back/Forward recovery; desktop/mobile emulation, not real-device certification',scenarios:[],errors:[],blocked:[],passed:false};
 let logs='',spawnError='',browser,page,db,fixture,owner;
 server.stdout.on('data',value=>logs+=value);server.stderr.on('data',value=>logs+=value);server.on('error',error=>spawnError=String(error));

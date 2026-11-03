@@ -105,7 +105,7 @@ Values are illustrative INR, not live customer data. A linked invoice does not a
 
 Outputs: on-screen statement, branded paginated PDF/print and transaction CSV/XLSX. PDF and spreadsheet must use the same report dataset and totals. Include carried-forward headings and totals on multi-page statements.
 
-Sharing: first preview/download. Add explicit user-triggered WhatsApp/email sharing only after private statement delivery is implemented. No automatic bulk sends. Downloads require scope/export checks; shared links require expiry, revocation and audit. In-app sharing must not silently attach internal financial detail.
+Sharing: first preview/download. Add explicit user-triggered email sharing only after private statement delivery is implemented. No automatic bulk sends. Downloads require scope/export checks; shared links require expiry, revocation and audit. In-app sharing must not silently attach internal financial detail.
 
 Phase acceptance: opening balance includes events before start; selected-period rows reconcile to closing balance; identical timestamps have stable ordering; linked invoices/receipts are counted once; credits, advances, partial receipts, cancellations and paid refunds work; reruns cannot duplicate postings; old cases and receipts survive migration; exports match screen and obey permissions.
 

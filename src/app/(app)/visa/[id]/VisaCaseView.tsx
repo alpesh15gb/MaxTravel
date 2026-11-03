@@ -54,7 +54,7 @@ type VC = {
 };
 
 type Stage = { id: string; key: string; name: string; seq: number };
-type Perms = {customerMaster:boolean; audit: boolean; edit: boolean; verify: boolean; send: boolean; record: boolean; money: boolean };
+type Perms = {customerMaster:boolean; audit: boolean; edit: boolean; verify: boolean; record: boolean; money: boolean };
 
 // Document states use the same tones as every other status badge in the app.
 const docTone = (s: string): Tone => {
@@ -85,7 +85,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({}));
       if (r.ok) {
-        show(d.status === "LOGGED" ? "Message logged—not sent. Open WhatsApp desk to send it." : okMsg);
+        show(okMsg);
         router.refresh();
         return true;
       } else {
@@ -140,7 +140,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
             <AuditTrailLink entity="VisaCase" entityId={vc.id} allowed={perms.audit} />
             {perms.edit && (
               <>
-                <button type="button" onClick={() => setShowEdit(true)} className="btn-secondary min-h-9 px-3 py-2 text-xs">Edit Case</button>
+                <button type="button" onClick={() => setShowEdit(true)} className="btn-primary min-h-9 px-3 py-2 text-xs">Edit Case</button>
                 <select
                   aria-label="Visa workflow stage" disabled={busy} value={stageId}
                   onChange={(e) => { setStageId(e.target.value); post(`/api/visa/cases/${vc.id}/stage`, { stageId: e.target.value }, "✓ Stage updated"); }}
@@ -149,11 +149,6 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
                   {stages.map((s) => <option key={s.id} value={s.id}>{s.seq}. {s.name}</option>)}
                 </select>
               </>
-            )}
-            {perms.send && (
-              <button type="button" disabled={busy} onClick={() => post("/api/whatsapp/send", { customerId: vc.customer.id, template: "STATUS_UPDATE", visaCaseId: vc.id }, "Status update logged—not sent")} className="btn-primary min-h-9 px-3 py-2 text-xs">
-                WhatsApp Update
-              </button>
             )}
           </div>
         </div>

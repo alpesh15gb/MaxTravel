@@ -158,44 +158,42 @@ class ResetTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()),self.assertRaises(reset.ResetError):reset.reset_crm(job,'owner@example.test',True)
         self.assertFalse(any('stop' in c for c in calls))
 
-    def counters_and_notice(self):
+    def counters_and_configuration(self):
         for index,key in enumerate(reset.BUSINESS_COUNTERS):
             self.db.execute('INSERT INTO Settings(id,key,value) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',('business-counter-'+str(index),key,'42'))
         self.insert('Settings',id='staff-counter',key='counter.EMP',value='7')
         self.insert('Settings',id='future-counter',key='counter.FUTURE',value='99')
-        self.insert('Settings',id='notice',key='wa.meta.inbound.health.test',value='{"contentAvailable":false,"errorCodes":[131051]}')
-        self.insert('Settings',id='wa-config',key='wa.meta.connection',value='retain-private-configuration')
+        self.insert('Settings',id='smtp-config',key='smtp.configuration',value='retain-private-configuration')
         self.insert('Settings',id='case-config',key='case.configuration',value='{"referencePrefix":"MX"}')
         self.db.commit()
 
     def test_combined_reset_clears_history_and_only_known_business_counters(self):
-        self.counters_and_notice()
+        self.counters_and_configuration()
         user_hash=reset.digest_table(self.db,'User')
         result=reset.clean_candidate(self.path,'owner@example.test',clear_audit=True,reset_numbering=True)
         self.assertEqual(result['cleared']['AuditLog'],1)
-        self.assertEqual(result['clearedHistoricalNotices'],1)
+        self.assertEqual(result['clearedHistoricalNotices'],0)
         self.assertEqual({key.casefold() for key in result['resetCounterKeys']},reset.BUSINESS_COUNTER_KEYS)
         self.assertEqual(self.db.execute('SELECT action FROM AuditLog').fetchall(),[('TEST_DATA_RESET',)])
         for key in reset.BUSINESS_COUNTERS:self.assertIsNone(self.db.execute('SELECT value FROM Settings WHERE key=?',(key,)).fetchone())
-        for key,value in [('counter.EMP','7'),('counter.FUTURE','99'),('wa.meta.connection','retain-private-configuration'),('case.configuration','{"referencePrefix":"MX"}')]:
+        for key,value in [('counter.EMP','7'),('counter.FUTURE','99'),('smtp.configuration','retain-private-configuration'),('case.configuration','{"referencePrefix":"MX"}')]:
             self.assertEqual(self.db.execute('SELECT value FROM Settings WHERE key=?',(key,)).fetchone()[0],value)
         self.assertEqual(reset.digest_table(self.db,'User'),user_hash)
-        self.assertIsNone(self.db.execute('SELECT value FROM Settings WHERE key=?',('wa.meta.inbound.health.test',)).fetchone())
 
     def test_numbering_is_not_reset_without_explicit_flag(self):
-        self.counters_and_notice()
+        self.counters_and_configuration()
         reset.clean_candidate(self.path,'owner@example.test',clear_audit=True)
         for key in reset.BUSINESS_COUNTERS:self.assertEqual(self.db.execute('SELECT value FROM Settings WHERE key=?',(key,)).fetchone()[0],'42')
         self.assertEqual(self.db.execute('SELECT count(*) FROM AuditLog').fetchone()[0],1)
 
     def test_numbering_reset_can_keep_previous_audit_history(self):
-        self.counters_and_notice()
+        self.counters_and_configuration()
         reset.clean_candidate(self.path,'owner@example.test',reset_numbering=True)
         self.assertEqual(self.db.execute('SELECT count(*) FROM AuditLog').fetchone()[0],2)
         self.assertIsNone(self.db.execute('SELECT value FROM Settings WHERE key=?',('counter.CASE',)).fetchone())
 
     def test_counter_cleanup_failure_rolls_back_business_and_audit_deletion(self):
-        self.counters_and_notice()
+        self.counters_and_configuration()
         self.db.execute("CREATE TRIGGER reject_counter_reset BEFORE DELETE ON Settings WHEN OLD.key='counter.CASE' BEGIN SELECT RAISE(ABORT,'synthetic'); END")
         self.db.commit()
         before={t:reset.digest_table(self.db,t) for t in reset.KEEP|reset.BUSINESS}
@@ -208,7 +206,7 @@ class ResetTests(unittest.TestCase):
             with self.assertRaises(reset.ResetError):reset.reset_crm(job,'owner@example.test',True,audit_only=True,clear_audit=clear_audit,reset_numbering=reset_numbering)
 
     def test_combined_dry_run_changes_nothing(self):
-        self.counters_and_notice()
+        self.counters_and_configuration()
         before={t:reset.digest_table(self.db,t) for t in reset.KEEP|reset.BUSINESS}
         job,calls=self.fake_job()
         with contextlib.redirect_stdout(io.StringIO()):reset.reset_crm(job,'owner@example.test',False,clear_audit=True,reset_numbering=True)
@@ -216,7 +214,7 @@ class ResetTests(unittest.TestCase):
         self.assertFalse(any('stop' in c for c in calls))
 
     def test_combined_install_retains_staff_and_config_and_restarts_only_crm(self):
-        self.counters_and_notice()
+        self.counters_and_configuration()
         user_hash=reset.digest_table(self.db,'User')
         job,calls=self.fake_job()
         with contextlib.redirect_stdout(io.StringIO()):reset.reset_crm(job,'owner@example.test',True,clear_audit=True,reset_numbering=True)

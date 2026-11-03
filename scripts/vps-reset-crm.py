@@ -14,13 +14,13 @@ from urllib.parse import unquote, urlsplit
 import uuid
 
 HELPER_SHA = '5b88f65d42e5b006cdfecc092c254c9196669bb5762ef776a1e75027f44a5fac'
-KEEP = set('CollectionSettlement Branch Role User Settings VisaStage Checklist ChecklistItem QuickReply TravelPackage PackageMedia StaffSession StaffMfa StaffRecovery StaffAuthFailure AuditLog PlatformEvent _prisma_migrations'.split())
-BUSINESS = set('AgencyMutation BookingArtifact ClientDelivery ClientEmail PaymentCollection CollectionEvent StaffChatMessage StaffChatMember StaffChatThread MasterMutation TravellerLoyaltyMembership TravellerIdentityDocument FinancialEntry ServiceCase DataImportBatch DataImportIdentity ServiceCaseEvent ServiceCaseMutation Customer Traveller VisaCase CaseTraveller VisaCaseStatus ChecklistLink Document DocumentAccessLog UploadLink Booking BookingTraveller Ticket Reissue Payment Invoice InvoiceCreditNote Supplier SupplierDue SupplierSettlement Refund Task ServiceWork WorkEvent WorkMutation TaskComment Note WhatsAppThread WhatsAppMessage CaseMessage WhatsAppAttachment Notification Activity WhatsAppInbound PlatformCommand PlatformCustomerLink PlatformBookingLink SalesLead SalesQuote IncomingMedia FinancialMutation'.split())
+KEEP = set('CollectionSettlement Branch Role User Settings VisaStage Checklist ChecklistItem TravelPackage PackageMedia StaffSession StaffMfa StaffRecovery StaffAuthFailure AuditLog PlatformEvent _prisma_migrations'.split())
+BUSINESS = set('AgencyMutation BookingArtifact ClientDelivery ClientEmail PaymentCollection CollectionEvent StaffChatMessage StaffChatMember StaffChatThread MasterMutation TravellerLoyaltyMembership TravellerIdentityDocument FinancialEntry ServiceCase DataImportBatch DataImportIdentity ServiceCaseEvent ServiceCaseMutation Customer Traveller VisaCase CaseTraveller VisaCaseStatus ChecklistLink Document DocumentAccessLog UploadLink Booking BookingTraveller Ticket Reissue Payment Invoice InvoiceCreditNote Supplier SupplierDue SupplierSettlement Refund Task ServiceWork WorkEvent WorkMutation TaskComment Note PrivatePdfAttachment Notification Activity PlatformCommand PlatformCustomerLink PlatformBookingLink SalesLead SalesQuote FinancialMutation'.split())
 
 # Human-readable business references only. Staff IDs and unknown/future counters stay intact.
 BUSINESS_COUNTERS = tuple('counter.'+prefix for prefix in ('CASE','C','VC','BK','INV','CN','RCP','RF','DOC'))
 BUSINESS_COUNTER_KEYS = frozenset(key.casefold() for key in BUSINESS_COUNTERS)
-DERIVED_SETTINGS_PREFIXES = ('wa.meta.inbound.health.',)
+DERIVED_SETTINGS_PREFIXES = ()
 
 class ResetError(Exception):
     pass
@@ -176,7 +176,7 @@ def reset_crm(job, email, apply, audit_only=False, clear_audit=False, reset_numb
         settings_to_clear = [] if audit_only else resettable_settings(db,reset_numbering)
     print('Reset scope: '+('CRM audit history only; one new cleanup entry records this operation.' if audit_only else 'entire CRM workspace business test records, across staff and branches.')+' Booking is untouched.', flush=True)
     print('Rows to clear: '+json.dumps({'AuditLog':counts['AuditLog']} if audit_only else {t:counts[t] for t in sorted(BUSINESS | ({'AuditLog'} if clear_audit else set()))}), flush=True)
-    print('Requested options: '+json.dumps({'clearAuditHistory':clear_audit or audit_only,'restartBusinessNumbering':reset_numbering,'keepStaffNumbering':True,'businessCounterRowsToReset':sum(key.casefold() in BUSINESS_COUNTER_KEYS for key in settings_to_clear),'historicalWhatsAppNoticesToClear':sum(any(key.casefold().startswith(prefix) for prefix in DERIVED_SETTINGS_PREFIXES) for key in settings_to_clear)}),flush=True)
+    print('Requested options: '+json.dumps({'clearAuditHistory':clear_audit or audit_only,'restartBusinessNumbering':reset_numbering,'keepStaffNumbering':True,'businessCounterRowsToReset':sum(key.casefold() in BUSINESS_COUNTER_KEYS for key in settings_to_clear),'historicalNoticesToClear':sum(any(key.casefold().startswith(prefix) for prefix in DERIVED_SETTINGS_PREFIXES) for key in settings_to_clear)}),flush=True)
     print('Preserved: '+('all business records and other tables.' if audit_only else 'staff/logins/MFA/numbering, branches, configuration/credentials, templates/catalogue and booking event deduplication. Only requested business counters and historical inbound notices are removed from settings.'), flush=True)
     if not apply:
         print('Inspection only. No service stopped; application data and configuration unchanged.')

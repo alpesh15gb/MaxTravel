@@ -24,7 +24,6 @@ const child = spawn(process.execPath, ["tests/visual-review-server.mjs"], {
     ...process.env,
     REVIEW_PORT: String(port),
     REVIEW_DEV: "0",
-    WA_PROVIDER: "",
     APP_ORIGIN: base,
   },
   stdio: ["ignore", "pipe", "pipe"],

@@ -5,7 +5,7 @@ import {randomUUID,randomBytes} from 'node:crypto';
 import {existsSync} from 'node:fs';
 for(const file of ['.env','.env.local','.env.production','.env.production.local'])assert(!existsSync(file),'Run Masters browser checks in an isolated checkout without private environment files');
 // Preserve the Windows process environment: Playwright needs it to reap its owned browser.
-const external=Object.keys(process.env).filter(key=>/^(SMTP_|MAIL_FROM$|BLOB_READ_WRITE_TOKEN$|PAYGLOCAL_|RAZORPAY_|TRIPJACK_|EVOLUTION_|META_)/i.test(key)&&process.env[key]);assert.equal(external.length,0,"Run in a clean test environment without provider credentials");Object.assign(process.env,{CRM_DATA_ENCRYPTION_KEY:randomBytes(32).toString('hex'),JWT_SECRET:randomBytes(32).toString('hex'),PRIVATE_STORAGE:'local',WA_PROVIDER:'manual',UPLOAD_SCAN_REQUIRED:'false',NEXT_TELEMETRY_DISABLED:'1'});
+const external=Object.keys(process.env).filter(key=>/^(SMTP_|MAIL_FROM$|BLOB_READ_WRITE_TOKEN$|PAYGLOCAL_|RAZORPAY_|TRIPJACK_)/i.test(key)&&process.env[key]);assert.equal(external.length,0,"Run in a clean test environment without provider credentials");Object.assign(process.env,{CRM_DATA_ENCRYPTION_KEY:randomBytes(32).toString('hex'),JWT_SECRET:randomBytes(32).toString('hex'),PRIVATE_STORAGE:'local',UPLOAD_SCAN_REQUIRED:'false',NEXT_TELEMETRY_DISABLED:'1'});
 await runSyntheticJourney('customer-masters',3249,async({base,db,fixture,session,capture,postResult,lostResponseRetry,check})=>{
  const {page,context}=await session(1440),url='/masters/'+fixture.customerId,api='/api/masters/'+fixture.customerId;
  await page.goto(base+'/masters');

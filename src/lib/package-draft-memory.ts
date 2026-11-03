@@ -9,7 +9,7 @@ export type PackageDraftFields = { slug: string; draft: PackageDraft; section: P
 export type PackageDraftKey = { nonce: string; packageId: string | null; revision: number | null };
 export type PackageDraftEntry = PackageDraftKey & { context: string; fields: PackageDraftFields | null; omittedImageUrls: boolean; updatedAt: number; phase: "editing" | "submitting" | "uncertain"; action: string | null; acknowledged: boolean };
 
-const strings = { title: 120, destination: 120, summary: 280, description: 8000, priceNotes: 1500, priceValidUntil: 40, travelStart: 40, travelEnd: 40, availabilityNotes: 1500, terms: 6000, cancellationPolicy: 4000, coverImageAlt: 180, contactEmail: 160, contactPhone: 24, contactWhatsapp: 24, internalNotes: 6000 } as const;
+const strings = { title: 120, destination: 120, summary: 280, description: 8000, priceNotes: 1500, priceValidUntil: 40, travelStart: 40, travelEnd: 40, availabilityNotes: 1500, terms: 6000, cancellationPolicy: 4000, coverImageAlt: 180, contactEmail: 160, contactPhone: 24, internalNotes: 6000 } as const;
 /** Projection, not validation: incomplete edits can recover, extra/private fields cannot. */
 export function projectPackageDraft(fields: PackageDraftFields) {
   try {

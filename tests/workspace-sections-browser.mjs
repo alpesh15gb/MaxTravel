@@ -10,13 +10,13 @@ import { chromium } from "./browser.mjs";
 const out=path.resolve("test-artifacts/workspace-sections"); mkdirSync(out,{recursive:true});
 const port=await new Promise((resolve,reject)=>{const s=net.createServer();s.on("error",reject);s.listen(0,"127.0.0.1",()=>{const p=s.address().port;s.close(()=>resolve(p));});});
 const base=`http://127.0.0.1:${port}`, fixtureFile=path.resolve("tests/.runtime/visual-review-current.json");
-const child=spawn(process.execPath,["tests/visual-review-server.mjs"],{windowsHide:true,env:{...process.env,REVIEW_PORT:String(port),REVIEW_DEV:"0",WA_PROVIDER:"",APP_ORIGIN:base},stdio:["ignore","pipe","pipe"]});
+const child=spawn(process.execPath,["tests/visual-review-server.mjs"],{windowsHide:true,env:{...process.env,REVIEW_PORT:String(port),REVIEW_DEV:"0",APP_ORIGIN:base},stdio:["ignore","pipe","pipe"]});
 let logs="",browser,db,fixture,page;child.stdout.on("data",c=>logs+=c);child.stderr.on("data",c=>logs+=c);
 const report={checks:[],screens:[],errors:[],passed:false};
 const save=()=>{writeFileSync(path.join(out,"report.json"),JSON.stringify(report,null,2));writeFileSync(path.join(out,"server.log"),logs);};
 async function shot(name){await page.evaluate(()=>document.fonts.ready);const geometry=await page.evaluate(()=>({width:document.documentElement.scrollWidth,viewport:innerWidth}));assert(geometry.width<=geometry.viewport+1,`${name} must fit viewport`);await page.screenshot({path:path.join(out,name+".png"),fullPage:true,animations:"disabled"});report.screens.push(name);save();}
 async function login(context,email){const r=await context.request.post(base+"/api/auth/login",{data:{email,password:"Review-Visual-2026!"}});assert(r.ok(),"Fixture login must succeed");}
-const sections=[["/dashboard","Agency overview"],["/masters","Masters"],["/work","Team work"],["/suppliers","Suppliers & payables"],["/whatsapp","WhatsApp desk"],["/reports","Reports & insights"],["/workspace/administration","Settings"]];
+const sections=[["/dashboard","Agency overview"],["/masters","Masters"],["/work","Team work"],["/suppliers","Suppliers & payables"],["/reports","Reports & insights"],["/workspace/administration","Settings"]];
 try{
   for(let i=0;i<180&&!logs.includes("VISUAL REVIEW READY");i++){if(child.exitCode!==null)throw Error(logs);await new Promise(r=>setTimeout(r,500));}
   assert(logs.includes("VISUAL REVIEW READY"),logs);
@@ -36,6 +36,7 @@ try{
       assert.equal(await main.locator("a.btn-primary:visible,button.btn-primary:visible").count(),1,"One primary action per screen: "+route);
       if(width===390)await page.getByRole("button",{name:"Open navigation",exact:true}).click();
       const nav=page.getByRole("navigation",{name:"Main navigation",exact:true});
+      assert.equal(await page.getByRole("link",{name:/WhatsApp/i}).count(),0,"Removed channel has no remaining navigation or action");
       assert.deepEqual(await nav.getByRole("link").allTextContents(),["Masters","Bookings","Tasks & follow-ups","Suppliers","Reporting"]);
       if(width===390){await page.keyboard.press("Escape");await page.getByRole("button",{name:"Open navigation",exact:true}).waitFor({state:"visible"});}
       await shot(`${width}-${route.split("/").filter(Boolean).join("-")}`);
@@ -45,7 +46,7 @@ try{
   await page.setViewportSize({width:1440,height:1000});
   await page.goto(base+"/dashboard",{waitUntil:"networkidle"});
   const api=await(await context.request.get(base+"/api/pulse?section=today")).json();
-  assert.equal(api.stats.length,4);
+  assert.equal(api.stats.length,3);
   const total=await db.serviceCase.count({where:{closedAt:null,status:{notIn:["COMPLETED","CANCELLED"]}}});
   assert.equal(api.stats.find(s=>s.label==="Active Max IDs").value,String(total));
   const owner=await db.user.findUniqueOrThrow({where:{email:"review@visual.test"}});
@@ -96,8 +97,15 @@ try{
   const readerRole=await db.role.findUniqueOrThrow({where:{key:"READ_ONLY"}});
   const reader=await db.user.create({data:{name:"Section Reader",employeeCode:"SECTIONS-READER",email:"sections-reader@visual.test",phone:"",passwordHash:owner.passwordHash,roleId:readerRole.id}});
   const readerContext=await browser.newContext();await login(readerContext,reader.email);
-  const readerData=await(await readerContext.request.get(base+"/api/pulse?section=customers")).json();assert.deepEqual(readerData.caseServices,[]);assert.equal(readerData.actions.length,0);
-  await readerContext.close();report.checks.push("Read-only access exposes section tools without write launchers");
+  const readerData=await(await readerContext.request.get(base+"/api/pulse?section=customers")).json();
+  assert.deepEqual(readerData.caseServices,[],"Read-only staff cannot launch new service work");
+  assert.deepEqual(readerData.actions.map(({id,href,permission})=>({id,href,permission})),[{id:"documents",href:"/documents",permission:"document:view"}],"Read-only Masters offers exactly the permitted document-view action and no write launchers");
+  assert.equal((await readerContext.request.get(base+"/documents")).status(),200,"Read-only staff can open the document register");
+  const protectedDocument=await db.document.findFirstOrThrow({where:{customerId:fixture.customerId}});
+  const deniedReview=await readerContext.request.post(base+"/api/documents/verify",{data:{documentId:protectedDocument.id,decision:"ACCEPTED"}});
+  assert.equal(deniedReview.status(),403,"Document view permission never authorizes verification");
+  assert.deepEqual(await db.document.findUniqueOrThrow({where:{id:protectedDocument.id}}),protectedDocument,"Denied verification leaves all document fields unchanged");
+  await readerContext.close();report.checks.push("Read-only staff can inspect documents, receive no write launchers, and cannot verify or mutate a document");
   assert.deepEqual(report.errors,[]);report.passed=true;save();console.log(`PASS workspace sections: ${report.screens.length} captures, ${report.checks.length} navigation/scope/transaction checks. Artifacts: ${out}`);
 }catch(e){if(page)await page.screenshot({path:path.join(out,"failure.png"),fullPage:true}).catch(()=>{});throw e;}
 finally{save();await db?.$disconnect();await browser?.close();if(fixture?.serverPid)try{process.kill(fixture.serverPid);}catch{}child.kill();}

@@ -16,8 +16,7 @@ export function overviewFor(pulse: Awaited<ReturnType<typeof computePulse>>, sec
   if (sectionId === "today" || sectionId === "customers") add("Active Max IDs", pulse.workspaceStats.activeCases, "/cases", "compass", "Open client journeys in your access scope");
   if (sectionId === "today") {
     add("Due follow-ups", pulse.workspaceStats.dueFollowups, "/dashboard?view=followups", "tasks", "Due today in India, including overdue work");
-    if(pulse.workspaceStats.activeCases!==null||pulse.workspaceStats.dueFollowups!==null||pulse.workspaceStats.unread!==null) add("Urgent priorities", items.filter(i => i.severity === "URGENT").length, "/dashboard?view=all&priority=URGENT", "clock", "In the current attention queue");
-    add("Unread messages", pulse.workspaceStats.unread, "/whatsapp", "message", "Across your accessible customer conversations");
+    if(pulse.workspaceStats.activeCases!==null||pulse.workspaceStats.dueFollowups!==null) add("Urgent priorities", items.filter(i => i.severity === "URGENT").length, "/dashboard?view=all&priority=URGENT", "clock", "In the current attention queue");
   } else if (sectionId === "customers") {
     add("Customers", pulse.workspaceStats.customers, "/customers", "customers", "Records you are permitted to view");
     add("Max ID follow-ups shown", items.filter(i => i.kind === "CASE_FOLLOWUP").length, "/cases", "tasks", "Due and overdue Max IDs in this queue");
@@ -26,15 +25,12 @@ export function overviewFor(pulse: Awaited<ReturnType<typeof computePulse>>, sec
     const allowed = sectionId === "operations" ? ["/visa", "/ticketing"] : ["/payments"];
     for (const k of pulse.kpis.filter(k => allowed.includes(k.href)&&links.some(link=>link.href===k.href))) stats.push({ label:k.label,value:k.value,href:k.href,note:k.note,icon:k.icon as IconName });
     add("Actions shown", items.filter(i => !i.kind.startsWith("LIST_CAPPED")).length, section.href, section.icon, "Current queue; open a module for its full list");
-  } else if (sectionId === "communications") {
-    add("Unread messages", pulse.workspaceStats.unread, "/whatsapp", "message", "Across your accessible customer conversations");
-    add("Replies to review", items.filter(i => i.kind === "UNANSWERED_WHATSAPP").length, "/whatsapp", "clock", "Older unanswered conversations in this queue");
   }
   const caseServices = user.permissions.includes("customer:view") ? [
     ...(user.permissions.includes("visa:create") ? ["VISA"] : []),
     ...(user.permissions.includes("ticketing:create") ? ["FLIGHT", "HOTEL","STAY","BUS","TRAIN","INSURANCE"] : []),
   ] : [];
-  const actionSections: Record<string, SectionId> = {case:"customers",customer:"customers",enquiry:"customers",followup:"today",booking:"operations",hotel:"operations",visa:"operations",online:"operations",documents:"communications",payment:"finance",invoice:"finance",advance:"finance",supplier:"finance",refund:"finance",report:"reports"};
+  const actionSections: Record<string, SectionId> = {case:"customers",customer:"customers",enquiry:"customers",followup:"today",booking:"operations",hotel:"operations",visa:"operations",online:"operations",documents:"customers",payment:"finance",invoice:"finance",advance:"finance",supplier:"finance",refund:"finance",report:"reports"};
   const actions = availableWorkActions(user.permissions).filter(action => action.id !== "case" && actionSections[action.id] === sectionId);
   return {
     section:{id:section.id,title:section.title,description:section.description,href:section.href},

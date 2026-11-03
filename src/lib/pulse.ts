@@ -34,7 +34,7 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
   // quietly change what the agency is owed. A capped list announces itself instead (see below).
   const truncated:string[]=[];
   const bounded=async <T,>(p:Promise<T[]>,kind:string):Promise<T[]>=>{const rows=await p;if(rows.length<=ITEM_LIMIT)return rows;truncated.push(kind);return rows.slice(0,ITEM_LIMIT);};
-  const [bookings,cases,invoices,documents,passports,tasks,refunds,dues,threads,customerCount,sales,journeys,activeCases,dueCases,dueTasks,unread]=await Promise.all([
+  const [bookings,cases,invoices,documents,passports,tasks,refunds,dues,customerCount,sales,journeys,activeCases,dueCases,dueTasks]=await Promise.all([
     can("ticketing:view")?prisma.booking.findMany({where:work,include:{customer:{select:{name:true}},payments:{select:{amount:true}},refunds:{select:{amount:true,status:true}}}}):[],
     can("visa:view")?prisma.visaCase.findMany({where:work,include:{stage:true,customer:{select:{name:true}},documents:{select:{status:true}}}}):[],
     can("invoice:view")?prisma.invoice.findMany({where:{customer:{is:customer}},include:{customer:{select:{name:true}},booking:{select:{status:true}}}}):[],
@@ -46,21 +46,16 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
     can("task:view")?bounded(prisma.task.findMany({where:{AND:[scopeWhere(user,null,"ownerId"),{status:{in:["OPEN","IN_PROGRESS"]}},{OR:[{dueAt:{lt:new Date(todayEnd)}},{priority:"URGENT"}]}]},orderBy:{dueAt:"asc"},include:{owner:{select:{name:true}},customer:{select:{name:true}}},take:ITEM_LIMIT+1}),"tasks"):[],
     can("refund:view")?bounded(prisma.refund.findMany({where:{customer:{is:customer},status:{notIn:["PAID","REJECTED"]}},orderBy:{requestedOn:"asc"},include:{customer:{select:{name:true}}},take:ITEM_LIMIT+1}),"refunds"):[],
     can("supplier:view")&&user.accessMode==="ALL"?bounded(prisma.supplierDue.findMany({where:{paid:false,dueDate:{lte:new Date(now+7*24*H)}},orderBy:{dueDate:"asc"},include:{supplier:{select:{name:true}}},take:ITEM_LIMIT+1}),"dues"):[],
-    // A thread is a candidate only if it holds an inbound message older than the reply window; the
-    // stricter "and it is still the latest message" rule runs below, unchanged.
-    can("whatsapp:view")?bounded(prisma.whatsAppThread.findMany({where:{customer:{is:customer},msgs:{some:{direction:"IN",at:{lt:new Date(now-4*H)}}}},orderBy:{lastMsgAt:"asc"},include:{customer:{select:{name:true}},msgs:{orderBy:{at:"desc"},take:1}},take:ITEM_LIMIT+1}),"threads"):[],
     can("customer:view")?prisma.customer.count({where:customer}):0,
     salesAttention(prisma,user,now),
     canReadCases?bounded(prisma.serviceCase.findMany({where:{AND:[serviceCaseScope(user),{closedAt:null,status:{notIn:["COMPLETED","CANCELLED"]},nextFollowUpAt:{lt:new Date(todayEnd)}}]},include:{customer:{select:{name:true}},owner:{select:{name:true}}},orderBy:{nextFollowUpAt:"asc"},take:ITEM_LIMIT+1}),"case follow-ups"):[],
     canReadCases?prisma.serviceCase.count({where:{AND:[serviceCaseScope(user),{closedAt:null,status:{notIn:["COMPLETED","CANCELLED"]}}]}}):null,
     canReadCases?prisma.serviceCase.count({where:{AND:[serviceCaseScope(user),{closedAt:null,status:{notIn:["COMPLETED","CANCELLED"]},nextFollowUpAt:{lt:new Date(todayEnd)}}]}}):null,
     can("task:view")?prisma.task.count({where:{AND:[scopeWhere(user,null,"ownerId"),{status:{in:["OPEN","IN_PROGRESS"]},dueAt:{lt:new Date(todayEnd)}}]}}):null,
-    can("whatsapp:view")?prisma.whatsAppThread.aggregate({where:{customer:{is:customer}},_sum:{unread:true}}):null,
   ]);
   const items:PulseItem[]=[...sales];
   const open=(label:string,href:string):PulseAction=>({label,href});
   for(const journey of journeys){const href=`/cases/${journey.id}`;items.push({id:`case:${journey.id}`,kind:"CASE_FOLLOWUP",severity:"HIGH",title:`${journey.caseNo} · follow-up due`,detail:`${journey.customer.name} · ${journey.title} · ${journey.owner.name}`,href,at:journey.nextFollowUpAt?.toISOString(),actions:[open("Review case",href)]});}
-  const log=(label:string,body:Record<string,unknown>):PulseAction=>({label,api:"/api/whatsapp/send",body});
   for(const b of bookings){
     if(isWithdrawnBooking(b.status)) {
       const balance=balanceOf(bookingCharge(b),netReceived(b.payments.reduce((s,p)=>s+p.amount,0),b.refunds));
@@ -83,7 +78,6 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
     if(inv.status==="PAID"||inv.status==="CREDITED"||!(inv.dueDate?inv.dueDate.getTime()<now:inv.issuedOn.getTime()<now-7*24*H))continue;
     const href=`/payments?focus=${inv.id}`,actions=[open("Open invoices",href)];
     if(can("payment:record"))actions.push(open("Record payment",`/payments?action=record&customer=${inv.customerId}&invoice=${inv.id}`));
-    if(can("whatsapp:send"))actions.push(log("Log reminder",{customerId:inv.customerId,template:"PAYMENT_REMINDER",invoiceId:inv.id}));
     items.push({id:`inv:${inv.id}`,kind:"PAYMENT_OVERDUE",severity:"HIGH",title:`${inv.invoiceNo} · ${money(inv.amount-inv.amountPaid)} overdue`,detail:inv.customer.name,href,actions});
   }
   for(const v of cases){
@@ -105,10 +99,9 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
   for(const t of tasks){const overdue=!!t.dueAt&&t.dueAt.getTime()<now;const dueToday=!!t.dueAt&&t.dueAt.getTime()<todayEnd;if(!dueToday&&t.priority!=="URGENT")continue;const href=`/tasks?focus=${t.id}`;items.push({id:`task:${t.id}`,kind:overdue?"TASK_OVERDUE":dueToday?"TASK_DUE_TODAY":"TASK_URGENT",severity:t.priority==="URGENT"?"URGENT":overdue?"HIGH":"MEDIUM",title:`${overdue?"Overdue":dueToday?"Due today":"Urgent"} · ${t.title}`,detail:`${t.owner.name}${t.customer?` · ${t.customer.name}`:""}`,href,at:t.dueAt?.toISOString(),actions:[open("Open tasks",href),...(can("task:edit")?[{label:"Mark done",api:"/api/tasks/status",body:{taskId:t.id,status:"DONE"}}]:[])]});}
   for(const r of refunds){const days=Math.floor((now-r.requestedOn.getTime())/(24*H));const href=`/refunds?focus=${r.id}`;items.push({id:`refund:${r.id}`,kind:"REFUND_PENDING",severity:days>14?"HIGH":"MEDIUM",title:`Refund pending ${days}d · ${r.refundNo}`,detail:`${r.customer.name} · ${money(r.amount)} · ${enumLabel(r.status)}`,href,actions:[open("Review refund",href)]});}
   for(const due of dues)items.push({id:`supplier:${due.id}`,kind:"SUPPLIER_DUE",severity:due.dueDate.getTime()<now?"HIGH":"MEDIUM",title:`${due.supplier.name} · ${money(due.amount)} ${due.dueDate.getTime()<now?"overdue":"due soon"}`,detail:due.description,href:"/suppliers",actions:[open("Review supplier","/suppliers")]});
-  for(const t of threads){const last=t.msgs[0];if(last?.direction==="IN"&&last.at.getTime()<now-4*H){const href=`/whatsapp?thread=${t.id}`;items.push({id:`message:${t.id}`,kind:"UNANSWERED_WHATSAPP",severity:"MEDIUM",title:`Unanswered message · ${t.customer.name}`,detail:last.body.slice(0,100),href,actions:[open("Open conversation",href)]});}}
   // A capped list says so rather than quietly looking complete, and each note links to the page that
   // holds the whole list, so a manager never reads a partial list as the whole picture.
-  const cappedPages:Record<string,{what:string;href:string}>={documents:{what:"documents awaiting action",href:"/documents"},passports:{what:"passport checks",href:"/documents"},tasks:{what:"tasks",href:"/tasks"},refunds:{what:"refunds",href:"/refunds"},threads:{what:"conversations",href:"/whatsapp"},dues:{what:"supplier payments",href:"/suppliers"}};
+  const cappedPages:Record<string,{what:string;href:string}>={documents:{what:"documents awaiting action",href:"/documents"},passports:{what:"passport checks",href:"/documents"},tasks:{what:"tasks",href:"/tasks"},refunds:{what:"refunds",href:"/refunds"},dues:{what:"supplier payments",href:"/suppliers"}};
   for(const kind of [...new Set(truncated)]){const page=kind==="case follow-ups"?{what:"case follow-ups",href:"/cases"}:cappedPages[kind];if(!page)continue;items.push({id:`capped:${kind}`,kind:`LIST_CAPPED_${kind.toUpperCase().replace(/[^A-Z0-9]+/g,"_")}`,severity:"MEDIUM",title:`List capped at ${ITEM_LIMIT} · ${page.what}`,detail:`Showing the ${ITEM_LIMIT} most overdue ${page.what}. Open the full list to work through the rest.`,href:page.href,actions:[open("Open full list",page.href)]});}
   items.sort((a,b)=>["URGENT","HIGH","MEDIUM"].indexOf(a.severity)-["URGENT","HIGH","MEDIUM"].indexOf(b.severity));
   const counts={urgent:items.filter(i=>i.severity==="URGENT").length,high:items.filter(i=>i.severity==="HIGH").length,medium:items.filter(i=>i.severity==="MEDIUM").length};
@@ -126,5 +119,5 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
   // panel's heading — a tile that repeats the thing below it is not a metric, it is a second title.
   const kpis=[...(can("visa:view")?[{label:"Active visa cases",value:String(cases.filter(c=>!["CLOSED","DELIVERED","REJECTED"].includes(c.stage.key)).length),href:"/visa",tone:"ok",icon:"visa",note:"Active CRM records"}]:[]),...(can("ticketing:view")?[{label:"Active bookings",value:String(bookings.filter(b=>!["CANCELLED","VOID","REFUNDED"].includes(b.status)).length),href:"/ticketing",tone:"ok",icon:"plane",note:"Active CRM records"}]:[]),...(can("invoice:view")?[{label:"Receivables",value:money(receivables.total),href:"/payments",tone:receivables.total>0?"warn":"ok",icon:"wallet",note:receivablesNote(receivables)}]:[])];
   const quickActions=[{permission:"customer:create",label:"Add a customer",description:"Add a customer and travellers",href:"/customers?action=new",icon:"customers"},{permission:"visa:create",label:"Start a visa case",description:"Open a case for the applicants",href:"/visa/new",icon:"visa"},{permission:"ticketing:create",label:"Create a booking",description:"Record an enquiry or PNR booking",href:"/ticketing/new",icon:"plane"},{permission:"payment:record",label:"Record a payment",description:"Log a receipt against open work",href:"/payments?action=record",icon:"wallet"}].filter(a=>can(a.permission as Permission)).map(a=>({label:a.label,description:a.description,href:a.href,icon:a.icon}));
-  return{items,counts,generatedAt:new Date().toISOString(),kpis,quickActions,receivables,firstRun:customerCount===0&&bookings.length===0&&cases.length===0,name:user.name,workspaceStats:{activeCases,dueFollowups:dueCases===null&&dueTasks===null?null:(dueCases??0)+(dueTasks??0),unread:unread?unread._sum.unread??0:null,customers:can("customer:view")?customerCount:null}};
+  return{items,counts,generatedAt:new Date().toISOString(),kpis,quickActions,receivables,firstRun:customerCount===0&&bookings.length===0&&cases.length===0,name:user.name,workspaceStats:{activeCases,dueFollowups:dueCases===null&&dueTasks===null?null:(dueCases??0)+(dueTasks??0),customers:can("customer:view")?customerCount:null}};
 }

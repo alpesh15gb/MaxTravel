@@ -21,7 +21,7 @@ class EncryptionTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.key = self.root/'keys/data-encryption.key'
-        self.config = {'services':{'app':{'image':'exact-app','environment':{'JWT_SECRET':'retained$secret','DATABASE_URL':'file:/data/app.db'},'volumes':[{'source':'existing','target':'/data'}]},'worker':{'image':'exact-worker','environment':{'WA_PROVIDER':'meta'}},'inactive-worker':{'image':'old-inactive','environment':{}},'postgres':{'environment':{'PASSWORD':'retained'}}},'volumes':{'existing':{'external':True,'name':'real-data'}}}
+        self.config = {'services':{'app':{'image':'exact-app','environment':{'JWT_SECRET':'retained$secret','DATABASE_URL':'file:/data/app.db'},'volumes':[{'source':'existing','target':'/data'}]},'worker':{'image':'exact-worker','environment':{'CRM_WORKER_SECRET':'retained-worker-secret'}},'inactive-worker':{'image':'old-inactive','environment':{}},'postgres':{'environment':{'PASSWORD':'retained'}}},'volumes':{'existing':{'external':True,'name':'real-data'}}}
 
     def fake(self, encrypted=0, fail_backup=False, fail_health=False, paused_encrypted=None):
         recovery=self.root/'recovery';recovery.mkdir()

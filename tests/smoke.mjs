@@ -50,13 +50,13 @@ async function run() {
   await ok("/api/setup", { agencyName: "Regression Agency", city: "Pune", name: "Test Owner", email: "owner@example.test", phone: "+919000000001", password });
   await status("Setup cannot run twice", "/api/setup", {}, "", 409);
   check("Setup initializes only one actual owner, no customers or transactions", () => {});
-  assert.equal(await prisma.user.count(), 1); assert.equal(await prisma.customer.count(), 0); assert.equal(await prisma.payment.count(), 0); assert.equal(await prisma.quickReply.count(), 0);
+  assert.equal(await prisma.user.count(), 1); assert.equal(await prisma.customer.count(), 0); assert.equal(await prisma.payment.count(), 0); assert.equal(await prisma.clientEmail.count(), 0);
   const owner = await login("owner@example.test");
   check("Real login sets an HTTP-safe session cookie", () => assert(owner.cookie.startsWith("tos_session=")));
   await status("Unauthenticated payment rejected", "/api/payments", {}, "", 401);
   const emptyPulse = await (await get("/api/pulse", owner.cookie)).json();
   check("Fresh pulse has truthful zero metrics", () => { assert(emptyPulse.firstRun); assert.equal(emptyPulse.items.length, 0); assert(emptyPulse.kpis.every(k => /^(0|₹0)$/.test(k.value))); });
-  const routes = ["/dashboard", "/customers", "/visa", "/visa/new", "/ticketing", "/ticketing/new", "/documents", "/payments", "/refunds", "/suppliers", "/tasks", "/whatsapp", "/employees", "/checklists", "/settings", "/audit", "/notifications"];
+  const routes = ["/dashboard", "/customers", "/visa", "/visa/new", "/ticketing", "/ticketing/new", "/documents", "/payments", "/refunds", "/suppliers", "/tasks", "/employees", "/checklists", "/settings", "/audit", "/notifications"];
   for (const route of routes) { const r = await get(route, owner.cookie); const html = await r.text(); check(`Empty-state route ${route}`, () => { assert.equal(r.status, 200); assert(!html.includes('"digest"'), "Server route error"); assert(!html.includes("Skyline")); }); }
   const alice = await ok("/api/customers", { name: "Alice Regression", phone: "+919000000002", email: "alice@example.test", city: "Pune" }, owner.cookie);
   const bob = await ok("/api/customers", { name: "Bob Regression", phone: "+919000000003", city: "Pune" }, owner.cookie);
@@ -121,10 +121,10 @@ async function run() {
   const task = await ok("/api/tasks", { title: "Follow up regression", customerId: alice.id, dueAt: "2020-01-01", priority: "HIGH" }, owner.cookie);
   await ok("/api/tasks/status", { taskId: task.task.id, status: "DONE" }, owner.cookie);
   await ok("/api/notes", { customerId: alice.id, body: "Real customer preference" }, owner.cookie);
-  const logged = await ok("/api/whatsapp/send", { customerId: alice.id, text: "Regression message" }, owner.cookie);
-  check("WhatsApp is honestly logged, never marked delivered", () => { assert.equal(logged.status, "LOGGED"); assert(logged.whatsappUrl.startsWith("https://wa.me/")); });
-  const hook = await post("/api/whatsapp/webhook", { from: "+919000000002", text: "Forged" });
-  check("Unconfigured inbound webhook disabled", () => assert.equal(hook.status, 503));
+  const emailCountBeforeRetiredSend = await prisma.clientEmail.count();
+  const retiredSend = await post("/api/whatsapp/send", { customerId: alice.id, text: "Retired channel regression" }, owner.cookie);
+  check("Retired messaging endpoint cannot queue messages", () => assert.equal(retiredSend.status, 404));
+  assert.equal(await prisma.clientEmail.count(), emailCountBeforeRetiredSend, "The retired endpoint cannot queue replacement email");
   const link = await ok("/api/upload-links", { customerId: alice.id, visaCaseId: visa.caseId }, owner.cookie);
   check("Upload token is cryptographically sized", () => assert.equal(link.token.length, 32));
   const pdf = new Blob(["%PDF-1.4\nRegression document only\n%%EOF"], { type: "application/pdf" });
@@ -270,7 +270,7 @@ async function run() {
     for (const mark of ["THE BIG PICTURE", "A fresh workspace.", "Every detail connected", "YOUR DAY"])
       assert(!dashHtml.includes(mark), `decorative copy ${mark}`);
   });
-  const modulePaths = ["/ticketing", "/visa", "/customers", "/documents", "/payments", "/refunds", "/work", "/suppliers", "/employees", "/checklists", "/settings", "/whatsapp", "/notifications", "/audit"];
+  const modulePaths = ["/ticketing", "/visa", "/customers", "/documents", "/payments", "/refunds", "/work", "/suppliers", "/employees", "/checklists", "/settings", "/notifications", "/audit"];
   const moduleHtml = (await Promise.all(modulePaths.map(async (p) => (await get(p, owner.cookie)).text()))).join("\n");
   check("Module pages carry plain operational headings, not marketing copy", () => {
     for (const mark of [
@@ -319,11 +319,8 @@ async function run() {
     assert(cssHref, "stylesheet link found");
     assert(/aside\.app-sidebar\[data-drawer="?closed"?\]\{visibility:hidden\}/.test(appCss), "closed drawer hidden below lg");
   });
-  const templates = await (await get("/api/quick-replies", owner.cookie)).json();
-  check("Built-in message templates are always offered", () => {
-    for (const key of ["PAYMENT_REMINDER", "PNR_EXPIRY", "DOC_REQUEST", "STATUS_UPDATE", "APPOINTMENT_REMINDER"])
-      assert(templates.templates.some(t => t.key === key), `template ${key}`);
-  });
+  const retiredTemplates = await get("/api/quick-replies", owner.cookie);
+  check("Retired messaging templates endpoint is unavailable", () => assert.equal(retiredTemplates.status, 404));
   const doomed = await ok("/api/upload-links", { customerId: alice.id }, owner.cookie);
   await status("Unknown upload link cannot be revoked", "/api/upload-links/revoke", { linkId: "missing" }, owner.cookie, 404);
   await ok("/api/upload-links/revoke", { linkId: doomed.linkId }, owner.cookie);

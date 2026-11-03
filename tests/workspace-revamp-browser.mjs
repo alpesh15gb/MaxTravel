@@ -12,7 +12,7 @@ const root=process.cwd(),out=path.resolve("test-artifacts/crm-revamp-2026-10-30"
 mkdirSync(out,{recursive:true});
 const port=await new Promise((resolve,reject)=>{const socket=net.createServer();socket.on("error",reject);socket.listen(0,"127.0.0.1",()=>{const value=socket.address().port;socket.close(()=>resolve(value));});});
 const base=`http://127.0.0.1:${port}`;
-const child=spawn(process.execPath,["tests/visual-review-server.mjs"],{cwd:root,env:{...process.env,REVIEW_PORT:String(port),REVIEW_DEV:"0",WA_PROVIDER:"manual",APP_ORIGIN:base},stdio:["ignore","pipe","pipe"]});
+const child=spawn(process.execPath,["tests/visual-review-server.mjs"],{cwd:root,env:{...process.env,REVIEW_PORT:String(port),REVIEW_DEV:"0",APP_ORIGIN:base},stdio:["ignore","pipe","pipe"]});
 let logs="",fixture,browser,db,page;
 child.stdout.on("data",value=>logs+=value);child.stderr.on("data",value=>logs+=value);
 const report={screens:[],transactions:[],externalRequestsBlocked:0,runtimeErrors:[],passed:false};
@@ -32,12 +32,12 @@ try{
   const owner=await db.user.findUniqueOrThrow({where:{email:"review@visual.test"}});
   const invoice=await db.invoice.findFirstOrThrow({where:{customerId:fixture.customerId}});
   const routes=[
-    ["customers-workspace","/workspace/customers"],["operations-workspace","/workspace/operations"],["finance-workspace","/workspace/finance"],["communications-workspace","/workspace/communications"],["administration-workspace","/workspace/administration"],
+    ["customers-workspace","/workspace/customers"],["operations-workspace","/workspace/operations"],["finance-workspace","/workspace/finance"],["customer-email","/email"],["administration-workspace","/workspace/administration"],
     ["cases","/cases"],["case-journey",`/cases/${fixture.serviceCaseId}`],["today","/dashboard"],["start-work","/start-work"],["work-register","/work"],["sales","/sales"],["customers","/customers"],["customer",`/customers/${fixture.customerId}`],
     ["tasks","/tasks"],["bookings","/ticketing"],["new-flight","/ticketing/new"],["new-hotel","/ticketing/new?product=HOTEL"],["booking",`/ticketing/${fixture.bookingId}`],
     ["online-bookings","/online-bookings"],["hotel-booking",`/ticketing/${fixture.onlineBookingId}`],["stay-record",`/ticketing/${fixture.onlineBookingId}/stay`],
     ["visa","/visa"],["new-visa","/visa/new"],["visa-case",`/visa/${fixture.visaCaseId}`],["requirements",`/visa-requirements?case=${fixture.visaCaseId}`],
-    ["documents","/documents"],["incoming","/incoming-documents"],["whatsapp","/whatsapp"],["payments","/payments"],["invoice-print",`/payments/print?invoice=${invoice.id}`],
+    ["documents","/documents"],["payments","/payments"],["invoice-print",`/payments/print?invoice=${invoice.id}`],
     ["advances","/advances"],["refunds","/refunds"],["suppliers","/suppliers"],["reports","/reports"],["packages","/travel-packages"],
     ["team","/employees"],["employee",`/employees/${owner.id}`],["import","/customer-tools"],["checklists","/checklists"],["audit","/audit"],
     ["settings","/settings"],["notifications","/notifications"],["account-security","/account-security"],

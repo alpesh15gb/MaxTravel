@@ -14,7 +14,7 @@ const { chromium } = await import("./browser.mjs");
 const fixtureRoot=path.resolve("tests/.runtime");mkdirSync(fixtureRoot,{recursive:true});
 const dir = mkdtempSync(path.join(fixtureRoot, "package-browser-"));
 const databaseUrl = `file:${path.join(dir, "fixture.db").replaceAll("\\", "/")}`, origin = "http://127.0.0.1:3248";
-const env = { ...process.env, DATABASE_URL: databaseUrl, APP_ORIGIN: origin, JWT_SECRET: randomBytes(48).toString("hex"), WA_PROVIDER: "manual", PACKAGE_MEDIA_ROOT: path.join(dir, "package-media"), UPLOAD_SCAN_REQUIRED: "false", CLAMAV_HOST: "" };
+const env = { ...process.env, DATABASE_URL: databaseUrl, APP_ORIGIN: origin, JWT_SECRET: randomBytes(48).toString("hex"), PACKAGE_MEDIA_ROOT: path.join(dir, "package-media"), UPLOAD_SCAN_REQUIRED: "false", CLAMAV_HOST: "" };
 writeFileSync(path.join(dir,"fixture.db"),"",{flag:"wx"});
 const migration = spawnSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], { env, encoding: "utf8" }); assert.equal(migration.status, 0, migration.stdout+"\n"+migration.stderr);
 const db = new PrismaClient({ datasources: { db: { url: databaseUrl } } });

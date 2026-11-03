@@ -50,7 +50,7 @@ function normalize(draft:ImportDraft){
  return{data:{...draft,source:draft.source.trim().toLowerCase(),clients,cases,travellers} as Canonical,issues};
 }
 const identity=(source:string,entity:string,externalId:string)=>({source_entity_externalId:{source,entity,externalId}});
-function clientSnapshot(c:{name:string;phone:string;email:string|null;city:string;address:string|null;type:string;companyName:string|null;gstNumber:string|null;branchId:string;assignedToId:string|null;whatsappOptIn:boolean}){const{name,phone,email,city,address,type,companyName,gstNumber,branchId,assignedToId,whatsappOptIn}=c;return{name,phone,email,city,address,type,companyName,gstNumber,branchId,assignedToId,whatsappOptIn};}
+function clientSnapshot(c:{name:string;phone:string;email:string|null;city:string;address:string|null;type:string;companyName:string|null;gstNumber:string|null;branchId:string;assignedToId:string|null}){const{name,phone,email,city,address,type,companyName,gstNumber,branchId,assignedToId}=c;return{name,phone,email,city,address,type,companyName,gstNumber,branchId,assignedToId};}
 function travellerSnapshot(t:{customerId:string;fullName:string;relation:string;dateOfBirth:Date|null;nationality:string;passportNumber:string|null;passportExpiry:Date|null;primary:boolean}){const{customerId,fullName,relation,dateOfBirth,nationality,passportNumber,passportExpiry,primary}=t;return{customerId,fullName,relation,dateOfBirth,nationality,passportNumber,passportExpiry,primary};}
 
 export async function planImport(tx:Tx,draft:ImportDraft,user:SessionUser):Promise<{data:Canonical;plan:ImportPlan}>{
@@ -120,7 +120,7 @@ export async function commitImport(db:PrismaClient,id:string,user:SessionUser){
   for(const c of data.clients){
    const p=plan.rows.find(r=>r.entity==='clients'&&r.externalId===c.externalId)!;
    if(p.targetId){clientIds.set(c.externalId,p.targetId);if(p.action==='link'){await remember('CLIENT',c.externalId,p.targetId,c,true);result.linked++;}else result.reused++;continue;}
-   const client=await tx.customer.create({data:{name:c.name,phone:c.phone,email:c.email||null,city:c.city,address:c.address||null,type:c.type,companyName:c.companyName||null,gstNumber:c.gstNumber||null,code:await nextReference(tx,'C'),branchId:data.branchId,assignedToId:data.ownerId,whatsappOptIn:false}});
+   const client=await tx.customer.create({data:{name:c.name,phone:c.phone,email:c.email||null,city:c.city,address:c.address||null,type:c.type,companyName:c.companyName||null,gstNumber:c.gstNumber||null,code:await nextReference(tx,'C'),branchId:data.branchId,assignedToId:data.ownerId}});
    clientIds.set(c.externalId,client.id);await remember('CLIENT',c.externalId,client.id,c);result.clients++;result.records.push({entity:'CLIENT',id:client.id,hash:importHash(clientSnapshot(client))});
    if(!data.travellers.some(t=>t.clientRef===c.externalId&&t.relation==='SELF')){const t=await tx.traveller.create({data:{customerId:client.id,fullName:c.name,relation:'SELF',primary:true}});result.records.push({entity:'TRAVELLER',id:t.id,hash:importHash(travellerSnapshot(t))});}
   }
@@ -160,13 +160,13 @@ export async function undoImport(db:PrismaClient,id:string,user:SessionUser){
   for(const item of result.records){
    if(await tx.dataImportIdentity.count({where:{recordId:item.id,batchId:{not:id}}}))block();
    if(item.entity==='CASE'){
-    const c=await tx.serviceCase.findUnique({where:{id:item.id},include:{staffChatThread:{select:{id:true}},_count:{select:{bookings:true,visaCases:true,leads:true,messages:true,events:true}},tasks:{include:{_count:{select:{comments:true,events:true}}}}}});
-    if(!c)block();else{const{_count,tasks,staffChatThread,...scalar}=c;if(importHash({...scalar,updatedAt:undefined})!==item.hash||_count.bookings+_count.visaCases+_count.leads+_count.messages||staffChatThread||_count.events!==2||tasks.length!==(['COMPLETED','CANCELLED'].includes(c.status)?0:1)||tasks.some(t=>t.version!==1||t.workState!=='TODO'||t.status!=='OPEN'||t._count.comments||t._count.events))block();}
+    const c=await tx.serviceCase.findUnique({where:{id:item.id},include:{staffChatThread:{select:{id:true}},_count:{select:{bookings:true,visaCases:true,leads:true,events:true}},tasks:{include:{_count:{select:{comments:true,events:true}}}}}});
+    if(!c)block();else{const{_count,tasks,staffChatThread,...scalar}=c;if(importHash({...scalar,updatedAt:undefined})!==item.hash||_count.bookings+_count.visaCases+_count.leads||staffChatThread||_count.events!==2||tasks.length!==(['COMPLETED','CANCELLED'].includes(c.status)?0:1)||tasks.some(t=>t.version!==1||t.workState!=='TODO'||t.status!=='OPEN'||t._count.comments||t._count.events))block();}
    }else if(item.entity==='TRAVELLER'){
     const t=await tx.traveller.findUnique({where:{id:item.id},include:{_count:{select:{documents:true,uploadLinks:true,caseTravellers:true,bookingTravellers:true,loyaltyMemberships:true,identityDocuments:true}}}});
     if(!t||t.profileData||importHash(travellerSnapshot(t))!==item.hash||Object.values(t._count).some(n=>n>0))block();
    }else{
-    const c=await tx.customer.findUnique({where:{id:item.id},include:{_count:{select:{bookings:true,visaCases:true,documents:true,payments:true,invoices:true,refunds:true,notes:true,activities:true,whatsappThreads:true,whatsappAttachments:true,uploadLinks:true,masterMutations:true,agencyMutations:true,emailOutbox:true,collections:true}},serviceCases:{select:{id:true}},travellers:{select:{id:true}},tasks:{select:{serviceCaseId:true}}}});
+    const c=await tx.customer.findUnique({where:{id:item.id},include:{_count:{select:{bookings:true,visaCases:true,documents:true,payments:true,invoices:true,refunds:true,notes:true,activities:true,privatePdfs:true,uploadLinks:true,masterMutations:true,agencyMutations:true,emailOutbox:true,collections:true}},serviceCases:{select:{id:true}},travellers:{select:{id:true}},tasks:{select:{serviceCaseId:true}}}});
     if(!c||c.profileData||c.mergedIntoId||importHash(clientSnapshot(c))!==item.hash||Object.values(c._count).some(n=>n>0)||c.serviceCases.some(x=>!caseIds.includes(x.id))||c.travellers.some(x=>!travellerIds.includes(x.id))||c.tasks.some(t=>!t.serviceCaseId||!caseIds.includes(t.serviceCaseId)))block();
    }
   }

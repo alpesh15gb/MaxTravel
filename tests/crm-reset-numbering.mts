@@ -29,7 +29,7 @@ try {
   await db.settings.create({ data: { key: "counter.case", value: "90" } });
   await db.settings.create({ data: { key: "counter.EMP", value: "7" } });
   await db.settings.create({ data: { key: "counter.FUTURE", value: "99" } });
-  await db.settings.create({ data: { key: "wa.meta.connection", value: "synthetic-private-config" } });
+  await db.settings.create({ data: { key: "smtp.configuration", value: "synthetic-private-config" } });
   const oldCustomer = await db.customer.create({ data: { code: `C-${year}-0041`, name: "Old synthetic client", phone: "+919000000001", city: "Test", assignedToId: owner.id, branchId: branch.id } });
   const oldCase = await db.$transaction(tx => createServiceCase(tx, { customerId: oldCustomer.id, branchId: branch.id, ownerId: owner.id, service: "VISA", title: "Old synthetic case" }, owner.id));
   assert.equal(oldCase.caseNo, `MX-${year}-0042`);

@@ -68,7 +68,7 @@ COPY --from=builder /app/prisma ./prisma
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY scripts/backup.mjs scripts/restore.mjs scripts/prisma-database.mjs scripts/database-client.mjs ./scripts/
 COPY scripts/reconcile-reporting.mjs scripts/encrypt-sensitive.mjs scripts/staff-recovery.mjs ./scripts/
-COPY scripts/whatsapp-worker.mjs scripts/configure-evolution.mjs ./scripts/
+COPY scripts/maintenance-worker.mjs ./scripts/
 # COPY preserves source modes. A root checkout created with umask 077 can otherwise
 # leave package.json/schema/scripts unreadable to the unprivileged runtime user.
 # Grant read/traverse access; keep application files owned by root and not writable.
@@ -84,7 +84,7 @@ VOLUME ["/data"]
 USER node
 # Fail the image build, rather than restart in production, if copied runtime files
 # cannot be read under the same identity used by migrations and the server.
-RUN node -e "const fs=require('fs'); for(const p of ['package.json','next.config.mjs','prisma/schema.prisma','scripts/reconcile-reporting.mjs','scripts/whatsapp-worker.mjs','.next/BUILD_ID']) fs.readFileSync(p); fs.accessSync('/usr/local/bin/docker-entrypoint.sh',fs.constants.R_OK|fs.constants.X_OK)"
+RUN node -e "const fs=require('fs'); for(const p of ['package.json','next.config.mjs','prisma/schema.prisma','scripts/reconcile-reporting.mjs','scripts/maintenance-worker.mjs','.next/BUILD_ID']) fs.readFileSync(p); fs.accessSync('/usr/local/bin/docker-entrypoint.sh',fs.constants.R_OK|fs.constants.X_OK)"
 EXPOSE 3000
 
 # Node 22 has a global fetch, so no curl/wget in the image just for a probe.

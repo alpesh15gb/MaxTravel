@@ -7,7 +7,7 @@ import { chromium } from "./browser.mjs";
 const port = 3362, out = path.resolve("test-artifacts/mobile-workspace");
 const fixturePath = path.resolve("tests/.runtime/visual-review-current.json");
 fs.mkdirSync(out, { recursive: true }); fs.rmSync(fixturePath, { force: true });
-const server = spawn(process.execPath, ["tests/visual-review-server.mjs"], { env: { ...process.env, REVIEW_PORT: String(port), WA_PROVIDER: "manual" }, stdio: ["ignore", "pipe", "pipe"] });
+const server = spawn(process.execPath, ["tests/visual-review-server.mjs"], { env: { ...process.env, REVIEW_PORT: String(port) }, stdio: ["ignore", "pipe", "pipe"] });
 let logs = "", browser, page; const errors = [], geometry = [];
 server.stdout.on("data", data => logs += data); server.stderr.on("data", data => logs += data);
 try {

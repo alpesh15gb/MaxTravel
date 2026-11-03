@@ -35,7 +35,7 @@ const booking = await ok("/api/bookings", { customerId: alice.id, travellerIds: 
 const bobTraveller = await prisma.traveller.findFirstOrThrow({ where: { customerId: bob.id } });
 const enquiry = await ok("/api/bookings", { customerId: bob.id, travellerIds: [bobTraveller.id], sector: "BOM → DXB", fare: 18500, taxes: 2800 }, owner);
 await ok("/api/payments", { customerId: alice.id, bookingId: booking.bookingId, amount: 20000, mode: "UPI", note: "Advance towards Europe trip" }, owner);
-await ok("/api/tasks", { title: "Call Meera about travel insurance", priority: "HIGH", customerId: alice.id, details: "She asked about Schengen insurance cover on WhatsApp." }, owner);
+await ok("/api/tasks", { title: "Call Meera about travel insurance", priority: "HIGH", customerId: alice.id, details: "She asked about Schengen insurance cover by email." }, owner);
 writeFileSync(path.join(ROOT, "tests", ".runtime", "demo-current.json"), JSON.stringify({ runtime, base: BASE, serverPid: server.pid, ownerEmail: "owner@demo.test", password }, null, 2));
 console.log(`DEMO READY ${BASE} pid=${server.pid}`);
 console.log(`Login: owner@demo.test / ${password}`);

@@ -37,7 +37,7 @@ export default function CustomerTools(){
    if(action==="commit"&&!recovering&&!r.ok&&r.status<500){pendingImport.current=null;setUnresolved(false);}
    const d=await r.json();if(!r.ok)throw Error(d.error??"Import failed.");
    if(action==="preview"){if(generation.current===revision)setPreview(d);}
-   else{pendingImport.current=null;setUnresolved(false);++generation.current;setMessage(`Imported ${d.created} customers. Automatic WhatsApp consent is off for imported records.`);setPreview(null);setCsv("");}
+   else{pendingImport.current=null;setUnresolved(false);++generation.current;setMessage(`Imported ${d.created} customers.`);setPreview(null);setCsv("");}
   }catch(e){
    if(action==="commit"&&pendingImport.current)setError("Import outcome could not be confirmed. Retry the unchanged import to recover its result; do not submit a new file.");
    else if(generation.current===revision)setError(e instanceof Error?e.message:"Import failed.");

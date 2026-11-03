@@ -391,7 +391,7 @@ try {
       url,
     ],
     {
-      env: { ...process.env, DATABASE_URL: url, WA_PROVIDER: "" },
+      env: { ...process.env, DATABASE_URL: url },
       stdio: "inherit",
     },
   );

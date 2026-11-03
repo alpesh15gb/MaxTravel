@@ -51,6 +51,8 @@ jobs:
         run: node --import tsx tests/employee-recovery.ts
       - name: Verify owner-requested CRM reset and recovery protections
         run: python3 -B -m unittest discover -s tests -p test_vps_reset_crm.py
+      - name: Verify populated messaging retirement preserves business documents
+        run: python3 -B tests/retire-messaging.py
 
   build:
     name: Production build
@@ -123,12 +125,6 @@ jobs:
           node --test tests/fixture-lifecycle.test.mjs
           node --import tsx tests/platform-action-guidance.mts
           node --import tsx tests/online-bookings-query.mts --browser
-      - name: Verify recipient-bound WhatsApp composer races
-        if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
-        timeout-minutes: 5
-        run: |
-          npm run test:whatsapp-idempotency
-          npm run test:whatsapp-browser
       - name: Verify scoped staff recovery HTTP contracts
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         timeout-minutes: 5
@@ -166,8 +162,6 @@ jobs:
             test-artifacts/journeys/
             test-artifacts/sales-complete-journey/
             test-artifacts/mobile-workspace/
-            test-artifacts/whatsapp-recipient-context/
-            test-artifacts/whatsapp-manual-idempotency/
             test-artifacts/employee-recovery/
             test-artifacts/employee-recovery-http/
             test-artifacts/online-bookings/
@@ -199,11 +193,6 @@ jobs:
         run: |
           node --import tsx tests/platform-cancellation-tracking.mts
           node --import ./scripts/standalone-server.mjs --import tsx tests/platform-receiver.mts
-
-      - name: Verify Meta Cloud API policies and signed delivery callbacks
-        run: node --import ./scripts/standalone-server.mjs --import tsx tests/meta-cloud.mts
-      - name: Verify private WhatsApp PDFs and document-header delivery
-        run: node --import ./scripts/standalone-server.mjs --import tsx tests/meta-pdf.mts
 
       - name: Verify automatic signed booking PDFs and stale-document suppression
         run: node --import ./scripts/standalone-server.mjs --import tsx tests/platform-documents.mts
@@ -269,7 +258,6 @@ jobs:
       - name: Capture isolated fixture screenshots at 1440, 1024 and 390 pixels
         env:
           STUDIO_LABEL: ${{ matrix.label }}
-          WA_PROVIDER: manual
         run: |
           cp ../comparison-harness/tests/visual-review-server.mjs tests/visual-review-server.mjs
           cp ../comparison-harness/tests/studio-visual-comparison.mjs tests/studio-visual-comparison.mjs

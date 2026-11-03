@@ -1,7 +1,7 @@
 import type { IconName } from "@/components/Icon";
 import type { Permission } from "./permissions";
 
-export type SectionId = "today" | "customers" | "operations" | "finance" | "communications" | "reports" | "administration";
+export type SectionId = "today" | "customers" | "operations" | "finance" | "reports" | "administration";
 export type WorkspaceLink = { href: string; label: string; description: string; icon: IconName; permission: Permission };
 export type WorkspaceSection = { id: SectionId; title: string; description: string; icon: IconName; href: string; links: WorkspaceLink[] };
 const LEGACY_SECTIONS: WorkspaceSection[] = [
@@ -29,10 +29,6 @@ const LEGACY_SECTIONS: WorkspaceSection[] = [
     { href: "/refunds", label: "Refunds", description: "Approval, supplier recovery and actual payouts.", icon: "refund", permission: "refund:view" },
     { href: "/suppliers", label: "Supplier accounts", description: "Supplier bills, settlements and balances.", icon: "suppliers", permission: "supplier:view" },
   ] },
-  { id: "communications", title: "Inbox", description: "Customer conversations and received files, ready to link to the right journey.", icon: "message", href: "/whatsapp", links: [
-    { href: "/whatsapp", label: "WhatsApp desk", description: "Conversations, consent and message delivery.", icon: "message", permission: "whatsapp:view" },
-    { href: "/incoming-documents", label: "Incoming documents", description: "Identify, scan and file received PDFs and images.", icon: "documents", permission: "whatsapp:view" },
-  ] },
   { id: "reports", title: "Reports", description: "Answer business questions with dated, scoped reports and complete exports.", icon: "audit", href: "/reports/work", links: [
     { href: "/reports/work", label: "Work & team reports", description: "Staff workload, outcomes and unfinished work.", icon: "tasks", permission: "task:view" },
     { href: "/reports", label: "Reports & insights", description: "Sales, collections, balances and operational performance.", icon: "audit", permission: "payment:view" },
@@ -51,7 +47,7 @@ const LEGACY_SECTIONS: WorkspaceSection[] = [
 
 const legacy=(id:SectionId)=>LEGACY_SECTIONS.find(s=>s.id===id)!;
 export const WORKSPACE_SECTIONS:WorkspaceSection[]=[
- {...legacy("customers"),title:"Masters",href:"/masters",description:"Customer details, travellers, documents and staff activity.",links:[{href:"/masters",label:"Customer masters",description:"Complete customer and traveller profiles.",icon:"customers",permission:"customer:view"},{href:"/email",label:"Customer email",description:"Queued updates, failures and delivery review.",icon:"message",permission:"email:send"},...legacy("communications").links, ...legacy("operations").links.filter(l=>l.href==="/documents")]},
+ {...legacy("customers"),title:"Masters",href:"/masters",description:"Customer details, travellers, documents and staff activity.",links:[{href:"/masters",label:"Customer masters",description:"Complete customer and traveller profiles.",icon:"customers",permission:"customer:view"},{href:"/email",label:"Customer email",description:"Queued updates, failures and delivery review.",icon:"message",permission:"email:send"},...legacy("operations").links.filter(l=>l.href==="/documents")]},
  {...legacy("operations"),title:"Bookings",href:"/ticketing",description:"Create and manage travel bookings and visa work.",links:legacy("operations").links.filter(l=>["/ticketing","/online-bookings","/visa"].includes(l.href)).concat(legacy("customers").links.filter(l=>["/cases","/sales"].includes(l.href)),legacy("finance").links.filter(l=>l.href!=="/suppliers"))},
  {...legacy("today"),title:"Tasks & follow-ups",href:"/work",description:"Assign, perform and follow up daily work.",links:[{href:"/work",label:"Work register",description:"One queue for assigned work.",icon:"tasks",permission:"task:view"},...legacy("today").links,...legacy("operations").links.filter(l=>l.href==="/work/service-alerts")]},
  {...legacy("finance"),title:"Suppliers",href:"/suppliers",description:"Supplier accounts, due dates and settlements.",links:legacy("finance").links.filter(l=>l.href==="/suppliers")},
@@ -73,7 +69,6 @@ export function sectionForKind(kind: string): SectionId {
   if (/SALES|CASE_FOLLOW/.test(kind)) return "operations";
   if (/SUPPLIER/.test(kind)) return "finance";
   if (/PAYMENT|REFUND|INVOICE|CAPPED_DUES/.test(kind)) return "operations";
-  if (/WHATSAPP|MESSAGE|CAPPED_THREADS/.test(kind)) return "customers";
   if (/TASK/.test(kind)) return "today";
   return "operations";
 }

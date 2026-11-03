@@ -45,9 +45,7 @@ cp .env.example .env
 | `UPLOAD_ROOT` | recommended | Directory for private customer documents. Defaults to `./uploads` relative to the process working directory — **always set it explicitly in production** so it cannot move when the process is started from elsewhere. |
 | `APP_ORIGIN` | recommended | Your public origin, e.g. `https://os.youragency.com`. Cross-origin state-changing API calls are rejected; when this is unset the app falls back to comparing the `Origin` host against the request host, which is weaker behind a proxy or a CDN. Set it. |
 | `TRUST_PROXY` | optional | Set to `1` **only** when a proxy you control terminates the connection in front of the app. It makes the sign-in limiter read the client address from the forwarded header instead of the address this server accepted the connection from. Wrong when the app is exposed directly (the header is client-controlled), harmless behind a trusted proxy; the account half of the limiter works either way. |
-| `WA_VERIFY_TOKEN` | optional | Verification token for the legacy normalized webhook, not the Meta Cloud token. |
-| `WA_WEBHOOK_SECRET` | optional | Authenticates the legacy/Evolution webhook. Meta uses separate `WA_CLOUD_*` values. |
-| `WA_PROVIDER`, `WA_CLOUD_*`, `WA_WORKER_SECRET` | integration-specific | Official Meta sending and signed callbacks require full provider configuration and the worker. Follow [Meta setup](../META-WHATSAPP-SETUP.md); do not infer Cloud readiness from legacy webhook variables. |
+| `CRM_WORKER_SECRET` | worker deployments | Shared app/maintenance-worker bearer secret, at least 32 characters. Use `compose.worker.yaml` and `/api/jobs/maintenance`. |
 | `CRM_DATA_ENCRYPTION_KEY` | required for encryption/MFA | Stable 64-character hexadecimal key; preserve separately for recovery (§8). |
 | `NEXT_DIST_DIR` | optional | Build output directory. Defaults to `.next`. Only set this if you deliberately build to another directory. |
 
@@ -456,8 +454,7 @@ Read these before you promise anyone a service level.
 | **SQLite** | Single writer, no replication, no failover. Fine for one office. Backup cadence + the §8.3 drill are the durability story. Multi-instance or high-value accounting needs PostgreSQL with `Decimal` money columns. |
 | **Money storage** | All arithmetic is integer paise, but the money columns are SQLite `Float`. The PostgreSQL/`Decimal` migration is a prerequisite for high-value accounting. |
 | **Sessions** | Signed cookies expire after 12 hours and refer to database-backed sessions. Requests check expiry/revocation, active employee status and password version. Logout revokes the current session; account security supports revoking selected or other own sessions. Signing-key rotation invalidates all cookies after restart. |
-| **Inbound WhatsApp** | Provider-specific endpoints exist: signed Meta Cloud callbacks, Evolution callbacks and a legacy normalized webhook. Configuration and signature requirements differ. Follow [Meta setup](../META-WHATSAPP-SETUP.md) or the [Evolution pilot](evolution-pilot.md); validate real inbound and delivery callbacks before enabling agency use. |
-| **Outbound WhatsApp, GDS, OCR, payments** | Configured Meta Cloud or Evolution integrations can send queued messages through the worker; this is not a manual-only application. Meta uses consent, reply-window and approved-template checks. Delivery needs provider callbacks; uncertain sends require reconciliation rather than blind retries. See the provider runbooks. Receipts record money received, not card processing; do not assume GDS, OCR or payment-provider execution from CRM record creation. |
+| **Customer email and external services** | Customer email uses the authenticated maintenance worker and configured SMTP. A queued email is not delivery proof. Internal staff chat remains in the CRM. Supplier and payment operations require their own configured integration; a manually created CRM booking or receipt is not proof of supplier issuance or a card charge. |
 | **`/setup`** | One-time, unauthenticated creation endpoint. Complete it before exposure (§3) or keep the app behind an authenticating proxy. |
 | **Audit trail** | Covers in-app actions and their actors. Changes made directly to the database file are not captured. |
 | **Timezone** | Dates and timestamps render in the viewer's timezone. If your staff work across timezones, a fixed agency timezone is a change worth making first. |
@@ -473,7 +470,7 @@ agency can supply.
    migration project and a maintenance window; the alternative is staying single-instance.
 3. **Whether a partly refunded booking needs its own status** — the agency owner (a labelling
    decision; the data already exists).
-4. **Which integrations to buy** (WhatsApp Business, GDS, OCR, a payment gateway) — the agency
+4. **Which integrations to buy** (GDS, OCR, a payment gateway) — the agency
    owner. Each needs vendor accounts, credentials and a decision about who answers when it fails.
 5. **Monitoring and alerting** beyond the health endpoint — the agency/IT owner. Nothing here
    pages anyone today; the minimum useful version is an external check on `/api/health` (§5).

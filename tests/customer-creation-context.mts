@@ -22,7 +22,7 @@ const db = new PrismaClient({ datasources: { db: { url: database } } });
 const built = process.env.CUSTOMER_CONTEXT_USE_BUILD === "1";
 const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", built ? "start" : "dev", ...(built ? [] : ["--webpack"]), "--port", String(port), "--hostname", "127.0.0.1"], {
   detached: true, stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, DATABASE_URL: database, APP_ORIGIN: base, JWT_SECRET: secret, UPLOAD_ROOT: join(dir, "uploads"), WA_PROVIDER: "manual", NEXT_TELEMETRY_DISABLED: "1", ...(built ? {} : { NEXT_DIST_DIR: ".next-customer-context" }) },
+  env: { ...process.env, DATABASE_URL: database, APP_ORIGIN: base, JWT_SECRET: secret, UPLOAD_ROOT: join(dir, "uploads"), NEXT_TELEMETRY_DISABLED: "1", ...(built ? {} : { NEXT_DIST_DIR: ".next-customer-context" }) },
 });
 let logs = "", spawnError = "";
 server.stdout.on("data", value => logs += value); server.stderr.on("data", value => logs += value); server.on("error", error => spawnError = String(error));

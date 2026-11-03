@@ -5,7 +5,7 @@
 - Ticket/document release requires full allocated settlement for the selected booking/delivery bundle. Agency administrators can approve an explicit, reasoned and audited exception. Credit approval does not silently mark invoices paid.
 - A Max ID remains open after travel while balances, refunds, unfinished tasks or servicing remain outstanding. Automatic completion uses the latest end date across all included travel services, not just the first flight departure.
 - Passports are required before international or visa confirmation, not for every domestic traveller or first-contact registration. PAN and Aadhaar are optional; use masked Aadhaar/last-four references by default.
-- Email is the primary customer channel. WhatsApp remains an explicit manual staff action; new automated customer updates must not default to WhatsApp.
+- Email is the customer channel; internal chat remains available for staff.
 - Keep the five requested sidebar sections: Masters, Bookings, Tasks & follow-ups, Suppliers and Reporting. Team/access and agency configuration are account-menu tools. Internal messaging is available from the workspace header and relevant Max ID, without a sixth business sidebar section.
 
 ## Work and acceptance criteria
@@ -15,7 +15,7 @@
 | Masters | Individual/company customer, separate travellers, multiple loyalty memberships/airlines, identity records, private manual documents, current manager, scoped staff audit | Admin registers a company, adds its travellers, assigns a branch-eligible staff member; that staff can enter permitted traveller details without seeing restricted identifiers or other customers |
 | Credit and ticket custody | Private booking files, customer credit terms/due dates, allocated-balance release gate, versioned/revocable client access, reasoned admin override | Staff uploads a ticket on credit; partial/pending/failed payment cannot reveal itinerary or files; full verified payment unlocks the current delivery; the exception is visibly recorded without inventing money |
 | Collections | Manual verified receipts plus Razorpay/PayGlocal collection options, configuration readiness, unique references, signed webhook inbox and reconciliation, idempotent ledger posting | Duplicate/out-of-order notifications post one receipt; tampered callbacks, wrong amount/currency/provider and uncertain creation do not mark paid; online-platform orders keep their separate payment authority |
-| Customer email | Transactional email outbox, delivery failures/retry, verified release links and payment requests; explicit manual WhatsApp links/actions | A queued/failed email is distinguishable from sent email; no ticket attachment bypasses the release gate, and no automatic WhatsApp job is introduced |
+| Customer email | Transactional email outbox, delivery failures/retry, verified release links and payment requests | A queued/failed email is distinguishable from sent email; no ticket attachment bypasses the release gate |
 | Internal messaging | Participant-scoped staff/admin chat, unread/read state, encrypted message body, replay-safe sending, active staff checks | Staff can message an eligible admin; a third staff member cannot read that direct conversation; a lost response retries without a second message |
 | Rescheduling | Original-to-replacement ticket history, supplier quote reference, separate fare/tax difference, airline/no-show charge and agency fee, incremental demand/cost, actual replacement ticket proof | Original sell 5000/cost 4000; extra supplier cost 1200 plus agency fee 200 makes additional demand 1400 and combined expected profit 1200, without selling the original fare a second time |
 | Traveller readiness | Inline add/select traveller, same-customer validation, passport readiness for international/visa confirmation, draft intake allowed | Domestic traveller can register without passport; international confirmation fails with an actionable missing-data message; a traveller from another customer is rejected |
@@ -36,7 +36,7 @@
 
 ## Verification and rollout rules
 
-Use isolated migrated databases, a current production build and browser accounts for admin, assigned staff, restricted staff and an unrelated branch. Visually inspect desktop/mobile screenshots and test the negative paths, not only successful saves. Provider mocks must be clearly labelled; no real card charge, supplier issuance, client email/WhatsApp message or production data reset is part of these isolated checks. Payment providers stay disabled wherever credentials or merchant confirmation are incomplete. Back up databases and retain the stable CRM encryption key before deploying additive migrations. Do not report a provider sandbox or VPS check as complete until it actually ran.
+Use isolated migrated databases, a current production build and browser accounts for admin, assigned staff, restricted staff and an unrelated branch. Visually inspect desktop/mobile screenshots and test the negative paths, not only successful saves. Provider mocks must be clearly labelled; no real card charge, supplier issuance, client message or production data reset is part of these isolated checks. Payment providers stay disabled wherever credentials or merchant confirmation are incomplete. Back up databases and retain the stable CRM encryption key before deploying additive migrations. Do not report a provider sandbox or VPS check as complete until it actually ran.
 
 ## Implemented workflows
 
@@ -54,7 +54,7 @@ Supplier bills can link to a booking or visa application. Due-date filters inclu
 - Private travel files require staff/source access or a current, revocable client delivery capability. Every client download rechecks settlement, refund state, ticket/file revision and any audited administrator exception.
 - Case-assigned staff can enter only the relevant traveller/passport and service records. Assignment does not grant access to the whole customer master or unrelated bookings. Revocation is checked on subsequent requests.
 - The worker isolates independent jobs. Unknown gateway or SMTP outcomes are retained for review instead of blind replay; one failing job family does not starve all other jobs.
-- Email delivery requires configured SMTP and the existing CRM encryption key; without them the email controls and worker remain held. A queued record is not delivery proof. No itinerary/PNR is automatically exposed through generic booking/receipt notices. WhatsApp automation rules are disabled; staff-initiated use remains available.
+- Email delivery requires configured SMTP and the existing CRM encryption key; without them the email controls and worker remain held. A queued record is not delivery proof. No itinerary/PNR is automatically exposed through generic booking/receipt notices. The general maintenance worker handles email and background business work.
 - Gateway readiness requires the explicit CRM collection opt-in, test merchant keys, webhook secret and verified public origin. Browser returns and payment screenshots do not create receipts. No real payment or supplier operation was performed by the isolated tests.
 
 ## Upgrade and recovery

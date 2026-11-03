@@ -37,7 +37,6 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
       tasks: { include: { owner: { select: { name: true } } }, orderBy: { createdAt: "desc" } },
       notes: { include: { author: { select: { name: true } } }, orderBy: { createdAt: "desc" } },
       activities: { include: { actor: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 50 },
-      whatsappThreads: { include: { msgs: { orderBy: { at: "asc" } } } },
       uploadLinks: { orderBy: { createdAt: "desc" }, take: 10 },
     },
   });
@@ -51,7 +50,6 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
   if (!can("invoice:view")) c.invoices = [];
   if (!can("refund:view")) c.refunds = [];
   if (!can("task:view")) c.tasks = [];
-  if (!can("whatsapp:view")) c.whatsappThreads = [];
   if (!can("customer:edit") && !can("document:upload")) c.uploadLinks = [];
   if (user.accessMode === "ASSIGNED") {
     c.visaCases = c.visaCases.filter(v => v.ownerId === user.id);
@@ -77,16 +75,6 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
   const pendingDocs = c.documents.filter((d) => ["REQUIRED", "REQUESTED", "RECEIVED", "UNDER_REVIEW", "REJECTED", "REUPLOAD_REQUESTED"].includes(d.status)).length;
   const openTasks = c.tasks.filter((t) => ["OPEN", "IN_PROGRESS"].includes(t.status)).length;
   const pendingRefunds = c.refunds.filter((r) => !["PAID", "REJECTED"].includes(r.status)).length;
-  const lastWA = c.whatsappThreads.reduce<string | null>((latest, t) => {
-    const last = t.msgs[t.msgs.length - 1];
-    const at = last?.at ?? t.lastMsgAt;
-    if (!latest || new Date(at) > new Date(latest)) return new Date(at).toISOString();
-    return latest;
-  }, null);
-  const unanswered = c.whatsappThreads.some((t) => {
-    const last = t.msgs[t.msgs.length - 1];
-    return last && last.direction === "IN" && Date.now() - new Date(last.at).getTime() > 4 * 3600000;
-  });
 
   return {
     salesHistory: await customerSalesHistory(prisma, customerId, user),
@@ -99,7 +87,6 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
     },
     summary: {
       outstanding, activeVisaCases, upcomingTrips, pendingDocs, openTasks, pendingRefunds,
-      lastWhatsApp: lastWA, hasUnansweredWhatsApp: unanswered,
     },
     travellers: c.travellers.map((t) => ({
       id: t.id, fullName: t.fullName, relation: t.relation,
@@ -172,14 +159,6 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
     activities: c.activities.map((a) => ({
       id: a.id, type: a.type, summary: a.summary, actor: a.actor?.name ?? "System",
       createdAt: a.createdAt.toISOString(), link: a.link,
-    })),
-    whatsapp: c.whatsappThreads.map((t) => ({
-      id: t.id, phone: t.phone, unread: t.unread,
-      messages: t.msgs.map((m) => ({
-        id: m.id, direction: m.direction, body: m.body, at: m.at.toISOString(), status: m.status,
-        template: m.template,
-      })),
-      lastAt: t.lastMsgAt.toISOString(),
     })),
     uploadLinks: c.uploadLinks.map((l) => ({
       id: l.id, token: l.token, note: l.note, expiresAt: l.expiresAt.toISOString(),

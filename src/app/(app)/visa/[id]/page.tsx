@@ -100,7 +100,6 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
         audit: can(user.permissions, "audit:view"),
         edit: can(user.permissions, "visa:edit"),
         verify: can(user.permissions, "document:verify"),
-        send: can(user.permissions, "whatsapp:send"),
         record: can(user.permissions, "payment:record"),
         money: showMoney,
       }}

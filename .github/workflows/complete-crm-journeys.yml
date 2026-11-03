@@ -19,8 +19,6 @@ on:
       - 'tests/operations-complete-journey-browser.mjs'
       - 'tests/records-complete-journey-browser.mjs'
       - 'tests/auth-complete-journey-browser.mjs'
-      - 'tests/incoming-media-complete-journey-browser.mjs'
-      - 'tests/incoming-media-provider-preload.mjs'
 permissions:
   contents: read
 concurrency:
@@ -34,7 +32,6 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
       DATABASE_URL: 'file:./ci.db'
       JWT_SECRET: 'ci-only-complete-journey-fixture-no-real-secret-0123456789abcdef'
-      WA_PROVIDER: manual
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -107,18 +104,6 @@ jobs:
           path: test-artifacts/auth-complete-journey/
           if-no-files-found: warn
           retention-days: 14
-      - name: Local provider fixture incoming document UI lifecycle
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        timeout-minutes: 7
-        run: node tests/incoming-media-complete-journey-browser.mjs
-      - name: Preserve incoming-media-complete-journey evidence immediately
-        if: ${{ always() && steps.build.outcome == 'success' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: incoming-media-complete-journey-${{ github.sha }}-${{ github.run_id }}
-          path: test-artifacts/incoming-media-complete-journey/
-          if-no-files-found: warn
-          retention-days: 14
       - name: CSV replacement invalidates stale preview before reading or rejection
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 7
@@ -182,6 +167,5 @@ jobs:
             test-artifacts/operations-complete-journey/
             test-artifacts/records-complete-journey/
             test-artifacts/auth-complete-journey/
-            test-artifacts/incoming-media-complete-journey/
           if-no-files-found: warn
           retention-days: 14

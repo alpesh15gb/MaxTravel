@@ -23,7 +23,7 @@ const navContract = {
   '/dashboard':'dashboard:view', '/sales':'customer:view', '/customers':'customer:view', '/tasks':'task:view',
   '/visa':'visa:view', '/ticketing':'ticketing:view', '/online-bookings':'ticketing:view', '/documents':'document:view',
   '/payments':'payment:view', '/advances':'payment:view', '/reports':'payment:view', '/refunds':'refund:view', '/suppliers':'supplier:view',
-  '/incoming-documents':'whatsapp:view', '/whatsapp':'whatsapp:view', '/employees':'employee:view', '/customer-tools':'customer:create',
+  '/employees':'employee:view', '/customer-tools':'customer:create',
   '/checklists':'checklist:view', '/audit':'audit:view', '/travel-packages':'settings:manage', '/settings':'settings:manage',
 };
 const navSource = fs.readFileSync('src/components/Shell.tsx', 'utf8').split('const QUICK:')[0];
@@ -37,7 +37,7 @@ const report = {
   scenarios:[], errors:[], blocked:[], passed:false,
 };
 const server = spawn(process.execPath, ['tests/visual-review-server.mjs'], {
-  detached:true, stdio:['ignore','pipe','pipe'], env:{...process.env, REVIEW_PORT:String(port), REVIEW_DEV:'0', WA_PROVIDER:'manual', APP_ORIGIN:base},
+  detached:true, stdio:['ignore','pipe','pipe'], env:{...process.env, REVIEW_PORT:String(port), REVIEW_DEV:'0', APP_ORIGIN:base},
 });
 let logs='', spawnError='', browser, page, db;
 server.stdout.on('data', value => logs += value); server.stderr.on('data', value => logs += value); server.on('error', error => spawnError=String(error));

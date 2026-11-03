@@ -71,8 +71,7 @@ No capacity counts, departure guarantees or artificial stock are created.
   currency, priceBasis, priceNotes, priceValidUntil, taxesIncluded, availability, travelStart,
   travelEnd, availabilityNotes, coverImageUrl, coverImageAlt, publishedAt`.
 - Details additionally contain `description, itinerary[{day,title,description}], inclusions[],
-  exclusions[], terms, cancellationPolicy, gallery[{url,alt}], contactEmail, contactPhone,
-  contactWhatsapp`. They never expose draft JSON, internal notes, revision, audit or user metadata.
+  exclusions[], terms, cancellationPolicy, gallery[{url,alt}], contactEmail, contactPhone`. They never expose draft JSON, internal notes, revision, audit or user metadata.
 - Currency: `INR|USD|AED|EUR|GBP`. Basis: `PER_PERSON|PER_COUPLE|PER_GROUP|ON_REQUEST`.
   Availability: `ON_REQUEST|SEASONAL|UNAVAILABLE`. Date fields are `YYYY-MM-DD` or empty string;
   publishedAt is ISO timestamp. priceAmount is a positive major-unit estimate or `null`.

@@ -9,7 +9,7 @@ import {chromium} from './browser.mjs';
 const root=process.cwd(),runtime=path.join(root,'tests','.runtime',`visa-journey-${Date.now()}`);mkdirSync(runtime,{recursive:true});
 const fixtureFile=path.join(runtime,'test.db');writeFileSync(fixtureFile,'',{flag:'wx'});
 const origin='http://127.0.0.1:3223',database=`file:${fixtureFile.replaceAll('\\','/')}`;
-const env={...process.env,DATABASE_URL:database,JWT_SECRET:randomBytes(32).toString('hex'),APP_ORIGIN:origin,WA_PROVIDER:'manual',NEXT_DIST_DIR:process.env.VISA_TEST_DEV?'tests/.runtime/visa-next-dev':process.env.NEXT_DIST_DIR??'.next'};
+const env={...process.env,DATABASE_URL:database,JWT_SECRET:randomBytes(32).toString('hex'),APP_ORIGIN:origin,NEXT_DIST_DIR:process.env.VISA_TEST_DEV?'tests/.runtime/visa-next-dev':process.env.NEXT_DIST_DIR??'.next'};
 execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env,stdio:'pipe'});
 const prisma=new PrismaClient({datasources:{db:{url:database}}});
 const log=createWriteStream(path.join(runtime,'server.log'));

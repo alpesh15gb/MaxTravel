@@ -35,7 +35,6 @@ jobs:
       NEXT_TELEMETRY_DISABLED: "1"
       DATABASE_URL: "file:./ci.db"
       JWT_SECRET: "ci-only-webkit-placeholder-not-used-anywhere-real-0123456789abcdef"
-      WA_PROVIDER: manual
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

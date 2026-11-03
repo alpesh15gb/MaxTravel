@@ -1,0 +1,22 @@
+-- Retire external messaging; customer documents, audit and internal chat remain intact.
+DROP TABLE "CaseMessage";
+DROP TABLE "WhatsAppMessage";
+DROP TABLE "WhatsAppThread";
+DROP TABLE "WhatsAppInbound";
+DROP TABLE "IncomingMedia";
+DROP TABLE "QuickReply";
+ALTER TABLE "Customer" DROP COLUMN "whatsappOptIn";
+ALTER TABLE "WhatsAppAttachment" RENAME TO "PrivatePdfAttachment";
+UPDATE "PrivatePdfAttachment" SET "storageKey" = 'whatsapp-pdf/' || "storageKey";
+DELETE FROM "Settings" WHERE "key" LIKE 'wa.%' OR "key" LIKE 'whatsapp.%' OR "key" LIKE 'evo.%' OR "key" LIKE 'evolution.%' OR "key" = 'work.inbound.cursor';
+DELETE FROM "Notification" WHERE "link" LIKE '/whatsapp%' OR "link" LIKE '/incoming-documents%';
+UPDATE "Activity" SET "link" = NULL WHERE "link" LIKE '/whatsapp%' OR "link" LIKE '/incoming-documents%';
+UPDATE "Activity" SET "type" = 'MESSAGE' WHERE "type" = 'WHATSAPP';
+UPDATE "Document" SET "uploadSource" = 'IMPORTED' WHERE "uploadSource" = 'WHATSAPP';
+UPDATE "Task" SET "title" = 'Follow up on unreadable customer message', "details" = 'The previous messaging connection has been retired. Contact the customer by email or phone and record the follow-up.', "sourceKey" = NULL WHERE "sourceKey" LIKE 'inbound-review:%';
+ALTER TABLE "PrivatePdfAttachment" RENAME CONSTRAINT "WhatsAppAttachment_pkey" TO "PrivatePdfAttachment_pkey";
+ALTER TABLE "PrivatePdfAttachment" RENAME CONSTRAINT "WhatsAppAttachment_customerId_fkey" TO "PrivatePdfAttachment_customerId_fkey";
+ALTER INDEX "WhatsAppAttachment_storageKey_key" RENAME TO "PrivatePdfAttachment_storageKey_key";
+ALTER INDEX "WhatsAppAttachment_customerId_createdAt_idx" RENAME TO "PrivatePdfAttachment_customerId_createdAt_idx";
+UPDATE "TravelPackage" SET "draftJson" = ("draftJson"::jsonb - 'contactWhatsapp')::text;
+UPDATE "TravelPackage" SET "publishedJson" = ("publishedJson"::jsonb - 'contactWhatsapp')::text WHERE "publishedJson" IS NOT NULL;

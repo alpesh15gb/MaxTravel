@@ -9,7 +9,7 @@ const { createRequire } = require('node:module');
 assert.equal(process.getuid(), 1000, 'The image must default to unprivileged UID 1000');
 assert.equal(process.cwd(), '/app');
 assert.equal(process.env.NODE_ENV, 'production');
-for (const key of ['DATABASE_URL', 'JWT_SECRET', 'WA_WORKER_SECRET', 'CRM_DATA_ENCRYPTION_KEY']) {
+for (const key of ['DATABASE_URL', 'JWT_SECRET', 'CRM_WORKER_SECRET', 'CRM_DATA_ENCRYPTION_KEY']) {
   assert.equal(process.env[key], undefined, `${key} must not be baked into the image`);
 }
 
@@ -20,8 +20,8 @@ const requiredFiles = [
   '.next/routes-manifest.json', '.next/server/app-paths-manifest.json',
   'scripts/backup.mjs', 'scripts/restore.mjs',
   'scripts/reconcile-reporting.mjs', 'scripts/encrypt-sensitive.mjs',
-  'scripts/staff-recovery.mjs', 'scripts/whatsapp-worker.mjs',
-  'scripts/configure-evolution.mjs', '/usr/local/bin/docker-entrypoint.sh',
+  'scripts/staff-recovery.mjs', 'scripts/maintenance-worker.mjs',
+  '/usr/local/bin/docker-entrypoint.sh',
 ];
 for (const file of requiredFiles) {
   assert.ok(fs.statSync(file).isFile(), `Missing runtime file: ${file}`);

@@ -76,7 +76,7 @@ try {
     ["visa", "/visa"], ["visa-detail", `/visa/${fixture.visaCaseId}`], ["new-visa", "/visa/new"],
     ["ticketing", "/ticketing"], ["booking-detail", `/ticketing/${fixture.bookingId}`], ["new-booking", "/ticketing/new"],
     ["documents", "/documents"], ["payments", "/payments"], ["refunds", "/refunds"],
-    ["suppliers", "/suppliers"], ["tasks", "/tasks"], ["whatsapp", "/whatsapp"],
+    ["suppliers", "/suppliers"], ["tasks", "/tasks"],
     ["team", "/employees"], ["checklists", "/checklists"], ["audit", "/audit"],
     ["settings", "/settings"], ["notifications", "/notifications"],
   ];

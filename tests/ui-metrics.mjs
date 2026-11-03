@@ -115,7 +115,8 @@ async function startWorkspace() {
   server.stdout.pipe(log); server.stderr.pipe(log);
   const expected = `http://127.0.0.1:${port}`;
   let ready = false;
-  for (let i = 0; i < 150; i++) {
+  // Provisioning includes the full migration chain and realistic fixture seeding.
+  for (let i = 0; i < 600; i++) {
     if (server.exitCode !== null) break;
     try {
       if (fs.existsSync(fixturePath) && JSON.parse(fs.readFileSync(fixturePath, "utf8")).base === expected) { ready = true; break; }
@@ -133,7 +134,7 @@ async function startWorkspace() {
 // ---------------------------------------------------------------- what the reader sees
 const ROUTES = [
   ["dashboard", "/dashboard"],
-  ["workspace-customers","/workspace/customers"],["workspace-operations","/workspace/operations"],["workspace-finance","/workspace/finance"],["workspace-communications","/workspace/communications"],["workspace-administration","/workspace/administration"],
+  ["workspace-customers","/workspace/customers"],["workspace-operations","/workspace/operations"],["workspace-finance","/workspace/finance"],["customer-email","/email"],["workspace-administration","/workspace/administration"],
   ["customers", "/customers"],
   ["customer-detail", "/customers/{customerId}"],
   ["visa", "/visa"],
@@ -148,7 +149,7 @@ const ROUTES = [
   ["refunds", "/refunds"],
   ["suppliers", "/suppliers"],
   ["tasks", "/tasks"],
-  ["whatsapp", "/whatsapp"],
+
   ["employees", "/employees"],
   ["checklists", "/checklists"],
   ["settings", "/settings"],

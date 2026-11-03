@@ -17,7 +17,6 @@ export type Permission =
   | "invoice:view" | "invoice:create"
   | "refund:view" | "refund:manage" | "refund:approve"
   | "task:view" | "task:create" | "task:edit"
-  | "whatsapp:view" | "whatsapp:send"
   | "supplier:view" | "supplier:manage"
   | "hr:view" // employee salary/bank details
   | "employee:view" | "employee:manage"
@@ -43,7 +42,6 @@ export const ALL_PERMISSIONS: Permission[] = [
   "invoice:view", "invoice:create",
   "refund:view", "refund:manage", "refund:approve",
   "task:view", "task:create", "task:edit",
-  "whatsapp:view", "whatsapp:send",
   "supplier:view", "supplier:manage",
   "hr:view",
   "employee:view", "employee:manage",
@@ -90,7 +88,6 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "invoice:view", "invoice:create",
     "refund:view", "refund:manage", "refund:approve",
     "task:view", "task:create", "task:edit",
-    "whatsapp:view", "whatsapp:send",
     "supplier:view", "supplier:manage",
     "employee:view", "employee:manage", "hr:view",
     "settings:manage", "audit:view", "export:data",
@@ -108,7 +105,6 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "invoice:view", "invoice:create",
     "refund:view", "refund:manage",
     "task:view", "task:create", "task:edit",
-    "whatsapp:view", "whatsapp:send",
     "supplier:view",
     "employee:view",
     "export:data",
@@ -123,7 +119,6 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "payment:view",
     "invoice:view",
     "task:view", "task:create", "task:edit",
-    "whatsapp:view", "whatsapp:send",
     "supplier:view",
     "employee:view",
     "export:data",
@@ -136,7 +131,6 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "checklist:view",
     "document:view", "document:upload", "document:verify", "sensitive:view",
     "task:view", "task:create", "task:edit",
-    "whatsapp:view", "whatsapp:send",
     "supplier:view",
   ),
   TICKETING_MANAGER: R(
@@ -150,7 +144,6 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "invoice:view",
     "refund:view", "refund:manage",
     "task:view", "task:create", "task:edit",
-    "whatsapp:view", "whatsapp:send",
     "supplier:view",
     "employee:view",
     "export:data",
@@ -163,7 +156,6 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "reissue:manage",
     "document:view", "document:upload",
     "task:view", "task:create", "task:edit",
-    "whatsapp:view", "whatsapp:send",
     "supplier:view",
   ),
   // Combined operational role; all record access remains assignment-scoped.
@@ -174,8 +166,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "visa:view", "visa:create", "visa:edit", "checklist:view",
     "ticketing:view", "ticketing:create", "ticketing:edit", "reissue:manage",
     "document:view", "document:upload", "document:verify", "sensitive:view",
-    "task:view", "task:create", "task:edit",
-    "whatsapp:view", "whatsapp:send", "supplier:view",
+    "task:view", "task:create", "task:edit", "supplier:view",
   ),
   SALES_EXECUTIVE: R(
     "dashboard:view", "search:use",
@@ -186,7 +177,6 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "document:view", "document:upload",
     "payment:view",
     "task:view", "task:create", "task:edit",
-    "whatsapp:view", "whatsapp:send",
   ),
   ACCOUNTS: R(
     "dashboard:view", "search:use",
@@ -207,7 +197,6 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "customer:view",
     "employee:view", "employee:manage", "hr:view",
     "task:view", "task:create", "task:edit",
-    "whatsapp:view",
   ),
   OPERATIONS: R(
     "dashboard:view", "search:use",
@@ -217,14 +206,13 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "ticketing:view",
     "document:view", "document:upload", "document:verify", "sensitive:view",
     "task:view", "task:create", "task:edit",
-    "whatsapp:view", "whatsapp:send",
     "supplier:view",
   ),
   READ_ONLY: R(
     "dashboard:view", "search:use",
     "customer:view", "traveller:view", "visa:view", "checklist:view",
     "ticketing:view", "document:view", "payment:view", "invoice:view",
-    "refund:view", "task:view", "whatsapp:view", "supplier:view", "employee:view", "audit:view",
+    "refund:view", "task:view", "supplier:view", "employee:view", "audit:view",
   ),
 };
 

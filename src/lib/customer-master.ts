@@ -16,7 +16,7 @@ const hash=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).d
 const normalize=(v:string)=>v.normalize("NFKC").trim().replace(/\s+/g," ").toLowerCase();
 const hint=(v:string)=>"******"+(v.length>4?v.slice(-4):"");
 export function masterLookup(value:string){if(!encryptionConfigured())throw new ApiError(503,"Secure profile storage is not configured.");return createHmac("sha256",Buffer.from(process.env.CRM_DATA_ENCRYPTION_KEY!,"hex")).update("master:"+value.replace(/\s/g,"").toUpperCase()).digest("hex");}
-function unpack(raw:string|null,context:string):ProfileValues {if(!raw)return {};try{return JSON.parse(unseal(raw,context));}catch{throw new ApiError(503,"This saved profile needs its original encryption key. Contact your operator; do not overwrite it.");}}
+function unpack(raw:string|null,context:string):ProfileValues {if(!raw)return {};try{const values=JSON.parse(unseal(raw,context));if(context.startsWith("customer-master:")&&values.contactMethod&&!new Set(["EMAIL","CALL"]).has(values.contactMethod))values.contactMethod="EMAIL";return values;}catch{throw new ApiError(503,"This saved profile needs its original encryption key. Contact your operator; do not overwrite it.");}}
 async function customer(db:Db,user:SessionUser,id:string){const c=await db.customer.findUnique({where:{id},include});if(!c||!canTouchRecord(user,c))throw new ApiError(404,"Customer master unavailable.");if(c.mergedIntoId)throw new ApiError(409,"This customer was consolidated. Open the retained master.");return c;}
 type Loaded=Awaited<ReturnType<typeof customer>>;
 function revision(c:Loaded){return hash(c);}
@@ -60,7 +60,7 @@ export async function mutateMaster(db:PrismaClient,user:SessionUser,id:string,in
   const data=z.object({core:customerCoreSchema,details:customerProfileSchema}).strict().parse(b.data);
   const previousDetails=unpack(c.profileData,"customer-master:"+id),details={...previousDetails,...data.details};
   if(data.core.type!=="INDIVIDUAL"&&!data.core.companyName)throw new ApiError(400,"Enter the company or agency name.");
-  const changes={...data.core,whatsappOptIn:data.core.phone!==c.phone?false:c.whatsappOptIn,email:data.core.email||null,companyName:data.core.companyName||null,gstNumber:data.core.gstNumber||null,profileData:seal(JSON.stringify(details),"customer-master:"+id)};
+  const changes={...data.core,email:data.core.email||null,companyName:data.core.companyName||null,gstNumber:data.core.gstNumber||null,profileData:seal(JSON.stringify(details),"customer-master:"+id)};
   fields=[...changedFields(c,data.core),...changedFields(previousDetails,data.details).map(k=>"profile."+k)];
   await tx.customer.update({where:{id},data:changes});
  }else{

@@ -49,7 +49,7 @@ docker compose -f compose.vps.yaml exec app npx prisma migrate status
 curl -fsS http://127.0.0.1:3107/api/health
 ```
 
-The container entrypoint applies committed migrations before starting Next.js. Startup is the database-changing step; building the image is not. The backup service uses the same SQLite volume and private uploads. If you use additional compose overrides (for example Evolution), retain the exact same `-f` files and `-p` project options for every build, backup and startup command. Resolve local modifications before pulling; never use a hard reset to erase them.
+The container entrypoint applies committed migrations before starting Next.js. Startup is the database-changing step; building the image is not. The backup service uses the same SQLite volume and private uploads. If you use additional compose overrides (for example the maintenance worker or security services), retain the exact same `-f` files and `-p` project options for every build, backup and startup command. Resolve local modifications before pulling; never use a hard reset to erase them.
 
 After schema migration, rolling back code alone may not be sufficient. Preserve the backup and test a compatible rollback/restore in a separate environment first.
 
@@ -75,7 +75,7 @@ CRM_SIGNING_KEY=THE_SAME_PRIVATE_SHARED_SECRET
 
 Use the existing active staff and branch IDs from the actual target CRM, not test database fixture IDs. Keep both machines' clocks synchronized. Enable the booking backend's CRM worker using its deployment configuration. The receiver does not call TripJack directly and does not need a TripJack API key.
 
-Verify an owned test booking reaches Online bookings, and check its receipt, invoice, cancellation/refund balance and duplicate-event behaviour before production enablement. WhatsApp continues to require existing Evolution configuration, automation settings and customer consent.
+Verify an owned test booking reaches Online bookings, and check its receipt, invoice, cancellation/refund balance and duplicate-event behaviour before production enablement. Confirm private attachment access and customer email separately; importing a booking does not automatically deliver its PDF to the customer.
 
 ## Automated receiver check (isolated database only)
 
@@ -91,9 +91,9 @@ Remove-Item Env:DATABASE_URL
 The test refuses any URL without `integration-test.db`. It checks forged signatures, event/payment deduplication, stale revisions, hotel confirmation and partial/full refund journal reconciliation. Real provider/device acceptance and production deployment remain separate.
 
 
-## Official WhatsApp Cloud API
+## Background work and customer email
 
-See META-WHATSAPP-SETUP.md for account setup, template mappings and the compose.meta.yaml cutover. This update adds an additive WhatsAppMessage.cloudTemplate column. Keep the old Evolution worker stopped during cutover; configuration never silently falls back to it.
+Use `compose.worker.yaml` with the VPS compose file and a shared `CRM_WORKER_SECRET`. Existing deployments should use the pinned updater described in [the migration guide](docs/MESSAGING-RETIREMENT.md). It removes the old messaging integration while preserving email, internal chat, documents and scheduled work.
 
 ## Security and workflow update (18 October 2026)
 

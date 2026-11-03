@@ -40,7 +40,7 @@ const port = allocation.port, origin = `http://127.0.0.1:${port}`;
 // Normal Next CLI cannot inherit this listener. Release immediately before spawning;
 // any rare intervening collision still fails the owned-child readiness checks, never retries the journey.
 await allocation.release();
-const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", String(port), "-H", "127.0.0.1"], { env: { ...process.env, APP_ORIGIN: origin, JWT_SECRET: randomBytes(48).toString("hex"), WA_PROVIDER: "manual" }, stdio: ["ignore", "pipe", "pipe"] });
+const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", String(port), "-H", "127.0.0.1"], { env: { ...process.env, APP_ORIGIN: origin, JWT_SECRET: randomBytes(48).toString("hex") }, stdio: ["ignore", "pipe", "pipe"] });
 let logs = "", cookie = "";
 const startedAt = Date.now();
 let childExit: { code: number | null; signal: string | null; elapsedMs: number } | null = null;

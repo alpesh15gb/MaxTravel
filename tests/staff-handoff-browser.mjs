@@ -11,10 +11,26 @@ export async function checkStaffHandoffs(page, base, fixture) {
   let refund;
   try {
     await page.goto(`${base}/customers/${fixture.customerId}?tab=tasks`, { waitUntil: "networkidle" });
-    const task = page.locator('a[href^="/tasks?focus="]').first();
+    const task = page.locator('a[href^="/work?task="]').first();
+    const taskHref = await task.getAttribute("href");
+    const taskId = new URL(taskHref, base).searchParams.get("task");
+    const taskTitle = (await task.innerText()).trim();
+    assert(taskId, "Customer task carries its exact work identity");
     await task.click();
-    await page.waitForURL(/\/tasks\?focus=/);
-    assert.match(page.url(), /\/tasks\?focus=/, "Customer task must hand off to actionable task desk");
+    await page.waitForURL(url => url.pathname === "/work" && url.searchParams.get("task") === taskId);
+    let taskDialog = page.getByRole("dialog", { name: taskTitle, exact: true });
+    await taskDialog.waitFor({ state: "visible" });
+    await taskDialog.locator('[aria-label="Work actions"] button').first().waitFor({ state: "visible" });
+    // Old bookmarked links must preserve focus through the compatibility redirect too.
+    await page.goto(`${base}/tasks?focus=${encodeURIComponent(taskId)}`, { waitUntil: "networkidle" });
+    await page.waitForURL(url => url.pathname === "/work" && url.searchParams.get("task") === taskId);
+    taskDialog = page.getByRole("dialog", { name: taskTitle, exact: true });
+    await taskDialog.waitFor({ state: "visible" });
+    await taskDialog.locator('[aria-label="Work actions"] button').first().waitFor({ state: "visible" });
+    await page.goto(`${base}/workspace/communications`, { waitUntil: "networkidle" });
+    await page.waitForURL(url => url.pathname === "/email");
+    await page.getByRole("heading", { name: "Customer email", exact: true }).waitFor();
+    await page.getByRole("link", { name: "Open customer Masters", exact: true }).waitFor();
 
     original = await db.document.findFirstOrThrow({ where: { customerId: fixture.customerId } });
     await db.document.update({ where: { id: original.id }, data: { status: "RECEIVED", storagePath: "review-test-placeholder.pdf" } });

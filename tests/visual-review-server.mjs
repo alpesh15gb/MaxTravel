@@ -22,6 +22,7 @@ const prisma = new PrismaClient({ datasources: { db: { url: database } } });
 // Migrations, not db push: the review workspace must be built the way a deployment is, or it can
 // hide a schema change that never made it into prisma/migrations.
 execFileSync(process.execPath, [path.join(ROOT, "node_modules", "prisma", "build", "index.js"), "migrate", "deploy"], { cwd: ROOT, env, stdio: "pipe" });
+console.log("Visual review: committed migrations applied; starting HTTP server.");
 const log = createWriteStream(path.join(runtime, "server.log"));
 const server = spawn(process.execPath, [path.join(ROOT, "node_modules", "next", "dist", "bin", "next"), dev ? "dev" : "start", "--port", String(PORT), "--hostname", "127.0.0.1"], { cwd: ROOT, env, stdio: ["ignore", "pipe", "pipe"] });
 server.stdout.pipe(log); server.stderr.pipe(log);
@@ -33,6 +34,7 @@ for (let i = 0; i < 150; i++) {
 }
 if (!ready) { server.kill(); throw new Error("Review server did not become HTTP-ready; inspect server.log"); }
 
+console.log("Visual review: HTTP ready; creating isolated staff and business fixtures.");
 const post = (url, body, cookie = "") => fetch(BASE + url, { method: "POST", headers: { "Content-Type": "application/json", ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
 async function ok(url, body, cookie) { const r = await post(url, body, cookie); const d = await r.json(); if (!r.ok) throw new Error(`${url}: ${JSON.stringify(d)}`); return d; }
 const stageId = async key => (await prisma.visaStage.findUniqueOrThrow({ where: { key } })).id;
@@ -90,7 +92,7 @@ await prisma.financialEntry.create({ data: {
 } });
 await ok("/api/payments", { customerId: meera.id, bookingId: booking.bookingId, amount: 20000, mode: "UPI", note: "Advance towards Europe trip" }, owner);
 await ok("/api/invoices", { customerId: meera.id, amount: 2500, description: "Visa service charge", dueDate: "2026-11-01" }, owner);
-await ok("/api/tasks", { title: "Call Meera about travel insurance", priority: "HIGH", customerId: meera.id, details: "She asked about Schengen insurance cover on WhatsApp." }, owner);
+await ok("/api/tasks", { title: "Call Meera about travel insurance", priority: "HIGH", customerId: meera.id, details: "She asked about Schengen insurance cover by email." }, owner);
 await ok("/api/tasks", { title: "Collect Arjun's bank statements", priority: "MEDIUM", customerId: arjun.id }, owner);
 writeFileSync(path.join(ROOT, "tests", ".runtime", "visual-review-current.json"), JSON.stringify({ runtime, base: BASE, serverPid: server.pid, dev, customerId: meera.id, visaCaseId: v1.caseId, bookingId: booking.bookingId, serviceCaseId:booking.serviceCaseId, salesLeadId: acceptedLead.id, onlineBookingId: onlineBooking.id }, null, 2));
 console.log(`VISUAL REVIEW READY ${BASE} pid=${server.pid}`);

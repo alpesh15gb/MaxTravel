@@ -1,0 +1,21 @@
+# Run with compose.vps.yaml. Worker jobs are authenticated through the app.
+services:
+  worker:
+    image: max-travel-crm:local
+    entrypoint: [node, scripts/maintenance-worker.mjs]
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 260s
+    environment:
+      CRM_WORKER_SECRET: ${CRM_WORKER_SECRET:?Set CRM_WORKER_SECRET}
+      CRM_WORKER_URL: http://app:3000/api/jobs/maintenance
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"

@@ -17,7 +17,7 @@ export async function verifyOnlineBookingsUi(db: PrismaClient, databaseUrl: stri
   await db.role.update({ where: { id: "role" }, data: { key: "BRANCH_MANAGER" } });
   await db.user.update({ where: { id: "staff-a" }, data: { passwordHash: await bcrypt.hash(password, 10) } });
   await db.platformBookingLink.create({ data: { platformId: "synthetic-platform-id", bookingId: "booking-134", revision: 1, platformStatus: "CONFIRMED", supplierReference: "SYNTHETIC-134", documentsCurrent: false } });
-  const env = { ...process.env, DATABASE_URL: databaseUrl, APP_ORIGIN: origin, JWT_SECRET: randomBytes(48).toString("hex"), WA_PROVIDER: "manual", CRM_REQUIRE_MFA: "false" };
+  const env = { ...process.env, DATABASE_URL: databaseUrl, APP_ORIGIN: origin, JWT_SECRET: randomBytes(48).toString("hex"), CRM_REQUIRE_MFA: "false" };
   const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", "3259", "-H", "127.0.0.1"], { env, stdio: ["ignore", "pipe", "pipe"] });
   let logs = ""; server.stdout.on("data", value => logs += value); server.stderr.on("data", value => logs += value);
   let browser: import("playwright").Browser | undefined;

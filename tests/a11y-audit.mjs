@@ -29,13 +29,13 @@ const coverage = { rules, routes: 0, routeVisits: 0, focusWalks: 0, phoneWalks: 
 
 const routes = [
   ["masters", "/masters"], ["master-profile", `/masters/${fixture.customerId}`],
-  ["workspace-customers","/workspace/customers"],["workspace-operations","/workspace/operations"],["workspace-finance","/workspace/finance"],["workspace-communications","/workspace/communications"],["workspace-administration","/workspace/administration"],
+  ["workspace-customers","/workspace/customers"],["workspace-operations","/workspace/operations"],["workspace-finance","/workspace/finance"],["customer-email","/email"],["workspace-administration","/workspace/administration"],
   ["client-cases", "/cases"],["case-journey", `/cases/${fixture.serviceCaseId}`],["dashboard", "/dashboard"], ["start-work", "/work"], ["sales", "/sales"], ["online-bookings", "/online-bookings"], ["customers", "/customers"],
   ["customer-detail", `/customers/${fixture.customerId}`], ["new-customer", "/customers?action=new"],
   ["visa", "/visa"], ["visa-detail", `/visa/${fixture.visaCaseId}`], ["new-visa", "/visa/new"],
   ["ticketing", "/ticketing"], ["booking-detail", `/ticketing/${fixture.bookingId}`], ["new-booking", "/ticketing/new"],
   ["documents", "/documents"], ["payments", "/payments"], ["reports", "/reports"], ["refunds", "/refunds"],
-  ["suppliers", "/suppliers"], ["tasks", "/tasks"], ["whatsapp", "/whatsapp"],
+  ["suppliers", "/suppliers"], ["tasks", "/tasks"],
   ["team", "/employees"], ["checklists", "/checklists"], ["audit", "/audit"],
   ["settings", "/settings"], ["notifications", "/notifications"],
 ];

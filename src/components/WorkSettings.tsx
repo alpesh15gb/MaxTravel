@@ -348,8 +348,7 @@ export default function WorkSettings({
           <section className="panel p-5 space-y-4">
             <h2 className="text-lg font-semibold">Staff reminder calendar</h2>
             <p>
-              In-app work reminders are independent of customer WhatsApp
-              automation. Hard service deadlines remain visible at all times.
+              Hard service deadlines remain visible at all times.
               Business-hour reminders start only when this calendar is enabled.
             </p>
             <label className="flex gap-3 items-center">

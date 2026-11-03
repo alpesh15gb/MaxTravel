@@ -14,15 +14,18 @@ import { PrismaClient } from "@prisma/client";
 await mkdir("tests/.runtime", { recursive: true });
 const dir = await mkdtemp(path.resolve("tests/.runtime/work-migration-"));
 const url = `file:${path.join(dir, "fixture.db").replaceAll("\\", "/")}`;
-const latest = "20261031100000_case_workflow";
+const target = "20261031100000_case_workflow";
+const migrations = (await readdir("prisma/migrations")).sort();
 await writeFile(path.join(dir, "fixture.db"), "");
 await writeFile(
   path.join(dir, "schema.prisma"),
   await readFile("prisma/schema.prisma"),
 );
 await mkdir(path.join(dir, "migrations"));
-for (const name of await readdir("prisma/migrations")) {
-  if (name !== latest)
+// Rehearse the actual schema immediately before the target migration.
+// Applying future migrations early can reference tables the target creates.
+for (const name of migrations) {
+  if (name === "migration_lock.toml" || name < target)
     await cp(
       path.join("prisma/migrations", name),
       path.join(dir, "migrations", name),
@@ -82,11 +85,15 @@ try {
   await db.$executeRaw`INSERT INTO Task(id,title,status,ownerId,customerId,bookingId,branchId,dueAt,completedAt) VALUES('old-done','Already finished','DONE','staff','client','booking','branch','2026-10-01T10:00:00.000Z','2026-10-01T09:00:00.000Z')`;
   await db.$executeRaw`INSERT INTO Task(id,title,status,ownerId,customerId,branchId) VALUES('old-unfiled','Call customer','OPEN','staff','client','branch')`;
   await db.$disconnect();
-  await cp(
-    path.join("prisma/migrations", latest),
-    path.join(dir, "migrations", latest),
-    { recursive: true },
-  );
+  // Bring the seeded historical database through the target and every later upgrade.
+  for (const name of migrations) {
+    if (name !== "migration_lock.toml" && name >= target)
+      await cp(
+        path.join("prisma/migrations", name),
+        path.join(dir, "migrations", name),
+        { recursive: true },
+      );
+  }
   migrate();
   const done = await db.task.findUniqueOrThrow({
     where: { id: "old-done" },

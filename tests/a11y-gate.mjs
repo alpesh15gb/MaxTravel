@@ -115,7 +115,8 @@ async function startWorkspace() {
   // The workspace writes its fixture only after seeding, so a fixture naming *this* port is proof
   // that the audit's preconditions hold: the server is listening and the seeded data is in place.
   let ready = false;
-  for (let i = 0; i < 150; i++) {
+  // This includes all committed migrations and fixture seeding, not just HTTP startup.
+  for (let i = 0; i < 600; i++) {
     if (server.exitCode !== null) break;
     if (fs.existsSync(fixturePath)) {
       try {

@@ -9,7 +9,7 @@ import {within,withFixtureCleanup,stopFixtureChild} from './fixture-lifecycle.mj
 const port=3391,base=`http://127.0.0.1:${port}`,out=path.resolve('test-artifacts/sales-complete-journey');
 const metadata=path.resolve('tests/.runtime/visual-review-current.json');
 fs.mkdirSync(out,{recursive:true});fs.rmSync(metadata,{force:true});
-const server=spawn(process.execPath,['tests/visual-review-server.mjs'],{detached:true,stdio:['ignore','pipe','pipe'],env:{...process.env,REVIEW_PORT:String(port),REVIEW_DEV:'0',APP_ORIGIN:base,WA_PROVIDER:'manual'}});
+const server=spawn(process.execPath,['tests/visual-review-server.mjs'],{detached:true,stdio:['ignore','pipe','pipe'],env:{...process.env,REVIEW_PORT:String(port),REVIEW_DEV:'0',APP_ORIGIN:base}});
 // Fatal exits cannot leave this owned detached fixture behind for later CI steps.
 const stopOwnedOnExit=()=>{if(server.pid)try{process.kill(-server.pid,'SIGKILL');}catch{}};process.once('exit',stopOwnedOnExit);
 const report={scope:'Real UI against isolated SQLite; desktop and phone emulation, no provider or customer contact',scenarios:[],errors:[],blocked:[],passed:false};

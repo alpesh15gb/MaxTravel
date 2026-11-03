@@ -16,7 +16,7 @@ The staging payload and preview are encrypted. Preview expires after 24 hours; e
 
 ## What is created
 
-New clients receive current CRM client references. A primary SELF traveller is created when none was uploaded. Passports use the existing encrypted sensitive-field storage. New clients have WhatsApp consent off; an import sends no messages.
+New clients receive current CRM client references. A primary SELF traveller is created when none was uploaded. Passports use the existing encrypted sensitive-field storage. An import sends no customer messages.
 
 Each imported case receives a permanent current CRM case ID. Its original opening date, source reference and specialist stage remain visible in **Imported case history**. Active cases receive an assigned review task. A delegated staff member submits that work for separate owner approval; importing a history does not award completed-work credit. Closed historical cases do not create new staff work.
 

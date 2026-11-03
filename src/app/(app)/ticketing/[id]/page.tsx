@@ -85,7 +85,6 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
         edit: b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "ticketing:edit"),
         record: b.currency==="INR"&&b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "payment:record"),
         invoice: b.currency==="INR"&&b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "invoice:create"),
-        send: can(user.permissions, "whatsapp:send"),
         reissue: b.currency==="INR"&&b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "reissue:manage"),
         money: showMoney,
         // Cancelling a sale that still holds customer money raises a refund, so it needs refund:manage.

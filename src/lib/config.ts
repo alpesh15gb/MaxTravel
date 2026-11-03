@@ -157,40 +157,7 @@ export function checkConfig(env: NodeJS.ProcessEnv = process.env, root = process
     });
   }
 
-  // ── Optional: the inbound WhatsApp webhook ─────────────────────────────────────────────────
-  // Half-configured is worse than off: the webhook answers 503 when either value is missing, so a
-  // single token silently disables it. Say so rather than letting an operator wonder.
-  const hasVerify = Boolean(env.WA_VERIFY_TOKEN);
-  const hasSecret = Boolean(env.WA_WEBHOOK_SECRET);
-  if (hasVerify !== hasSecret && !env.EVOLUTION_BASE_URL && env.WA_PROVIDER!=="meta") {
-    issues.push({
-      level: "warning",
-      key: hasVerify ? "WA_WEBHOOK_SECRET" : "WA_VERIFY_TOKEN",
-      message: "The inbound WhatsApp webhook needs both WA_VERIFY_TOKEN and WA_WEBHOOK_SECRET; with only one set it stays disabled.",
-    });
-  }
-
-  if (env.WA_PROVIDER==="evolution" && (env.EVOLUTION_BASE_URL || env.EVOLUTION_API_KEY)) {
-    for (const key of ["EVOLUTION_BASE_URL", "EVOLUTION_API_KEY", "EVOLUTION_INSTANCE", "WA_WEBHOOK_SECRET", "WA_WORKER_SECRET"] as const) {
-      if (!env[key]) issues.push({ level: "error", key, message: `${key} is required when Evolution messaging is enabled.` });
-    }
-    for (const key of ["WA_WEBHOOK_SECRET", "WA_WORKER_SECRET"] as const) {
-      if (env[key] && env[key]!.length < 32) issues.push({ level: "error", key, message: `${key} must contain at least 32 characters.` });
-    }
-    try {
-      const url = new URL(env.EVOLUTION_BASE_URL ?? "");
-      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error();
-    } catch { issues.push({ level: "error", key: "EVOLUTION_BASE_URL", message: "EVOLUTION_BASE_URL must be an http(s) URL without embedded credentials, query or fragment." }); }
-  }
-
-  if(env.WA_PROVIDER==="meta"&&["WA_CLOUD_ACCESS_TOKEN","WA_CLOUD_PHONE_NUMBER_ID","WA_CLOUD_WABA_ID","WA_CLOUD_APP_SECRET","WA_CLOUD_VERIFY_TOKEN","WA_CLOUD_GRAPH_VERSION"].some(key=>env[key])){
-    for(const key of ["WA_CLOUD_ACCESS_TOKEN","WA_CLOUD_PHONE_NUMBER_ID","WA_CLOUD_WABA_ID","WA_CLOUD_APP_SECRET","WA_CLOUD_VERIFY_TOKEN","WA_CLOUD_GRAPH_VERSION","WA_WORKER_SECRET"])if(!env[key])issues.push({level:"error",key,message:`${key} is required for Meta Cloud API.`});
-  }
-  if(env.WA_PROVIDER==="meta"){
-    for(const key of ["WA_CLOUD_PHONE_NUMBER_ID","WA_CLOUD_WABA_ID"])if(env[key]&&!/^\d+$/.test(env[key]!))issues.push({level:"error",key,message:`${key} must be the numeric Meta identifier.`});
-    if(env.WA_CLOUD_GRAPH_VERSION&&!/^v\d+\.\d+$/.test(env.WA_CLOUD_GRAPH_VERSION))issues.push({level:"error",key:"WA_CLOUD_GRAPH_VERSION",message:"Use an explicit supported Graph version, for example vNN.0 from Meta's API setup."});
-    for(const key of ["WA_CLOUD_APP_SECRET","WA_CLOUD_VERIFY_TOKEN","WA_WORKER_SECRET"])if(env[key]&&env[key]!.length<32)issues.push({level:"error",key,message:`${key} must contain at least 32 characters.`});
-  }
+  if(env.CRM_WORKER_SECRET&&env.CRM_WORKER_SECRET.length<32)issues.push({level:"error",key:"CRM_WORKER_SECRET",message:"CRM_WORKER_SECRET must contain at least 32 characters."});
   const encryptionKey=env.CRM_DATA_ENCRYPTION_KEY;
   if(encryptionKey&&!/^[a-f0-9]{64}$/i.test(encryptionKey))issues.push({level:"error",key:"CRM_DATA_ENCRYPTION_KEY",message:"Use a stable, private 32-byte hexadecimal encryption key."});
   if(env.CRM_REQUIRE_MFA==="true"&&!encryptionKey)issues.push({level:"error",key:"CRM_DATA_ENCRYPTION_KEY",message:"Configure the encryption key before enforcing staff authenticators."});

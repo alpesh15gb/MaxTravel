@@ -16,7 +16,6 @@ import {
 } from "@/lib/service-cases";
 import { readWork } from "@/lib/work-read";
 import { PageHeader, Status, EmptyState } from "@/components/ui";
-import CaseConversation from "@/components/CaseConversation";
 import WorkDesk from "@/components/WorkDesk";
 import { enumLabel } from "@/lib/labels";
 import { dateTimeLabel } from "@/lib/dates";
@@ -214,9 +213,6 @@ export default async function CasePage({
     ...(work ? [{ id: "work", label: "Work" }] : []),
     ...(user.permissions.includes("document:view")
       ? [{ id: "documents", label: "Documents" }]
-      : []),
-    ...(user.permissions.includes("whatsapp:view")
-      ? [{ id: "conversation", label: "Conversation" }]
       : []),
     ...(finance ? [{ id: "money", label: "Money" }] : []),
     { id: "history", label: "History" },
@@ -454,14 +450,6 @@ export default async function CasePage({
             the application for the complete dossier.
           </p>
         </section>
-      )}
-      {tab === "conversation" && user.permissions.includes("whatsapp:view") && (
-        <CaseConversation
-          key={base.id}
-          caseId={base.id}
-          customerId={customer.id}
-          customerAccess={canTouchRecord(user, customer)}
-        />
       )}
       {tab === "money" && finance && <CaseProfit user={user} id={base.id}/>}
       {tab === "money" && finance && (

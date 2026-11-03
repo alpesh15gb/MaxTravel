@@ -25,7 +25,6 @@ jobs:
       NEXT_TELEMETRY_DISABLED: "1"
       DATABASE_URL: "file:./ci.db"
       JWT_SECRET: "ci-only-research-fixture-not-a-real-secret-0123456789abcdef"
-      WA_PROVIDER: manual
     steps:
       - uses: actions/checkout@v4
         with:

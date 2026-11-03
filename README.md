@@ -4,7 +4,7 @@ Case-based daily work, staff delegation and management reporting: [Case workflow
 
 Deploy on the existing Ubuntu VPS: [Docker + system Nginx installation and updates](docs/vps-nginx-deploy.md).
 
-Use the official [Meta Cloud API setup](META-WHATSAPP-SETUP.md) for WhatsApp. The Evolution guide is retained for legacy installations.
+Customer communication uses email. See [maintenance worker and messaging retirement](docs/MESSAGING-RETIREMENT.md) before upgrading an existing deployment.
 
 Daily operations: [Staff workflow guide](docs/DAILY-WORK-GUIDE.md). Research, screen inventory and verification for the workspace redesign: [CRM UI/UX revamp](docs/CRM-UX-REVAMP-2026-10-30.md).
 
@@ -15,7 +15,7 @@ Latest additions and rollout: [CRM completion update](docs/crm-completion-2026-1
 Travel workflow benchmark and prioritized roadmap: [Travel CRM benchmark](docs/travel-crm-benchmark-2026-10-18.md). The supplier desk includes booking-linked payables and an auditable settlement ledger; imported statement reconciliation is still a later workflow.
 
 Operational system for visa processing, air ticketing, payment collection, document
-collection/verification, WhatsApp communication, employee tasks, and supplier/refund
+collection/verification, customer email, employee tasks, and supplier/refund
 tracking. Built around: **Search anyone, know everything, see what is pending, take action.**
 
 The workspace uses a light UI: white surfaces, deep navy text, blue actions,
@@ -70,7 +70,7 @@ the sidebar opens one section at a time. See [workspace sections and role-aware 
   see Agency overview; staff see My work. Section overviews hold the detailed queues and
   transaction launchers; existing records and reports remain the authoritative workspaces.
 - **Customer 360** (`/customers/[id]`) connects travellers, cases, bookings, documents,
-  money, refunds, WhatsApp history, tasks, notes and an activity timeline with permitted
+  money, refunds, email history, tasks, notes and an activity timeline with permitted
   quick actions.
 - **Universal search** (`⌘K`) spans customers, travellers, employees, phone/email, case,
   booking, invoice, receipt and document references, ticket numbers and PNRs, honouring the
@@ -167,7 +167,7 @@ the real production server on port 3211 and exercises: first-run setup and setup
 protection, login and cookie safety, unauthenticated access, empty-state rendering for every
 route, light-workspace UI markers, customer/visa/booking creation rules, reference numbers,
 cross-customer and overpayment rejection, exact paise arithmetic, ticket-number integrity,
-upload token size and file-signature checks, signed private file reads, WhatsApp honest
+upload token size and file-signature checks, signed private file reads, customer email
 logging (never "delivered"), read-only and cross-scope permission enforcement, session
 revocation, HR/finance separation, populated route rendering, CSV export, money-owed coherence
 across the dashboard/money page/Customer 360, the desktop navigation rail reset in the built CSS,
@@ -186,10 +186,6 @@ with its evidence and remaining gaps is [docs/production-readiness.md](docs/prod
 
 ## Not connected (by design)
 
-- **No WhatsApp Business API provider.** Outbound messages are honest manual handoffs
-  (opening WhatsApp with the prepared text) and everything is logged as *logged*, never as
-  *delivered*. The inbound webhook stays disabled until `WA_VERIFY_TOKEN`/`WA_WEBHOOK_SECRET`
-  are set.
 - **No GDS/inventory API and no OCR.** Tickets are recorded from the numbers staff enter;
   document fields are reviewed and confirmed manually.
 - **No payment gateway.** Receipts are a record of money actually received.

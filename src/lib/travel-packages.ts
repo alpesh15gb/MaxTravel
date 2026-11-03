@@ -40,7 +40,7 @@ export const packageContentSchema = z.object({
   coverImageUrl: imageUrl, coverImageAlt: text(180),
   gallery: z.array(z.object({ url: imageUrl, alt: text(180) }).strict()).max(12),
   contactEmail: text(160).refine(v => !v || z.email().safeParse(v).success, "Enter a valid email."),
-  contactPhone: phone, contactWhatsapp: phone,
+  contactPhone: phone,
 }).strict();
 export type PackageContent = z.infer<typeof packageContentSchema>;
 export type PackageDraft = PackageContent & { internalNotes: string };
@@ -57,7 +57,7 @@ export function validatePackage(input: unknown, publish = false, today = new Dat
   if (new Set(d.itinerary.map(i => i.day)).size !== d.itinerary.length || d.itinerary.some(i => i.day > d.durationDays)) errors.push("Itinerary days must be unique and within the trip duration.");
   if (publish) {
     for (const key of ["destination", "summary", "description", "terms", "cancellationPolicy", "availabilityNotes"] as const) if (!d[key]) errors.push(`${key}: Required before publishing.`);
-    if (!d.contactEmail && !d.contactPhone && !d.contactWhatsapp) errors.push("Add at least one public enquiry contact.");
+    if (!d.contactEmail && !d.contactPhone) errors.push("Add at least one public enquiry contact.");
     if (d.itinerary.some(day => !day.title || !day.description)) errors.push("Complete every itinerary day title and description before publishing.");
     if (d.gallery.some(image => !image.url || !image.alt)) errors.push("Complete every gallery image URL and description before publishing.");
     if (d.itinerary.length !== d.durationDays) errors.push("Add an itinerary entry for every day before publishing.");
@@ -83,7 +83,7 @@ export const emptyPackage: PackageDraft = {
   priceAmount: null, currency: "INR", priceBasis: "ON_REQUEST", priceNotes: "", priceValidUntil: "", taxesIncluded: false,
   availability: "ON_REQUEST", travelStart: "", travelEnd: "", availabilityNotes: "",
   itinerary: [], inclusions: [], exclusions: [], terms: "", cancellationPolicy: "",
-  coverImageUrl: "", coverImageAlt: "", gallery: [], contactEmail: "", contactPhone: "", contactWhatsapp: "", internalNotes: "",
+  coverImageUrl: "", coverImageAlt: "", gallery: [], contactEmail: "", contactPhone: "", internalNotes: "",
 };
 
 export function packageSummary(item: PublicTravelPackage) {

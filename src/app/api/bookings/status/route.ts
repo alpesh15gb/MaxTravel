@@ -7,7 +7,6 @@ import { inrAmount } from "@/lib/money";
 import { requireSession, jsonError, ApiError, canTouchRecord } from "@/lib/guard";
 import { isWithdrawnBooking, netReceived, promisedTotal, cancellationRefundAvailable } from "@/lib/receivables";
 import { prisma } from "@/lib/db";
-import { queueBookingConfirmation } from "@/lib/whatsapp-queue";
 import { transactionAudit, money, nextReference, text } from "@/lib/transactions";
 
 // Statuses a person may set by hand.
@@ -135,7 +134,6 @@ export async function POST(req: Request) {
       }
 
       const booking = await tx.booking.update({ where: { id: bookingId }, data: { status, travelScope, ...cancellation } });
-      if (status === "TICKETED" && b.status !== status) await queueBookingConfirmation(tx, bookingId, true);
       await tx.activity.create({ data: { customerId: b.customerId, actorId: user.id, type: "BOOKING", summary: `${b.bookingNo} → ${enumLabel(status)}`, link: `/ticketing/${bookingId}` } });
       await transactionAudit(tx, user, "STATUS", "Booking", bookingId, `${b.status} → ${status}${cancellation ? ` · supplier cancellation charge ${cancellation.cancellationSupplierCharge} · agency fee ${cancellation.cancellationAgencyFee} · ${cancellation.cancellationReason}` : ""}${refundNo ? ` · refund ${refundNo} requested` : ""}`);
       return { booking, refundNo };

@@ -24,7 +24,7 @@ if (process.env.GITHUB_ACTIONS === "true") {
 }
 fs.mkdirSync(out, { recursive: true }); fs.rmSync(fixturePath, { force: true });
 const server = spawn(process.execPath, ["tests/visual-review-server.mjs"], {
-  env: { ...process.env, REVIEW_PORT: String(port), REVIEW_DEV: "0", WA_PROVIDER: "manual" },
+  env: { ...process.env, REVIEW_PORT: String(port), REVIEW_DEV: "0" },
   detached: true, stdio: ["ignore", "pipe", "pipe"],
 });
 let logs = "", spawnError = "", browser, page;

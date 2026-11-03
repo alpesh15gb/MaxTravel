@@ -70,8 +70,7 @@ VPS and prove a restore before live use. See `single-office-launch.md` and
 
 ## Updates from GitHub
 
-If Evolution is enabled, follow `evolution-pilot.md` instead: use `docker compose`
-without `-f` to retain the messaging override and worker.
+For an existing VPS, use the pinned two-app updater described in `MESSAGING-RETIREMENT.md`; it preserves the private Compose configuration and converts the active worker. The basic commands below are for installations already using the current generic worker configuration.
 
 Back up first, then pull and rebuild. This keeps the `.env` and data volume.
 The update restarts only this project's app; allow a short maintenance window.

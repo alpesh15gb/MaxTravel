@@ -87,7 +87,6 @@ model User {
   notes             Note[]
   activity          Activity[]
   notifications     Notification[]
-  whatsappMsgs      WhatsAppMessage[]
   docAccessLogs     DocumentAccessLog[]
   taskComments      TaskComment[]
   caseStatusUpdates VisaCaseStatus[]
@@ -125,7 +124,6 @@ model ServiceCase {
   events         ServiceCaseEvent[]
   mutations      ServiceCaseMutation[]
   serviceWork    ServiceWork[]
-  messages       CaseMessage[]
   tasks          Task[]
 
   @@index([branchId, ownerId, status])
@@ -229,9 +227,7 @@ model Customer {
   tasks           Task[]
   notes           Note[]
   activities      Activity[]
-  whatsappThreads WhatsAppThread[]
-  whatsappAttachments WhatsAppAttachment[]
-  whatsappOptIn   Boolean @default(false)
+  privatePdfs PrivatePdfAttachment[]
   uploadLinks     UploadLink[]
 
   @@index([name, phone])
@@ -429,7 +425,7 @@ model Document {
   sizeBytes              Int?
   version                Int                 @default(1)
   uploadedById           String?
-  uploadSource           String? // PORTAL | STAFF | WHATSAPP | EMAIL
+  uploadSource           String? // PORTAL | STAFF | IMPORTED | EMAIL
   uploadedAt             DateTime? @db.Timestamptz(3)
   verificationStatus     String              @default("PENDING") // PENDING VERIFIED REJECTED
   verifiedById           String?
@@ -865,61 +861,10 @@ model Note {
   @@index([customerId])
 }
 
-model WhatsAppThread {
-  id         String            @id @default(cuid())
-  customerId String
-  customer   Customer          @relation(fields: [customerId], references: [id])
-  phone      String
-  lastMsgAt  DateTime          @default(now()) @db.Timestamptz(3)
-  unread     Int               @default(0)
-  msgs       WhatsAppMessage[]
 
-  @@index([customerId])
-}
 
-model WhatsAppMessage {
-  caseLinks CaseMessage[]
-  id        String         @id @default(cuid())
-  threadId  String
-  thread    WhatsAppThread @relation(fields: [threadId], references: [id])
-  direction String // IN | OUT
-  body      String
-  template  String? // quick-reply template key when outbound
-  status    String         @default("LOGGED") // LOGGED QUEUED SENT DELIVERED READ FAILED
-  providerKey String? @unique
-  requestKey  String? @unique
-  instance    String?
-  recipient   String?
-  automation  String?
-  attempts    Int @default(0)
-  nextAttempt DateTime @default(now()) @db.Timestamptz(3)
-  claimedAt   DateTime? @db.Timestamptz(3)
-  lastError   String?
-  cloudTemplate String? // Frozen approved-template name/language/parameter values
-  attachmentId String?
-  attachment WhatsAppAttachment? @relation(fields: [attachmentId], references: [id])
-  replied   Boolean?
-  staffId   String?
-  staff     User?          @relation(fields: [staffId], references: [id])
-  at        DateTime       @default(now()) @db.Timestamptz(3)
 
-  @@index([threadId])
-  @@index([attachmentId])
-  @@index([status, nextAttempt])
-}
-
-model CaseMessage {
-  id String @id @default(cuid())
-  caseId String
-  serviceCase ServiceCase @relation(fields:[caseId],references:[id],onDelete:Restrict)
-  messageId String
-  message WhatsAppMessage @relation(fields:[messageId],references:[id],onDelete:Restrict)
-  linkedById String
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  @@unique([caseId,messageId])
-}
-
-model WhatsAppAttachment {
+model PrivatePdfAttachment {
   id String @id @default(cuid())
   customerId String
   customer Customer @relation(fields: [customerId], references: [id])
@@ -929,16 +874,9 @@ model WhatsAppAttachment {
   size Int
   createdBy String
   createdAt DateTime @default(now()) @db.Timestamptz(3)
-  messages WhatsAppMessage[]
   @@index([customerId, createdAt])
 }
 
-model QuickReply {
-  id    String @id @default(cuid())
-  key   String @unique
-  title String
-  body  String // {customer}, {outstanding}, {pnr}, {deadline} placeholders
-}
 
 model Notification {
   id        String   @id @default(cuid())
@@ -960,7 +898,7 @@ model Activity {
   customer   Customer? @relation(fields: [customerId], references: [id])
   actorId    String?
   actor      User?     @relation(fields: [actorId], references: [id])
-  type       String // NOTE | STATUS | PAYMENT | WHATSAPP | DOC ...
+  type       String // NOTE | STATUS | PAYMENT | MESSAGE | DOC ...
   summary    String
   link       String?
   createdAt  DateTime  @default(now()) @db.Timestamptz(3)
@@ -985,15 +923,6 @@ model AuditLog {
   at       DateTime @default(now()) @db.Timestamptz(3)
 }
 
-model WhatsAppInbound {
-  id String @id @default(cuid())
-  providerKey String @unique
-  phone String
-  body String
-  at DateTime @default(now()) @db.Timestamptz(3)
-  matched Boolean @default(false)
-  reason String
-}
 
 model PlatformEvent {
   id String @id
@@ -1094,20 +1023,6 @@ model SalesQuote {
  createdBy String
  createdAt DateTime @default(now()) @db.Timestamptz(3)
  @@unique([leadId,version])
-}
-model IncomingMedia {
- documentId String? @unique
- id String @id @default(cuid())
- providerKey String @unique
- mediaId String
- mimeType String
- filename String
- expectedHash String
- storageKey String?
- sha256 String?
- size Int?
- createdAt DateTime @default(now()) @db.Timestamptz(3)
- @@index([createdAt])
 }
 model StaffAuthFailure {
  id String @id @default(cuid())

@@ -120,7 +120,7 @@ await withFixtureCleanup(async () => {
     await db.user.create({ data: { id: "staff-hr", employeeCode: "TEST-HR", name: "Synthetic HR", email: "staff-hr@example.test", phone: "", passwordHash: hash, roleId: "role-hr", branchId: "branch-fixture" } });
     server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--port", String(port), "--hostname", "127.0.0.1"], {
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, DATABASE_URL: database, APP_ORIGIN: base, JWT_SECRET: secret, UPLOAD_ROOT: join(dir, "uploads"), WA_PROVIDER: "manual", NEXT_TELEMETRY_DISABLED: "1" },
+      env: { ...process.env, DATABASE_URL: database, APP_ORIGIN: base, JWT_SECRET: secret, UPLOAD_ROOT: join(dir, "uploads"), NEXT_TELEMETRY_DISABLED: "1" },
     });
     server.stdout.on("data", value => logs += value); server.stderr.on("data", value => logs += value); server.on("error", error => spawnError = String(error));
     await within((async () => {

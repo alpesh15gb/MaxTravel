@@ -1,7 +1,6 @@
 import { notifyWork } from "./work-engine";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
-import { isMetaUnavailableBody } from "./meta-inbound";
 import { readWorkConfig, agencyDay } from "./work-config";
 import {
   ROLE_PERMISSIONS,
@@ -52,88 +51,6 @@ async function accountablePerson(
     null
   );
 }
-export async function inboundWorkException(tx: Db, inboundId: string) {
-  const message = await tx.whatsAppInbound.findUnique({
-    where: { id: inboundId },
-  });
-  if (!message?.matched || !isMetaUnavailableBody(message.body)) return;
-  const filed = await tx.whatsAppMessage.findUnique({
-    where: { providerKey: message.providerKey },
-    include: { thread: { include: { customer: true } } },
-  });
-  if (!filed) return;
-  const customer = filed.thread.customer,
-    cases = await tx.serviceCase.findMany({
-      where: { customerId: customer.id, closedAt: null,status:{notIn:["COMPLETED","CANCELLED"]} },
-      take: 2,
-    });
-  const journey = cases.length === 1 ? cases[0] : null,
-    person = await accountablePerson(
-      tx,
-      [journey?.ownerId, customer.assignedToId],
-      customer.branchId,
-      "whatsapp:view",
-    ),
-    ownerId = person?.id;
-  if (!ownerId) return;
-  const config = readWorkConfig(
-      (await tx.settings.findUnique({ where: { key: "work.configuration" } }))
-        ?.value,
-    ),
-    due = new Date(Date.now() + config.responseHours * 3600000);
-  const sourceKey = `inbound-review:${message.providerKey}`;
-  if (await tx.task.findUnique({ where: { sourceKey } })) return;
-  const task = await tx.task.create({
-    data: {
-      sourceKey,
-      title: "Review unavailable customer message",
-      details:
-        "Meta did not supply readable content. Check the permitted customer inbox, contact the customer through an available channel and record the follow-up. This task does not recover the missing text.",
-      customerId: customer.id,
-      serviceCaseId: journey?.id,
-      branchId: customer.branchId,
-      ownerId,
-      unassigned: false,
-      dueAt: due,
-      originalDueAt: new Date(Date.now() + 3600000),
-      assignedAt: new Date(),
-      priority: "HIGH",
-      workflowTracked: true,
-    },
-  });
-  await tx.workEvent.create({
-    data: {
-      taskId: task.id,
-      actorName: "System",
-      kind: "CREATED",
-      toState: "TODO",
-      assigneeId: ownerId,
-      assigneeName: person?.name,
-      taskTitle: task.title,
-      caseNo: journey?.caseNo,
-      detail:
-        "Unavailable inbound content needs a human follow-up. Customer/case association was unambiguous.",
-    },
-  });
-  await tx.notification.create({
-    data: {
-      userId: ownerId,
-      title: "Customer message needs review",
-      body: journey
-        ? journey.caseNo
-        : "Open the customer inbox and identify the relevant case.",
-      link: `/work?task=${task.id}`,
-      severity: "WARNING",
-    },
-  });
-  if (journey)
-    await tx.caseMessage.upsert({
-      where: { caseId_messageId: { caseId: journey.id, messageId: filed.id } },
-      create: { caseId: journey.id, messageId: filed.id, linkedById: "SYSTEM" },
-      update: {},
-    });
-}
-
 export async function scheduleWork(now = new Date()) {
   const config = readWorkConfig(
       (
@@ -314,26 +231,6 @@ export async function scheduleWork(now = new Date()) {
             severity: "URGENT",
           },
         });
-    });
-  // Resume bounded legacy-message reconciliation after the last examined inbound ID.
-  const cursorKey = "work.inbound.cursor",
-    cursor = (await prisma.settings.findUnique({ where: { key: cursorKey } }))
-      ?.value;
-  const messages = await prisma.whatsAppInbound.findMany({
-    where: {
-      ...(cursor ? { id: { gt: cursor } } : {}),
-      at: { gte: new Date(now.getTime() - 7 * 86400000) },
-    },
-    orderBy: { id: "asc" },
-    take: 50,
-  });
-  for (const m of messages)
-    await prisma.$transaction((tx) => inboundWorkException(tx, m.id));
-  if (messages.length)
-    await prisma.settings.upsert({
-      where: { key: cursorKey },
-      create: { key: cursorKey, value: messages[messages.length - 1].id },
-      update: { value: messages[messages.length - 1].id },
     });
   await prisma.settings.deleteMany({
     where: {

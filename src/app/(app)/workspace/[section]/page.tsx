@@ -7,7 +7,13 @@ import WorkspaceDashboard from "@/components/WorkspaceDashboard";
 
 export const dynamic = "force-dynamic";
 export default async function SectionPage({ params }: { params: Promise<{ section: string }> }) {
-  const section = findSection((await params).section);
+  const sectionName = (await params).section;
+  // Existing communications bookmarks now open the retained email workflow.
+  if (sectionName === "communications") {
+    await requirePage("email:send");
+    redirect("/email");
+  }
+  const section = findSection(sectionName);
   if (!section) notFound();
   await requirePage(sectionPermissions(section.id));
   if (!section.href.startsWith("/workspace/")) redirect(section.href);
