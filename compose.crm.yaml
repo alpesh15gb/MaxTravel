@@ -1,0 +1,57 @@
+# Max Travel CRM only. Independent of the booking site: its own compose project, image,
+# release tag, backup and rollback. Nothing here builds, stops or restarts the booking app.
+#
+# Not run directly: use deploy/crm-deploy.sh, which sets CRM_IMAGE and CRM_ENV_FILE.
+name: max-travel-crm
+
+services:
+  app:
+    image: ${CRM_IMAGE:?Set CRM_IMAGE (deploy/crm-deploy.sh does this)}
+    restart: unless-stopped
+    init: true
+    env_file: ${CRM_ENV_FILE:?Set CRM_ENV_FILE}
+    ports:
+      - "127.0.0.1:3107:3000"
+    volumes:
+      - agency-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    image: ${CRM_IMAGE:?Set CRM_IMAGE}
+    entrypoint: [node, scripts/maintenance-worker.mjs]
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 260s
+    environment:
+      CRM_WORKER_SECRET: ${CRM_WORKER_SECRET:?CRM_WORKER_SECRET must be in the CRM env file}
+      CRM_WORKER_URL: http://app:3000/api/jobs/maintenance
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  backup:
+    image: ${CRM_IMAGE:?Set CRM_IMAGE}
+    profiles: [maintenance]
+    entrypoint: [node, scripts/backup.mjs]
+    command: [--out, /backups]
+    env_file: ${CRM_ENV_FILE:?Set CRM_ENV_FILE}
+    volumes:
+      - agency-data:/data
+      - ${CRM_BACKUP_DIR:-/opt/max-travel-crm-backups/crm}:/backups
+
+volumes:
+  agency-data:
+    # The existing CRM data volume. External so no compose command can delete it.
+    name: max-travel-crm_agency-data
+    external: true
