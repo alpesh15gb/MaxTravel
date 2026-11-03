@@ -26,7 +26,7 @@ export async function POST(req: Request) {
         throw new ApiError(409, "A linked booking is closed. This reissue cannot proceed or reopen it; review cancellation/refunds and reject the request instead.");
       }
       if (status === "DONE") {
-        if(replacement){const issues=passportReadiness(replacement.travellers.map(t=>t.traveller),replacement.travelScope,"FLIGHT",replacement.travelEndDate??replacement.travelDate);if(issues.length)throw new ApiError(400,issues.join(" "));}
+        if(replacement){const issues=passportReadiness(replacement.travellers.map(t=>t.traveller),replacement.travelScope,"FLIGHT",replacement.travelEndDate??replacement.travelDate,undefined,replacement.passportValidityMonths);if(issues.length)throw new ApiError(400,issues.join(" "));}
         if (r.originalTicket.status !== "OK") throw new ApiError(409, "The original ticket is no longer active. Review its cancellation or previous reissue.");
         if (!replacement || !replacement.travellers.length || replacement.travellers.some(t => !replacement.tickets.some(ticket => ticket.travellerId === t.travellerId && ticket.status === "OK"))) {
           throw new ApiError(400, "Record actual replacement ticket numbers on the new booking before completing the reissue.");

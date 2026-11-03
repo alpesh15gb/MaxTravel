@@ -15,7 +15,7 @@ datasource db {
 // Append-only reporting journal. Existing records enter as an explicit cutover opening.
 // Positive customer amounts are charges/refunds; positive supplier amounts are payables.
 model FinancialEntry {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   partyType   String
   partyId     String
   sourceType  String
@@ -25,10 +25,10 @@ model FinancialEntry {
   reference   String
   description String
   dueDate     DateTime? @db.Timestamptz(3)
-  effectiveAt DateTime @default(now()) @db.Timestamptz(3)
-  recordedAt  DateTime @default(now()) @db.Timestamptz(3)
+  effectiveAt DateTime  @default(now()) @db.Timestamptz(3)
+  recordedAt  DateTime  @default(now()) @db.Timestamptz(3)
   actorId     String?
-  opening     Boolean  @default(false)
+  opening     Boolean   @default(false)
 
   @@unique([sourceType, sourceId, revision])
   @@index([partyType, partyId, effectiveAt])
@@ -60,71 +60,71 @@ model Role {
 
 model User {
   staffChatMemberships StaffChatMember[]
-  staffChatMessages StaffChatMessage[]
-  id                String              @id @default(cuid())
-  employeeCode      String              @unique
-  name              String
-  email             String              @unique
-  phone             String
-  passwordHash      String
-  roleId            String
-  role              Role                @relation(fields: [roleId], references: [id])
-  branchId          String?
-  branch            Branch?             @relation(fields: [branchId], references: [id])
-  active            Boolean             @default(true)
+  staffChatMessages    StaffChatMessage[]
+  id                   String               @id @default(cuid())
+  employeeCode         String               @unique
+  name                 String
+  email                String               @unique
+  phone                String
+  passwordHash         String
+  roleId               String
+  role                 Role                 @relation(fields: [roleId], references: [id])
+  branchId             String?
+  branch               Branch?              @relation(fields: [branchId], references: [id])
+  active               Boolean              @default(true)
   // HR / sensitive fields — viewable only with hr:view permission
-  salary            Float?
-  bankAccount       String?
-  joinedOn          DateTime? @db.Timestamptz(3)
-  createdAt         DateTime            @default(now()) @db.Timestamptz(3)
+  salary               Float?
+  bankAccount          String?
+  joinedOn             DateTime? @db.Timestamptz(3)
+  createdAt            DateTime             @default(now()) @db.Timestamptz(3)
   // Workload (overloaded-employee alert)
-  tasks             Task[]              @relation("TaskOwner")
-  visaCases         VisaCase[]          @relation("VisaCaseOwner")
-  bookings          Booking[]           @relation("BookingOwner")
-  supplierSettlements SupplierSettlement[] @relation("SupplierSettlementRecorder")
-  supplierReversals   SupplierSettlement[] @relation("SupplierSettlementReverser")
-  documentsVerified Document[]          @relation("Verifier")
-  notes             Note[]
-  activity          Activity[]
-  notifications     Notification[]
-  docAccessLogs     DocumentAccessLog[]
-  taskComments      TaskComment[]
-  caseStatusUpdates VisaCaseStatus[]
-  managedCustomers  Customer[]
-  serviceCases ServiceCase[]
-  auditLogs         AuditLog[]
-  invoiceCreditNotes InvoiceCreditNote[] @relation("InvoiceCreditNoteIssuer")
+  tasks                Task[]               @relation("TaskOwner")
+  visaCases            VisaCase[]           @relation("VisaCaseOwner")
+  bookings             Booking[]            @relation("BookingOwner")
+  supplierSettlements  SupplierSettlement[] @relation("SupplierSettlementRecorder")
+  supplierReversals    SupplierSettlement[] @relation("SupplierSettlementReverser")
+  documentsVerified    Document[]           @relation("Verifier")
+  notes                Note[]
+  activity             Activity[]
+  notifications        Notification[]
+  docAccessLogs        DocumentAccessLog[]
+  taskComments         TaskComment[]
+  caseStatusUpdates    VisaCaseStatus[]
+  managedCustomers     Customer[]
+  serviceCases         ServiceCase[]
+  auditLogs            AuditLog[]
+  invoiceCreditNotes   InvoiceCreditNote[]  @relation("InvoiceCreditNoteIssuer")
 }
 
 // One permanent request identity from first contact through service and aftercare.
 model ServiceCase {
   staffChatThread StaffChatThread?
   legacyReference String?
-  legacyStage String?
-  importSource String?
-  importedAt DateTime? @db.Timestamptz(3)
-  createdById String?
-  id             String                @id @default(cuid())
-  caseNo         String                @unique
-  customerId     String
-  customer       Customer              @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  branchId       String
-  ownerId        String
-  owner          User                  @relation(fields: [ownerId], references: [id], onDelete: Restrict)
-  service        String
-  title          String
-  status         String                @default("OPEN")
-  nextFollowUpAt DateTime? @db.Timestamptz(3)
-  closedAt       DateTime? @db.Timestamptz(3)
-  createdAt      DateTime              @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime              @updatedAt @db.Timestamptz(3)
-  bookings       Booking[]
-  visaCases      VisaCase[]
-  leads          SalesLead[]
-  events         ServiceCaseEvent[]
-  mutations      ServiceCaseMutation[]
-  serviceWork    ServiceWork[]
-  tasks          Task[]
+  legacyStage     String?
+  importSource    String?
+  importedAt      DateTime? @db.Timestamptz(3)
+  createdById     String?
+  id              String                @id @default(cuid())
+  caseNo          String                @unique
+  customerId      String
+  customer        Customer              @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  branchId        String
+  ownerId         String
+  owner           User                  @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  service         String
+  title           String
+  status          String                @default("OPEN")
+  nextFollowUpAt  DateTime? @db.Timestamptz(3)
+  closedAt        DateTime? @db.Timestamptz(3)
+  createdAt       DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime              @updatedAt @db.Timestamptz(3)
+  bookings        Booking[]
+  visaCases       VisaCase[]
+  leads           SalesLead[]
+  events          ServiceCaseEvent[]
+  mutations       ServiceCaseMutation[]
+  serviceWork     ServiceWork[]
+  tasks           Task[]
 
   @@index([branchId, ownerId, status])
   @@index([customerId, createdAt])
@@ -133,33 +133,35 @@ model ServiceCase {
 
 // Import staging is encrypted; identities make subsequent exports safe to replay.
 model DataImportBatch {
-  id String @id
-  actorId String
-  requestKey String
-  branchId String
-  source String
-  status String
-  inputHash String
-  planHash String
-  payload String
-  preview String
-  result String?
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  expiresAt DateTime @db.Timestamptz(3)
+  id          String    @id
+  actorId     String
+  requestKey  String
+  branchId    String
+  source      String
+  status      String
+  inputHash   String
+  planHash    String
+  payload     String
+  preview     String
+  result      String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt   DateTime @db.Timestamptz(3)
   committedAt DateTime? @db.Timestamptz(3)
+
   @@unique([actorId, requestKey])
   @@index([status, expiresAt])
 }
 
 model DataImportIdentity {
-  source String
-  entity String
+  source     String
+  entity     String
   externalId String
-  recordId String
-  batchId String
-  rowHash String
-  linked Boolean @default(false)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  recordId   String
+  batchId    String
+  rowHash    String
+  linked     Boolean  @default(false)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
   @@id([source, entity, externalId])
   @@index([batchId])
   @@index([entity, recordId])
@@ -193,30 +195,30 @@ model ServiceCaseMutation {
 // ── Customers & Travellers ──────────────────────────────────────────────────
 
 model Customer {
-  emailOutbox ClientEmail[]
-  collections PaymentCollection[]
+  emailOutbox     ClientEmail[]
+  collections     PaymentCollection[]
   agencyMutations AgencyMutation[]
-  profileData String?
+  profileData     String?
   masterMutations MasterMutation[]
-  mergedIntoId String?
+  mergedIntoId    String?
   gstNumber       String?
-  id              String           @id @default(cuid())
-  code            String           @unique // C-1001
+  id              String                 @id @default(cuid())
+  code            String                 @unique // C-1001
   name            String
-  type            String           @default("INDIVIDUAL") // INDIVIDUAL | CORPORATE | SUB_AGENT
+  type            String                 @default("INDIVIDUAL") // INDIVIDUAL | CORPORATE | SUB_AGENT
   phone           String
   email           String?
   city            String
   address         String?
-  status          String           @default("ACTIVE") // ACTIVE | LEAD | INACTIVE
+  status          String                 @default("ACTIVE") // ACTIVE | LEAD | INACTIVE
   companyName     String?
   subAgentOfId    String?
   branchId        String
-  branch          Branch           @relation(fields: [branchId], references: [id])
+  branch          Branch                 @relation(fields: [branchId], references: [id])
   assignedToId    String? // relationship manager
-  assignedTo      User?            @relation(fields: [assignedToId], references: [id])
-  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
-  serviceCases ServiceCase[]
+  assignedTo      User?                  @relation(fields: [assignedToId], references: [id])
+  createdAt       DateTime               @default(now()) @db.Timestamptz(3)
+  serviceCases    ServiceCase[]
   travellers      Traveller[]
   visaCases       VisaCase[]
   bookings        Booking[]
@@ -227,33 +229,33 @@ model Customer {
   tasks           Task[]
   notes           Note[]
   activities      Activity[]
-  privatePdfs PrivatePdfAttachment[]
+  privatePdfs     PrivatePdfAttachment[]
   uploadLinks     UploadLink[]
 
   @@index([name, phone])
 }
 
 model Traveller {
-  profileData String?
-  loyaltyMemberships TravellerLoyaltyMembership[]
-  identityDocuments TravellerIdentityDocument[]
-  passportLookup String?
-  id                   String             @id @default(cuid())
+  profileData          String?
+  loyaltyMemberships   TravellerLoyaltyMembership[]
+  identityDocuments    TravellerIdentityDocument[]
+  passportLookup       String?
+  id                   String                       @id @default(cuid())
   customerId           String
-  customer             Customer           @relation(fields: [customerId], references: [id])
+  customer             Customer                     @relation(fields: [customerId], references: [id])
   fullName             String
-  relation             String             @default("SELF") // SELF | SPOUSE | SON | DAUGHTER | FATHER | MOTHER | EMPLOYEE | GROUP
+  relation             String                       @default("SELF") // SELF | SPOUSE | SON | DAUGHTER | FATHER | MOTHER | EMPLOYEE | GROUP
   dateOfBirth          DateTime? @db.Timestamptz(3)
   gender               String?
-  nationality          String             @default("India")
+  nationality          String                       @default("India")
   passportNumber       String? // sensitive — masked unless canViewSensitiveDocs
   passportIssueDate    DateTime? @db.Timestamptz(3)
   passportExpiry       DateTime? @db.Timestamptz(3)
   passportPlace        String?
   knownTravellerNumber String?
   frequentFlyer        String?
-  primary              Boolean            @default(false)
-  createdAt            DateTime           @default(now()) @db.Timestamptz(3)
+  primary              Boolean                      @default(false)
+  createdAt            DateTime                     @default(now()) @db.Timestamptz(3)
   documents            Document[]
   uploadLinks          UploadLink[]
   caseTravellers       CaseTraveller[]
@@ -278,19 +280,18 @@ model VisaStage {
 
 // Admin-configurable workflow; default seed = the 16-stage spec flow.
 model VisaCase {
-  emailOutbox ClientEmail[]
-  supplierCost Float?
-  travelEndDate DateTime? @db.Timestamptz(3)
-  collections PaymentCollection[]
-  @@index([serviceCaseId])
-  serviceCaseId String?
-  serviceCase ServiceCase? @relation(fields:[serviceCaseId],references:[id],onDelete:Restrict)
-  id                   String           @id @default(cuid())
-  caseNo               String           @unique // VC-2001
+  emailOutbox          ClientEmail[]
+  supplierCost         Float?
+  travelEndDate        DateTime? @db.Timestamptz(3)
+  collections          PaymentCollection[]
+  serviceCaseId        String?
+  serviceCase          ServiceCase?        @relation(fields: [serviceCaseId], references: [id], onDelete: Restrict)
+  id                   String              @id @default(cuid())
+  caseNo               String              @unique // VC-2001
   customerId           String
-  customer             Customer         @relation(fields: [customerId], references: [id])
+  customer             Customer            @relation(fields: [customerId], references: [id])
   stageId              String
-  stage                VisaStage        @relation(fields: [stageId], references: [id])
+  stage                VisaStage           @relation(fields: [stageId], references: [id])
   visaType             String // Tourist / Business / Student / Transit / Work
   visaCategory         String? // e.g. Visitor Visa, Salaried, Self-Employed
   destination          String
@@ -304,21 +305,21 @@ model VisaCase {
   decisionDate         DateTime? @db.Timestamptz(3)
   visaOutcome          String? // APPROVED | REJECTED
   visaValidityUntil    DateTime? @db.Timestamptz(3)
-  visaFee              Float            @default(0)
-  serviceFee           Float            @default(0)
-  sellingPrice         Float            @default(0)
+  visaFee              Float               @default(0)
+  serviceFee           Float               @default(0)
+  sellingPrice         Float               @default(0)
   paymentDueDate       DateTime? @db.Timestamptz(3)
-  amountReceived       Float            @default(0)
+  amountReceived       Float               @default(0)
   supplierId           String?
-  supplier             Supplier?        @relation(fields: [supplierId], references: [id])
-  owner                User             @relation("VisaCaseOwner", fields: [ownerId], references: [id])
+  supplier             Supplier?           @relation(fields: [supplierId], references: [id])
+  owner                User                @relation("VisaCaseOwner", fields: [ownerId], references: [id])
   ownerId              String
   branchId             String
-  branch               Branch           @relation(fields: [branchId], references: [id])
+  branch               Branch              @relation(fields: [branchId], references: [id])
   internalNotes        String?
   closedAt             DateTime? @db.Timestamptz(3)
-  createdAt            DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt            DateTime         @updatedAt @db.Timestamptz(3)
+  createdAt            DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime            @updatedAt @db.Timestamptz(3)
   travellers           CaseTraveller[]
   documents            Document[]
   checklistLinks       ChecklistLink[]
@@ -327,10 +328,11 @@ model VisaCase {
   payments             Payment[]
   invoices             Invoice[]
   uploadLinks          UploadLink[]
+  supplierDues         SupplierDue[]
 
+  @@index([serviceCaseId])
   @@index([customerId])
   @@index([stageId])
-  supplierDues SupplierDue[]
 }
 
 model CaseTraveller {
@@ -405,31 +407,32 @@ model ChecklistLink {
 // ── Documents ───────────────────────────────────────────────────────────────
 
 model Document {
-  identityRecords TravellerIdentityDocument[]
-  sensitive Boolean @default(false)
-  id                     String              @id @default(cuid())
-  docNo                  String              @unique
+  aadhaarMasked Boolean @default(false)
+  identityRecords        TravellerIdentityDocument[]
+  sensitive              Boolean                     @default(false)
+  id                     String                      @id @default(cuid())
+  docNo                  String                      @unique
   customerId             String
-  customer               Customer            @relation(fields: [customerId], references: [id])
+  customer               Customer                    @relation(fields: [customerId], references: [id])
   travellerId            String?
-  traveller              Traveller?          @relation(fields: [travellerId], references: [id])
+  traveller              Traveller?                  @relation(fields: [travellerId], references: [id])
   visaCaseId             String?
-  visaCase               VisaCase?           @relation(fields: [visaCaseId], references: [id])
+  visaCase               VisaCase?                   @relation(fields: [visaCaseId], references: [id])
   checklistItemId        String?
   docType                String // Passport, Photo, Bank Statement...
-  status                 String              @default("REQUIRED")
+  status                 String                      @default("REQUIRED")
   // REQUIRED REQUESTED RECEIVED UNDER_REVIEW ACCEPTED REJECTED REUPLOAD_REQUESTED SUBMITTED ARCHIVED
   fileName               String?
   storagePath            String? // private uploads dir; served via signed URL
   mimeType               String?
   sizeBytes              Int?
-  version                Int                 @default(1)
+  version                Int                         @default(1)
   uploadedById           String?
   uploadSource           String? // PORTAL | STAFF | IMPORTED | EMAIL
   uploadedAt             DateTime? @db.Timestamptz(3)
-  verificationStatus     String              @default("PENDING") // PENDING VERIFIED REJECTED
+  verificationStatus     String                      @default("PENDING") // PENDING VERIFIED REJECTED
   verifiedById           String?
-  verifiedBy             User?               @relation("Verifier", fields: [verifiedById], references: [id])
+  verifiedBy             User?                       @relation("Verifier", fields: [verifiedById], references: [id])
   verifiedAt             DateTime? @db.Timestamptz(3)
   expiryDate             DateTime? @db.Timestamptz(3)
   rejectionReason        String?
@@ -439,21 +442,22 @@ model Document {
   extractedConfirmedById String?
   extractedConfirmedAt   DateTime? @db.Timestamptz(3)
   warnings               String? // JSON [ {type, message} ]
-  createdAt              DateTime            @default(now()) @db.Timestamptz(3)
+  createdAt              DateTime                    @default(now()) @db.Timestamptz(3)
   accessLogs             DocumentAccessLog[]
 
   @@index([customerId])
   @@index([visaCaseId])
-}model DocumentAccessLog {
-  id        String   @id @default(cuid())
+}
+model DocumentAccessLog {
+  id         String   @id @default(cuid())
   documentId String
-  document  Document @relation(fields: [documentId], references: [id])
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id])
-  action    String   // VIEW | DOWNLOAD | EDIT | DELETE | SIGN_URL_ISSUED
-  detail    String?
-  at        DateTime @default(now()) @db.Timestamptz(3)
-  ip        String?
+  document   Document @relation(fields: [documentId], references: [id])
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String // VIEW | DOWNLOAD | EDIT | DELETE | SIGN_URL_ISSUED
+  detail     String?
+  at         DateTime @default(now()) @db.Timestamptz(3)
+  ip         String?
 }
 
 // Public upload links: /upload/[token]
@@ -476,72 +480,74 @@ model UploadLink {
 // ── Ticketing ───────────────────────────────────────────────────────────────
 
 model Booking {
-  airlineChangeFee Float @default(0)
-  noShowFee Float @default(0)
-  emailOutbox ClientEmail[]
-  collections PaymentCollection[]
-  serviceDescription String?
-  travelScope String @default("UNSPECIFIED")
-  travelEndDate DateTime? @db.Timestamptz(3)
-  supplierCostConfirmed Boolean @default(false)
-  artifacts BookingArtifact[]
-  deliveries ClientDelivery[]
-  @@index([serviceCaseId])
-  serviceCaseId String?
-  serviceCase ServiceCase? @relation(fields:[serviceCaseId],references:[id],onDelete:Restrict)
-  product           String             @default("FLIGHT")
-  hotelName         String?
-  hotelCheckIn      DateTime? @db.Timestamptz(3)
-  hotelCheckOut     DateTime? @db.Timestamptz(3)
-  id                String             @id @default(cuid())
-  bookingNo         String             @unique // BK-3001
-  customerId        String
-  customer          Customer           @relation(fields: [customerId], references: [id])
-  pnr               String?
-  airline           String?
-  gdsSource         String? // Amadeus / Sabre / Galileo
-  supplierId        String?
-  supplier          Supplier?          @relation(fields: [supplierId], references: [id])
-  status            String             @default("ENQUIRY")
+  passportValidityMonths Int @default(0)
+  requirementsNote String?
+  airlineChangeFee           Float               @default(0)
+  noShowFee                  Float               @default(0)
+  emailOutbox                ClientEmail[]
+  collections                PaymentCollection[]
+  serviceDescription         String?
+  travelScope                String              @default("UNSPECIFIED")
+  travelEndDate              DateTime? @db.Timestamptz(3)
+  supplierCostConfirmed      Boolean             @default(false)
+  artifacts                  BookingArtifact[]
+  deliveries                 ClientDelivery[]
+  serviceCaseId              String?
+  serviceCase                ServiceCase?        @relation(fields: [serviceCaseId], references: [id], onDelete: Restrict)
+  product                    String              @default("FLIGHT")
+  hotelName                  String?
+  hotelCheckIn               DateTime? @db.Timestamptz(3)
+  hotelCheckOut              DateTime? @db.Timestamptz(3)
+  id                         String              @id @default(cuid())
+  bookingNo                  String              @unique // BK-3001
+  customerId                 String
+  customer                   Customer            @relation(fields: [customerId], references: [id])
+  pnr                        String?
+  airline                    String?
+  gdsSource                  String? // Amadeus / Sabre / Galileo
+  supplierId                 String?
+  supplier                   Supplier?           @relation(fields: [supplierId], references: [id])
+  status                     String              @default("ENQUIRY")
   // ENQUIRY QUOTE_SENT PNR_CREATED ON_HOLD PAYMENT_AWAITED TICKETED CANCELLED VOID
   // REISSUE_REQUESTED REISSUED REFUND_REQUESTED REFUND_PENDING REFUNDED
-  sector            String? // DEL → BOM → LHR
-  flightNo          String?
-  travelDate        DateTime? @db.Timestamptz(3)
-  bookingDate       DateTime           @default(now()) @db.Timestamptz(3)
-  ticketingDeadline DateTime? @db.Timestamptz(3) // drives PNR expiry alerts
-  fare              Float              @default(0)
-  taxes             Float              @default(0)
-  markup            Float              @default(0)
-  serviceFee        Float              @default(0)
-  sellingPrice      Float              @default(0)
-  paymentDueDate    DateTime? @db.Timestamptz(3)
+  sector                     String? // DEL → BOM → LHR
+  flightNo                   String?
+  travelDate                 DateTime? @db.Timestamptz(3)
+  bookingDate                DateTime            @default(now()) @db.Timestamptz(3)
+  ticketingDeadline          DateTime? @db.Timestamptz(3) // drives PNR expiry alerts
+  fare                       Float               @default(0)
+  taxes                      Float               @default(0)
+  markup                     Float               @default(0)
+  serviceFee                 Float               @default(0)
+  sellingPrice               Float               @default(0)
+  paymentDueDate             DateTime? @db.Timestamptz(3)
   cancellationSupplierCharge Float?
-  cancellationAgencyFee Float?
-  cancellationReason String?
-  cancelledAt DateTime? @db.Timestamptz(3)
-  supplierCost      Float              @default(0)
-  currency          String             @default("INR")
-  owner             User               @relation("BookingOwner", fields: [ownerId], references: [id])
-  ownerId           String
-  branchId          String
-  branch            Branch             @relation(fields: [branchId], references: [id])
-  refundId          String?
-  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
-  travellers        BookingTraveller[]
-  tickets           Ticket[]
-  payments          Payment[]
-  refunds           Refund[]
-  tasks             Task[]
-  reissueOfId       String?
-  reissueOf         Booking?          @relation("ReissueParent", fields: [reissueOfId], references: [id])
-  reissueChildren   Booking[]         @relation("ReissueParent")
-  reissueChain      Reissue[]          @relation("OriginalBooking")
-  reissuesIssued    Reissue[]          @relation("ReissueBooking")
-  Invoice           Invoice[]
-  supplierDues      SupplierDue[]
+  cancellationAgencyFee      Float?
+  cancellationReason         String?
+  cancelledAt                DateTime? @db.Timestamptz(3)
+  supplierCost               Float               @default(0)
+  currency                   String              @default("INR")
+  owner                      User                @relation("BookingOwner", fields: [ownerId], references: [id])
+  ownerId                    String
+  branchId                   String
+  branch                     Branch              @relation(fields: [branchId], references: [id])
+  refundId                   String?
+  createdAt                  DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime            @updatedAt @db.Timestamptz(3)
+  travellers                 BookingTraveller[]
+  tickets                    Ticket[]
+  payments                   Payment[]
+  refunds                    Refund[]
+  tasks                      Task[]
+  reissueOfId                String?
+  reissueOf                  Booking?            @relation("ReissueParent", fields: [reissueOfId], references: [id])
+  reissueChildren            Booking[]           @relation("ReissueParent")
+  reissueChain               Reissue[]           @relation("OriginalBooking")
+  reissuesIssued             Reissue[]           @relation("ReissueBooking")
+  Invoice                    Invoice[]
+  supplierDues               SupplierDue[]
 
+  @@index([serviceCaseId])
   @@index([customerId])
   @@index([pnr])
   @@index([ticketingDeadline])
@@ -551,6 +557,9 @@ model BookingTraveller {
   id          String    @id @default(cuid())
   bookingId   String
   booking     Booking   @relation(fields: [bookingId], references: [id])
+  loyaltyMembershipId String?
+  loyaltyProgram String?
+  loyaltyNumberHint String?
   travellerId String
   traveller   Traveller @relation(fields: [travellerId], references: [id])
 
@@ -558,17 +567,17 @@ model BookingTraveller {
 }
 
 model Ticket {
-  artifacts BookingArtifact[]
-  id           String    @id @default(cuid())
+  artifacts    BookingArtifact[]
+  id           String            @id @default(cuid())
   bookingId    String
-  booking      Booking   @relation(fields: [bookingId], references: [id])
+  booking      Booking           @relation(fields: [bookingId], references: [id])
   ticketNo     String
   passenger    String
   travellerId  String?
   issueDate    DateTime? @db.Timestamptz(3)
   issuedBy     String?
-  originalFare Float     @default(0)
-  status       String    @default("OK") // OK | VOID | REFUNDED | REISSUED
+  originalFare Float             @default(0)
+  status       String            @default("OK") // OK | VOID | REFUNDED | REISSUED
   reissues     Reissue[]
 
   @@index([bookingId])
@@ -576,12 +585,12 @@ model Ticket {
 
 // Reissue chain: original ticket → reissue
 model Reissue {
-  taxDifference Float @default(0)
-  airlineFee Float @default(0)
-  noShowFee Float @default(0)
-  agencyFee Float @default(0)
-  quoteReference String?
-  quoteExpiresAt DateTime? @db.Timestamptz(3)
+  taxDifference     Float     @default(0)
+  airlineFee        Float     @default(0)
+  noShowFee         Float     @default(0)
+  agencyFee         Float     @default(0)
+  quoteReference    String?
+  quoteExpiresAt    DateTime? @db.Timestamptz(3)
   id                String    @id @default(cuid())
   originalTicketId  String
   originalTicket    Ticket    @relation(fields: [originalTicketId], references: [id])
@@ -620,26 +629,26 @@ model Payment {
 }
 
 model Invoice {
-  collections PaymentCollection[]
-  id          String    @id @default(cuid())
-  invoiceNo   String    @unique // INV-4001
-  documentKind String   @default("OPERATIONAL") // OPERATIONAL | TAX_INVOICE
-  taxSnapshot String?
-  customerId  String
-  customer    Customer  @relation(fields: [customerId], references: [id])
-  visaCaseId  String?
-  visaCase    VisaCase? @relation(fields: [visaCaseId], references: [id])
-  bookingId   String?
-  booking     Booking?  @relation(fields: [bookingId], references: [id])
-  description String?
-  amount      Float
-  amountPaid  Float     @default(0)
-  status      String    @default("UNPAID") // UNPAID PARTIAL PAID
-  issuedOn    DateTime  @default(now()) @db.Timestamptz(3)
-  dueDate     DateTime? @db.Timestamptz(3)
-  payments    Payment[]
-  refunds     Refund[]
-  creditNote  InvoiceCreditNote?
+  collections  PaymentCollection[]
+  id           String              @id @default(cuid())
+  invoiceNo    String              @unique // INV-4001
+  documentKind String              @default("OPERATIONAL") // OPERATIONAL | TAX_INVOICE
+  taxSnapshot  String?
+  customerId   String
+  customer     Customer            @relation(fields: [customerId], references: [id])
+  visaCaseId   String?
+  visaCase     VisaCase?           @relation(fields: [visaCaseId], references: [id])
+  bookingId    String?
+  booking      Booking?            @relation(fields: [bookingId], references: [id])
+  description  String?
+  amount       Float
+  amountPaid   Float               @default(0)
+  status       String              @default("UNPAID") // UNPAID PARTIAL PAID
+  issuedOn     DateTime            @default(now()) @db.Timestamptz(3)
+  dueDate      DateTime? @db.Timestamptz(3)
+  payments     Payment[]
+  refunds      Refund[]
+  creditNote   InvoiceCreditNote?
 
   @@index([customerId])
 }
@@ -672,22 +681,22 @@ model Supplier {
 }
 
 model SupplierDue {
-  id                 String                 @id @default(cuid())
-  supplierId         String
-  supplier           Supplier               @relation(fields: [supplierId], references: [id])
-  bookingId          String?
-  booking            Booking?               @relation(fields: [bookingId], references: [id])
-  visaCaseId String?
-  visaCase VisaCase? @relation(fields:[visaCaseId],references:[id],onDelete:Restrict)
-  description        String
+  id                String               @id @default(cuid())
+  supplierId        String
+  supplier          Supplier             @relation(fields: [supplierId], references: [id])
+  bookingId         String?
+  booking           Booking?             @relation(fields: [bookingId], references: [id])
+  visaCaseId        String?
+  visaCase          VisaCase?            @relation(fields: [visaCaseId], references: [id], onDelete: Restrict)
+  description       String
   supplierInvoiceNo String?
-  amount             Float
-  paidAmount         Float                  @default(0)
-  dueDate            DateTime @db.Timestamptz(3)
-  paid               Boolean                @default(false)
-  paidOn             DateTime? @db.Timestamptz(3)
-  createdAt          DateTime               @default(now()) @db.Timestamptz(3)
-  settlements        SupplierSettlement[]
+  amount            Float
+  paidAmount        Float                @default(0)
+  dueDate           DateTime @db.Timestamptz(3)
+  paid              Boolean              @default(false)
+  paidOn            DateTime? @db.Timestamptz(3)
+  createdAt         DateTime             @default(now()) @db.Timestamptz(3)
+  settlements       SupplierSettlement[]
 
   @@index([supplierId, dueDate])
   @@index([bookingId])
@@ -708,7 +717,7 @@ model SupplierSettlement {
   requestKey     String      @unique
   reversedOn     DateTime? @db.Timestamptz(3)
   reversedById   String?
-  reversedBy    User?       @relation("SupplierSettlementReverser", fields: [reversedById], references: [id], onDelete: SetNull)
+  reversedBy     User?       @relation("SupplierSettlementReverser", fields: [reversedById], references: [id], onDelete: SetNull)
   reversalReason String?
   createdAt      DateTime    @default(now()) @db.Timestamptz(3)
 
@@ -740,54 +749,54 @@ model Refund {
 // ── Work & communication ─────────────────────────────────────────────────────
 
 model Task {
-  id          String        @id @default(cuid())
-  title       String
-  details     String?
-  status      String        @default("OPEN") // OPEN IN_PROGRESS DONE CANCELLED
-  priority    String        @default("MEDIUM") // LOW MEDIUM HIGH URGENT
-  dueAt       DateTime? @db.Timestamptz(3)
-  branchId    String?
-  branch      Branch?       @relation(fields: [branchId], references: [id])
-  ownerId     String
-  owner       User          @relation("TaskOwner", fields: [ownerId], references: [id])
-  creatorId   String?
-  customerId  String?
-  customer    Customer?     @relation(fields: [customerId], references: [id])
-  visaCaseId  String?
-  visaCase    VisaCase?     @relation(fields: [visaCaseId], references: [id])
-  bookingId   String?
-  booking     Booking?      @relation(fields: [bookingId], references: [id])
-  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
-  completedAt DateTime? @db.Timestamptz(3)
-  serviceCaseId String?
-  serviceCase ServiceCase? @relation(fields: [serviceCaseId], references: [id], onDelete: Restrict)
-  serviceWorkId String?
-  serviceWork ServiceWork? @relation(fields: [serviceWorkId], references: [id], onDelete: Restrict)
-  workState String @default("TODO")
-  unassigned Boolean @default(false)
-  originalDueAt DateTime? @db.Timestamptz(3)
-  waitingReason String?
-  nextCheckAt DateTime? @db.Timestamptz(3)
-  outcome String?
-  requiresReview Boolean @default(false)
-  resultType String @default("NOTE")
-  required Boolean @default(true)
-  hardDeadline Boolean @default(false)
-  reviewerId String?
-  startedAt DateTime? @db.Timestamptz(3)
-  submittedAt DateTime? @db.Timestamptz(3)
-  reviewedAt DateTime? @db.Timestamptz(3)
-  assignedAt DateTime? @db.Timestamptz(3)
-  updatedAt DateTime @default(now()) @db.Timestamptz(3)
-  version Int @default(1)
-  workflowTracked Boolean @default(false)
-  sourceKey String? @unique
-  prerequisiteId String?
-  prerequisite Task? @relation("TaskPrerequisite", fields: [prerequisiteId], references: [id], onDelete: Restrict)
-  dependents Task[] @relation("TaskPrerequisite")
-  waived Boolean @default(false)
-  events WorkEvent[]
-  comments    TaskComment[]
+  id              String        @id @default(cuid())
+  title           String
+  details         String?
+  status          String        @default("OPEN") // OPEN IN_PROGRESS DONE CANCELLED
+  priority        String        @default("MEDIUM") // LOW MEDIUM HIGH URGENT
+  dueAt           DateTime? @db.Timestamptz(3)
+  branchId        String?
+  branch          Branch?       @relation(fields: [branchId], references: [id])
+  ownerId         String
+  owner           User          @relation("TaskOwner", fields: [ownerId], references: [id])
+  creatorId       String?
+  customerId      String?
+  customer        Customer?     @relation(fields: [customerId], references: [id])
+  visaCaseId      String?
+  visaCase        VisaCase?     @relation(fields: [visaCaseId], references: [id])
+  bookingId       String?
+  booking         Booking?      @relation(fields: [bookingId], references: [id])
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  completedAt     DateTime? @db.Timestamptz(3)
+  serviceCaseId   String?
+  serviceCase     ServiceCase?  @relation(fields: [serviceCaseId], references: [id], onDelete: Restrict)
+  serviceWorkId   String?
+  serviceWork     ServiceWork?  @relation(fields: [serviceWorkId], references: [id], onDelete: Restrict)
+  workState       String        @default("TODO")
+  unassigned      Boolean       @default(false)
+  originalDueAt   DateTime? @db.Timestamptz(3)
+  waitingReason   String?
+  nextCheckAt     DateTime? @db.Timestamptz(3)
+  outcome         String?
+  requiresReview  Boolean       @default(false)
+  resultType      String        @default("NOTE")
+  required        Boolean       @default(true)
+  hardDeadline    Boolean       @default(false)
+  reviewerId      String?
+  startedAt       DateTime? @db.Timestamptz(3)
+  submittedAt     DateTime? @db.Timestamptz(3)
+  reviewedAt      DateTime? @db.Timestamptz(3)
+  assignedAt      DateTime? @db.Timestamptz(3)
+  updatedAt       DateTime      @default(now()) @db.Timestamptz(3)
+  version         Int           @default(1)
+  workflowTracked Boolean       @default(false)
+  sourceKey       String?       @unique
+  prerequisiteId  String?
+  prerequisite    Task?         @relation("TaskPrerequisite", fields: [prerequisiteId], references: [id], onDelete: Restrict)
+  dependents      Task[]        @relation("TaskPrerequisite")
+  waived          Boolean       @default(false)
+  events          WorkEvent[]
+  comments        TaskComment[]
 
   @@index([ownerId, status])
   @@index([serviceCaseId, status])
@@ -796,45 +805,48 @@ model Task {
 }
 
 model ServiceWork {
-  id String @id @default(cuid())
-  caseId String
-  serviceCase ServiceCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
-  service String
-  title String
+  id              String      @id @default(cuid())
+  caseId          String
+  serviceCase     ServiceCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  service         String
+  title           String
   templateVersion Int?
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  tasks Task[]
+  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
+  tasks           Task[]
+
   @@unique([caseId, service])
 }
 
 model WorkEvent {
-  id String @id @default(cuid())
-  taskId String
-  task Task @relation(fields: [taskId], references: [id], onDelete: Restrict)
-  actorId String?
-  actorName String
-  taskTitle String @default("")
-  caseNo String?
-  kind String
-  fromState String?
-  toState String
-  assigneeId String?
-  assigneeName String?
-  dueAt DateTime? @db.Timestamptz(3)
+  id            String    @id @default(cuid())
+  taskId        String
+  task          Task      @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  actorId       String?
+  actorName     String
+  taskTitle     String    @default("")
+  caseNo        String?
+  kind          String
+  fromState     String?
+  toState       String
+  assigneeId    String?
+  assigneeName  String?
+  dueAt         DateTime? @db.Timestamptz(3)
   originalDueAt DateTime? @db.Timestamptz(3)
-  detail String
-  at DateTime @default(now()) @db.Timestamptz(3)
+  detail        String
+  at            DateTime  @default(now()) @db.Timestamptz(3)
+
   @@index([taskId, at])
   @@index([kind, at])
   @@index([assigneeId, at])
 }
 
 model WorkMutation {
-  actorId String
+  actorId    String
   requestKey String
-  bodyHash String
-  response String
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  bodyHash   String
+  response   String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
   @@id([actorId, requestKey])
 }
 
@@ -861,22 +873,19 @@ model Note {
   @@index([customerId])
 }
 
-
-
-
 model PrivatePdfAttachment {
-  id String @id @default(cuid())
+  id         String   @id @default(cuid())
   customerId String
-  customer Customer @relation(fields: [customerId], references: [id])
-  filename String
-  storageKey String @unique
-  sha256 String
-  size Int
-  createdBy String
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  customer   Customer @relation(fields: [customerId], references: [id])
+  filename   String
+  storageKey String   @unique
+  sha256     String
+  size       Int
+  createdBy  String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
   @@index([customerId, createdAt])
 }
-
 
 model Notification {
   id        String   @id @default(cuid())
@@ -923,390 +932,424 @@ model AuditLog {
   at       DateTime @default(now()) @db.Timestamptz(3)
 }
 
-
 model PlatformEvent {
-  id String @id
-  bodyHash String
+  id          String   @id
+  bodyHash    String
   aggregateId String
-  receivedAt DateTime @default(now()) @db.Timestamptz(3)
+  receivedAt  DateTime @default(now()) @db.Timestamptz(3)
 }
 
 model PlatformCommand {
-  id String @id
-  bookingId String
-  actorId String
-  request String
-  state String @default("STARTED")
-  response String?
+  id         String   @id
+  bookingId  String
+  actorId    String
+  request    String
+  state      String   @default("STARTED")
+  response   String?
   httpStatus Int?
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
   @@index([bookingId, createdAt])
 }
+
 model PlatformCustomerLink {
   platformId String @id
   customerId String @unique
 }
+
 model PlatformBookingLink {
-  platformId String @id
-  bookingId String @unique
-  revision Int
+  platformId        String   @id
+  bookingId         String   @unique
+  revision          Int
   supplierReference String?
-  platformStatus String?
-  documentsCurrent Boolean @default(true)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  platformStatus    String?
+  documentsCurrent  Boolean  @default(true)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
 }
+
 model StaffSession {
-  id String @id
-  userId String
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  id        String    @id
+  userId    String
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
   expiresAt DateTime @db.Timestamptz(3)
   revokedAt DateTime? @db.Timestamptz(3)
-  agent String
+  agent     String
+
   @@index([userId, expiresAt])
 }
+
 model StaffMfa {
-  userId String @id
-  secret String
-  enabled Boolean @default(false)
-  lastStep Int @default(-1)
-  recoveryHashes String @default("[]")
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  userId         String   @id
+  secret         String
+  enabled        Boolean  @default(false)
+  lastStep       Int      @default(-1)
+  recoveryHashes String   @default("[]")
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 }
+
 model StaffRecovery {
-  id String @id
-  userId String
-  tokenHash String @unique
+  id        String    @id
+  userId    String
+  tokenHash String    @unique
   expiresAt DateTime @db.Timestamptz(3)
-  usedAt DateTime? @db.Timestamptz(3)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
 }
+
 model SalesLead {
-  @@index([serviceCaseId])
   serviceCaseId String?
-  serviceCase ServiceCase? @relation(fields:[serviceCaseId],references:[id],onDelete:Restrict)
- id String @id @default(cuid())
- customerId String
- branchId String
- ownerId String
- title String
- source String
- product String @default("FLIGHT")
- stage String @default("NEW")
- budgetMinor Int @default(0)
- destination String?
- travelDate DateTime? @db.Timestamptz(3)
- followUpAt DateTime? @db.Timestamptz(3)
- lostReason String?
- notes String?
- createdAt DateTime @default(now()) @db.Timestamptz(3)
- updatedAt DateTime @updatedAt @db.Timestamptz(3)
- quotes SalesQuote[]
- @@index([branchId,ownerId,stage])
- @@index([customerId])
+  serviceCase   ServiceCase? @relation(fields: [serviceCaseId], references: [id], onDelete: Restrict)
+  id            String       @id @default(cuid())
+  customerId    String
+  branchId      String
+  ownerId       String
+  title         String
+  source        String
+  product       String       @default("FLIGHT")
+  stage         String       @default("NEW")
+  budgetMinor   Int          @default(0)
+  destination   String?
+  travelDate    DateTime? @db.Timestamptz(3)
+  followUpAt    DateTime? @db.Timestamptz(3)
+  lostReason    String?
+  notes         String?
+  createdAt     DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime     @updatedAt @db.Timestamptz(3)
+  quotes        SalesQuote[]
+
+  @@index([serviceCaseId])
+  @@index([branchId, ownerId, stage])
+  @@index([customerId])
 }
+
 model SalesQuote {
- id String @id @default(cuid())
- leadId String
- lead SalesLead @relation(fields:[leadId],references:[id])
- version Int
- items String
- terms String
- totalMinor Int
- costMinor Int
- expiresAt DateTime @db.Timestamptz(3)
- state String @default("DRAFT")
- shareHash String? @unique
- acceptedName String?
- acceptedAt DateTime? @db.Timestamptz(3)
- bookingId String? @unique
- createdBy String
- createdAt DateTime @default(now()) @db.Timestamptz(3)
- @@unique([leadId,version])
+  id           String    @id @default(cuid())
+  leadId       String
+  lead         SalesLead @relation(fields: [leadId], references: [id])
+  version      Int
+  items        String
+  terms        String
+  totalMinor   Int
+  costMinor    Int
+  expiresAt    DateTime @db.Timestamptz(3)
+  state        String    @default("DRAFT")
+  shareHash    String?   @unique
+  acceptedName String?
+  acceptedAt   DateTime? @db.Timestamptz(3)
+  bookingId    String?   @unique
+  createdBy    String
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@unique([leadId, version])
 }
+
 model StaffAuthFailure {
- id String @id @default(cuid())
- keyHash String
- at DateTime @default(now()) @db.Timestamptz(3)
- @@index([keyHash,at])
+  id      String   @id @default(cuid())
+  keyHash String
+  at      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([keyHash, at])
 }
 
 // Durable, actor-scoped financial-create replay protection. No raw request body is retained.
 model FinancialMutation {
-  id String @id @default(cuid())
-  actorId String
-  operation String
-  requestKey String
-  requestHash String
+  id           String   @id @default(cuid())
+  actorId      String
+  operation    String
+  requestKey   String
+  requestHash  String
   responseJson String
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
   @@unique([actorId, operation, requestKey])
 }
 
 // Agency-wide marketing catalogue. Drafts never implicitly replace public content.
 model TravelPackage {
-  id            String   @id @default(cuid())
-  slug          String   @unique
+  id            String         @id @default(cuid())
+  slug          String         @unique
   title         String
-  status        String   @default("DRAFT")
+  status        String         @default("DRAFT")
   draftJson     String
   publishedJson String?
-  revision      Int      @default(1)
+  revision      Int            @default(1)
   publishedAt   DateTime? @db.Timestamptz(3)
-  createdAt     DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime       @updatedAt @db.Timestamptz(3)
   media         PackageMedia[]
+
   @@index([status, publishedAt])
 }
 
 // Immutable marketing images, isolated from private customer documents.
 model PackageMedia {
-  id          String @id
+  id          String        @id
   packageId   String
   package     TravelPackage @relation(fields: [packageId], references: [id], onDelete: Restrict)
-  storageName String @unique
+  storageName String        @unique
   mimeType    String
   byteSize    Int
   width       Int
   height      Int
   sha256      String
-  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+
   @@index([packageId, createdAt])
 }
 
-
 model TravellerLoyaltyMembership {
-  id String @id @default(cuid())
-  travellerId String
-  traveller Traveller @relation(fields:[travellerId],references:[id],onDelete:Restrict)
-  category String
+  id           String    @id @default(cuid())
+  travellerId  String
+  traveller    Traveller @relation(fields: [travellerId], references: [id], onDelete: Restrict)
+  category     String
   providerName String
-  programName String
-  programKey String
-  carrierCodes String @default("[]")
+  programName  String
+  programKey   String
+  carrierCodes String    @default("[]")
   memberNumber String
   numberLookup String
-  memberName String?
-  tier String?
-  expiryDate String?
-  preferred Boolean @default(false)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
-  @@unique([travellerId,programKey,numberLookup],map:"traveller_loyalty_program_number_key")
-  @@index([travellerId,category])
+  memberName   String?
+  tier         String?
+  expiryDate   String?
+  preferred    Boolean   @default(false)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@unique([travellerId, programKey, numberLookup], map: "traveller_loyalty_program_number_key")
+  @@index([travellerId, category])
   @@index([expiryDate])
 }
 
 model TravellerIdentityDocument {
-  id String @id @default(cuid())
-  travellerId String
-  traveller Traveller @relation(fields:[travellerId],references:[id],onDelete:Restrict)
-  kind String
-  documentNumber String
-  numberLookup String
-  issuingCountry String
-  nationality String?
-  issueDate String?
-  expiryDate String?
-  placeOfIssue String?
-  visaType String?
-  entries String?
-  primaryPassport Boolean @default(false)
-  fileDocumentId String?
-  fileDocument Document? @relation(fields:[fileDocumentId],references:[id],onDelete:SetNull)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
-  @@unique([travellerId,kind,issuingCountry,numberLookup],map:"traveller_identity_number_key")
+  id              String    @id @default(cuid())
+  travellerId     String
+  traveller       Traveller @relation(fields: [travellerId], references: [id], onDelete: Restrict)
+  kind            String
+  documentNumber  String
+  numberLookup    String
+  issuingCountry  String
+  nationality     String?
+  issueDate       String?
+  expiryDate      String?
+  placeOfIssue    String?
+  validFrom       String?
+  validFor        String?
+  maximumStayDays String?
+  visaType        String?
+  entries         String?
+  primaryPassport Boolean   @default(false)
+  fileDocumentId  String?
+  fileDocument    Document? @relation(fields: [fileDocumentId], references: [id], onDelete: SetNull)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@unique([travellerId, kind, issuingCountry, numberLookup], map: "traveller_identity_number_key")
   @@index([travellerId])
   @@index([expiryDate])
 }
 
 model MasterMutation {
-  actorId String
+  actorId    String
   requestKey String
-  bodyHash String
+  bodyHash   String
   customerId String
-  customer Customer @relation(fields:[customerId],references:[id],onDelete:Restrict)
-  result String
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  @@id([actorId,requestKey])
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  result     String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@id([actorId, requestKey])
   @@index([customerId])
 }
 
-
 // Internal staff conversations. Customer-facing delivery uses a different capability boundary.
 model StaffChatThread {
-  nextSequence Int @default(0)
-  id String @id @default(cuid())
-  key String @unique
-  kind String
-  caseId String? @unique
-  serviceCase ServiceCase? @relation(fields:[caseId],references:[id],onDelete:Restrict)
-  createdById String
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
-  members StaffChatMember[]
-  messages StaffChatMessage[]
+  nextSequence Int                @default(0)
+  id           String             @id @default(cuid())
+  key          String             @unique
+  kind         String
+  caseId       String?            @unique
+  serviceCase  ServiceCase?       @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  createdById  String
+  createdAt    DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime           @updatedAt @db.Timestamptz(3)
+  members      StaffChatMember[]
+  messages     StaffChatMessage[]
 }
+
 model StaffChatMember {
-  unreadCount Int @default(0)
-  id String @id @default(cuid())
-  threadId String
-  thread StaffChatThread @relation(fields:[threadId],references:[id],onDelete:Restrict)
-  userId String
-  user User @relation(fields:[userId],references:[id],onDelete:Restrict)
-  lastReadAt DateTime? @db.Timestamptz(3)
-  lastReadSequence Int @default(0)
-  joinedAt DateTime @default(now()) @db.Timestamptz(3)
-  @@unique([threadId,userId])
+  unreadCount      Int             @default(0)
+  id               String          @id @default(cuid())
+  threadId         String
+  thread           StaffChatThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
+  userId           String
+  user             User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  lastReadAt       DateTime? @db.Timestamptz(3)
+  lastReadSequence Int             @default(0)
+  joinedAt         DateTime        @default(now()) @db.Timestamptz(3)
+
+  @@unique([threadId, userId])
   @@index([userId])
 }
+
 model StaffChatMessage {
-  sequence Int
-  id String @id @default(cuid())
-  threadId String
-  thread StaffChatThread @relation(fields:[threadId],references:[id],onDelete:Restrict)
-  authorId String
-  author User @relation(fields:[authorId],references:[id],onDelete:Restrict)
+  sequence   Int
+  id         String          @id @default(cuid())
+  threadId   String
+  thread     StaffChatThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
+  authorId   String
+  author     User            @relation(fields: [authorId], references: [id], onDelete: Restrict)
   requestKey String
-  bodyHash String
-  body String
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  @@unique([authorId,requestKey])
-  @@unique([threadId,sequence])
+  bodyHash   String
+  body       String
+  createdAt  DateTime        @default(now()) @db.Timestamptz(3)
+
+  @@unique([authorId, requestKey])
+  @@unique([threadId, sequence])
 }
 
 model BookingArtifact {
- id String @id @default(cuid())
- bookingId String
- booking Booking @relation(fields:[bookingId],references:[id],onDelete:Restrict)
- ticketId String?
- ticket Ticket? @relation(fields:[ticketId],references:[id],onDelete:Restrict)
- uploadedById String
- requestKey String
- bodyHash String
- fileName String
- storageName String
- mimeType String
- sizeBytes Int
- fileHash String
- revokedAt DateTime? @db.Timestamptz(3)
- createdAt DateTime @default(now()) @db.Timestamptz(3)
- @@unique([uploadedById,requestKey])
- @@index([bookingId])
+  id           String    @id @default(cuid())
+  bookingId    String
+  booking      Booking   @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  ticketId     String?
+  ticket       Ticket?   @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  uploadedById String
+  requestKey   String
+  bodyHash     String
+  fileName     String
+  storageName  String
+  mimeType     String
+  sizeBytes    Int
+  fileHash     String
+  revokedAt    DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@unique([uploadedById, requestKey])
+  @@index([bookingId])
 }
+
 model ClientDelivery {
-  emails ClientEmail[]
- id String @id @default(cuid())
- bookingId String
- booking Booking @relation(fields:[bookingId],references:[id],onDelete:Restrict)
- createdById String
- requestKey String
- bodyHash String
- tokenHash String @unique
- tokenCipher String
- artifactIds String
- snapshotHash String
- exceptionReason String?
- expiresAt DateTime @db.Timestamptz(3)
- revokedAt DateTime? @db.Timestamptz(3)
- createdAt DateTime @default(now()) @db.Timestamptz(3)
- @@unique([createdById,requestKey])
- @@index([bookingId])
+  emails          ClientEmail[]
+  id              String        @id @default(cuid())
+  bookingId       String
+  booking         Booking       @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  createdById     String
+  requestKey      String
+  bodyHash        String
+  tokenHash       String        @unique
+  tokenCipher     String
+  artifactIds     String
+  snapshotHash    String
+  exceptionReason String?
+  expiresAt       DateTime @db.Timestamptz(3)
+  revokedAt       DateTime? @db.Timestamptz(3)
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@unique([createdById, requestKey])
+  @@index([bookingId])
 }
 
 model AgencyMutation {
- actorId String
- requestKey String
- customerId String
- customer Customer @relation(fields:[customerId],references:[id],onDelete:Restrict)
- bodyHash String
- result String
- createdAt DateTime @default(now()) @db.Timestamptz(3)
- @@id([actorId,requestKey])
- @@index([customerId])
+  actorId    String
+  requestKey String
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  bodyHash   String
+  result     String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@id([actorId, requestKey])
+  @@index([customerId])
 }
 
 model ClientEmail {
- visaCaseId String?
- visaCase VisaCase? @relation(fields:[visaCaseId],references:[id],onDelete:Restrict)
- collectionId String?
- collection PaymentCollection? @relation(fields:[collectionId],references:[id],onDelete:Restrict)
- id String @id @default(cuid())
- customerId String
- customer Customer @relation(fields:[customerId],references:[id],onDelete:Restrict)
- bookingId String?
- booking Booking? @relation(fields:[bookingId],references:[id],onDelete:Restrict)
- deliveryId String?
- delivery ClientDelivery? @relation(fields:[deliveryId],references:[id],onDelete:Restrict)
- createdById String
- requestKey String
- bodyHash String
- recipient String
- subject String
- body String
- purpose String
- status String @default("QUEUED")
- messageId String @unique
- attempts Int @default(0)
- claimedAt DateTime? @db.Timestamptz(3)
- sentAt DateTime? @db.Timestamptz(3)
- lastError String?
- createdAt DateTime @default(now()) @db.Timestamptz(3)
- @@unique([createdById,requestKey])
- @@index([status,createdAt])
+  visaCaseId   String?
+  visaCase     VisaCase?          @relation(fields: [visaCaseId], references: [id], onDelete: Restrict)
+  collectionId String?
+  collection   PaymentCollection? @relation(fields: [collectionId], references: [id], onDelete: Restrict)
+  id           String             @id @default(cuid())
+  customerId   String
+  customer     Customer           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  bookingId    String?
+  booking      Booking?           @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  deliveryId   String?
+  delivery     ClientDelivery?    @relation(fields: [deliveryId], references: [id], onDelete: Restrict)
+  createdById  String
+  requestKey   String
+  bodyHash     String
+  recipient    String
+  subject      String
+  body         String
+  purpose      String
+  status       String             @default("QUEUED")
+  messageId    String             @unique
+  attempts     Int                @default(0)
+  claimedAt    DateTime? @db.Timestamptz(3)
+  sentAt       DateTime? @db.Timestamptz(3)
+  lastError    String?
+  createdAt    DateTime           @default(now()) @db.Timestamptz(3)
+
+  @@unique([createdById, requestKey])
+  @@index([status, createdAt])
 }
+
 model PaymentCollection {
- emails ClientEmail[]
- id String @id @default(cuid())
- provider String
- reference String @unique
- providerId String? @unique
- customerId String
- customer Customer @relation(fields:[customerId],references:[id],onDelete:Restrict)
- bookingId String?
- booking Booking? @relation(fields:[bookingId],references:[id],onDelete:Restrict)
- visaCaseId String?
- visaCase VisaCase? @relation(fields:[visaCaseId],references:[id],onDelete:Restrict)
- invoiceId String?
- invoice Invoice? @relation(fields:[invoiceId],references:[id],onDelete:Restrict)
- amountMinor Int
- currency String @default("INR")
- checkoutUrl String?
- activeKey String? @unique
- createdById String
- requestKey String
- bodyHash String
- status String @default("CREATING")
- lastError String?
- expiresAt DateTime @db.Timestamptz(3)
- createdAt DateTime @default(now()) @db.Timestamptz(3)
- updatedAt DateTime @updatedAt @db.Timestamptz(3)
- @@unique([createdById,requestKey])
- @@index([customerId])
+  emails      ClientEmail[]
+  id          String        @id @default(cuid())
+  provider    String
+  reference   String        @unique
+  providerId  String?       @unique
+  customerId  String
+  customer    Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  bookingId   String?
+  booking     Booking?      @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  visaCaseId  String?
+  visaCase    VisaCase?     @relation(fields: [visaCaseId], references: [id], onDelete: Restrict)
+  invoiceId   String?
+  invoice     Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  amountMinor Int
+  currency    String        @default("INR")
+  checkoutUrl String?
+  activeKey   String?       @unique
+  createdById String
+  requestKey  String
+  bodyHash    String
+  status      String        @default("CREATING")
+  lastError   String?
+  expiresAt   DateTime @db.Timestamptz(3)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@unique([createdById, requestKey])
+  @@index([customerId])
 }
+
 model CollectionEvent {
- id String @id
- provider String
- collectionId String
- paymentId String
- bodyHash String
- status String @default("QUEUED")
- attempts Int @default(0)
- lastError String?
- createdAt DateTime @default(now()) @db.Timestamptz(3)
- processedAt DateTime? @db.Timestamptz(3)
- @@index([status,createdAt])
+  id           String    @id
+  provider     String
+  collectionId String
+  paymentId    String
+  bodyHash     String
+  status       String    @default("QUEUED")
+  attempts     Int       @default(0)
+  lastError    String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  processedAt  DateTime? @db.Timestamptz(3)
+
+  @@index([status, createdAt])
 }
+
 model CollectionSettlement {
- id String @id @default(cuid())
- provider String
- paymentId String
- collectionId String
- amountMinor Int
- currency String
- receiptIds String
- status String @default("POSTED")
- createdAt DateTime @default(now()) @db.Timestamptz(3)
- @@unique([provider,paymentId])
+  id           String   @id @default(cuid())
+  provider     String
+  paymentId    String
+  collectionId String
+  amountMinor  Int
+  currency     String
+  receiptIds   String
+  status       String   @default("POSTED")
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([provider, paymentId])
 }

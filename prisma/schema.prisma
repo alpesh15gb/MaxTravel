@@ -405,6 +405,7 @@ model ChecklistLink {
 // ── Documents ───────────────────────────────────────────────────────────────
 
 model Document {
+  aadhaarMasked Boolean @default(false)
   identityRecords        TravellerIdentityDocument[]
   sensitive              Boolean                     @default(false)
   id                     String                      @id @default(cuid())
@@ -477,6 +478,8 @@ model UploadLink {
 // ── Ticketing ───────────────────────────────────────────────────────────────
 
 model Booking {
+  passportValidityMonths Int @default(0)
+  requirementsNote String?
   airlineChangeFee           Float               @default(0)
   noShowFee                  Float               @default(0)
   emailOutbox                ClientEmail[]
@@ -552,6 +555,9 @@ model BookingTraveller {
   id          String    @id @default(cuid())
   bookingId   String
   booking     Booking   @relation(fields: [bookingId], references: [id])
+  loyaltyMembershipId String?
+  loyaltyProgram String?
+  loyaltyNumberHint String?
   travellerId String
   traveller   Traveller @relation(fields: [travellerId], references: [id])
 
@@ -1125,6 +1131,9 @@ model TravellerIdentityDocument {
   issueDate       String?
   expiryDate      String?
   placeOfIssue    String?
+  validFrom       String?
+  validFor        String?
+  maximumStayDays String?
   visaType        String?
   entries         String?
   primaryPassport Boolean   @default(false)

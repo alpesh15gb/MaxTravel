@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       if(!["UNSPECIFIED","DOMESTIC","INTERNATIONAL"].includes(travelScope))throw new ApiError(400,"Choose domestic or international travel.");
       if(b.status!==status&&["CONFIRMED","TICKETED"].includes(status)){
         if(!b.travellers.length)throw new ApiError(400,"Add the booking travellers before confirmation.");
-        const issues=passportReadiness(b.travellers.map(t=>t.traveller),travelScope,b.product,b.travelEndDate??b.hotelCheckOut??b.travelDate);
+        const issues=passportReadiness(b.travellers.map(t=>t.traveller),travelScope,b.product,b.travelEndDate??b.hotelCheckOut??b.travelDate,undefined,b.passportValidityMonths);
         if(issues.length)throw new ApiError(400,issues.join(" "));
       }
       if(!["FLIGHT","HOTEL"].includes(b.product)){

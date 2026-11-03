@@ -38,6 +38,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
   if(!["FLIGHT","HOTEL"].includes(b.product))return <><GenericBooking key={b.id} b={{id:b.id,bookingNo:b.bookingNo,product:b.product,customerName:b.customer.name,customerId:b.customerId,serviceCaseId:b.serviceCaseId,serviceCaseNo:b.serviceCase?.caseNo??null,status:b.status,sector:b.sector,serviceDescription:b.serviceDescription,pnr:b.pnr,travelDate:b.travelDate?.toISOString()??null,travelEndDate:b.travelEndDate?.toISOString()??null,travelScope:b.travelScope,hotelName:b.hotelName,hotelCheckIn:b.hotelCheckIn?.toISOString()??null,hotelCheckOut:b.hotelCheckOut?.toISOString()??null,updatedAt:b.updatedAt.toISOString(),travellers:b.travellers.map(t=>t.traveller.fullName),edit:b.gdsSource!=="TRIPJACK_API"&&can(user.permissions,"ticketing:edit")}}/><div className="workspace-page"><BookingCustody key={b.id+":"+b.updatedAt.toISOString()} bookingId={b.id}/></div></>;
   return (
     <>
+      {b.travellers.some(t=>t.loyaltyProgram)&&<section className="workspace-page"><h2 className="font-semibold">Recorded frequent-flyer selection</h2>{b.travellers.filter(t=>t.loyaltyProgram).map(t=><p key={t.id}>{t.traveller.fullName} · {t.loyaltyProgram} · {t.loyaltyNumberHint}</p>)}<p className="text-sm">Confirm airline acceptance separately.</p></section>}
     <BookingView
       b={{
         serviceCase: b.serviceCase, id: b.id, revision:b.updatedAt.toISOString(),bookingNo: b.bookingNo, product:b.product, hotelName:b.hotelName, hotelCheckIn:b.hotelCheckIn?.toISOString()??null,hotelCheckOut:b.hotelCheckOut?.toISOString()??null, supplierId:b.supplierId,
@@ -52,7 +53,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
         ticketingDeadline: b.ticketingDeadline?.toISOString() ?? null,
         airlineChangeFee:showMoney?b.airlineChangeFee:0,noShowFee:showMoney?b.noShowFee:0,fare: showMoney ? b.fare : 0, taxes: showMoney ? b.taxes : 0, markup: showMoney ? b.markup : 0,
         serviceFee: showMoney ? b.serviceFee : 0,
-        sellingPrice: showMoney ? b.sellingPrice : 0, supplierCost: showMoney ? b.supplierCost : 0,supplierCostConfirmed:b.supplierCostConfirmed,travelScope:b.travelScope, currency: b.currency,
+        sellingPrice: showMoney ? b.sellingPrice : 0, supplierCost: showMoney ? b.supplierCost : 0,supplierCostConfirmed:b.supplierCostConfirmed,travelScope:b.travelScope,passportValidityMonths:b.passportValidityMonths,requirementsNote:b.requirementsNote, currency: b.currency,
         owner: b.owner.name, branch: b.branch.name,
         travellers: b.travellers.map((bt) => ({
           id: bt.traveller.id, fullName: bt.traveller.fullName, relation: bt.traveller.relation,

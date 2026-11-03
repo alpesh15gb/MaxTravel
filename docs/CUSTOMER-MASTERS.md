@@ -12,14 +12,14 @@ These primary sources distinguish account/contact information, individual travel
 | Customer core | Customer number, person/company/sub-agent, name, status, primary mobile, email, city, address, legal company name and GSTIN |
 | Contact / address | Alternate phone, secondary email, address line 2, state/province, postal code, country |
 | Billing / corporate | Billing name/address/city/state/postal code/country, company contact, department, cost centre, purchase-order reference |
-| Relationship | Customer source, preferred language/contact method, service interests and contact instructions; messaging consent remains separate |
+| Relationship | Customer source, preferred language/contact method, service interests and contact instructions |
 | Traveller core | Full travel-ID name, relationship, birth date, gender, nationality and optional Known Traveller Number |
 | Traveller identity / corporate | Title, passport given names/surname, birth place, residence country, own phone/email, corporate employee number/department/cost centre |
 | Emergency contact | Name, relationship, phone and email; name and phone are validated together |
 | Air preferences | Home-airport IATA, cabin, seat, meal, airline preferences and optional restricted redress number |
 | Other preferences | Hotel bed/room/smoking preference, rail berth, bus seat, optional restricted assistance notes and other preference notes |
 | Repeated loyalty memberships | Category (airline/hotel/rail/car rental/other), provider, program, member number, member name, tier, optional expiry, eligible airline-code list, preferred account within that program |
-| Repeated travel documents | Passport/visa/national ID/residence permit/driving licence/other; number, issuing-country code, nationality, issue/expiry dates, issuing place, visa type/entries, primary-passport flag and linked uploaded file |
+| Repeated travel documents | Passport/visa/PAN/masked Aadhaar/national ID/residence permit/driving licence/voter ID/birth certificate/guardian consent/other; number, issuing-country code, nationality, issue/expiry dates, issuing place, visa type/entries, primary-passport flag and linked uploaded file |
 | Manual document library | Staff-authenticated PDF/JPG/PNG upload, traveller or company scope, type, expiry, notes, actual actor/time, pending verification and existing secure-file access/review |
 | Audit | Actor, action, timestamp, subject and changed field names; membership/passport values are excluded. Protected profile reads and signed document opens are recorded. |
 
@@ -34,3 +34,5 @@ The left navigation contains Masters, Bookings, Tasks & follow-ups, Suppliers an
 Corporate/sub-agent creation captures its company name and optional GSTIN. Individual accounts may create their primary traveller; company accounts do not invent a traveller from the company name. Customer creation and later profile saves retain an in-memory request reference for explicit retries after an uncertain response. Editors also bind requests to the current authenticated session/access context; switching staff sessions rejects an old editor before it can submit private changes.
 
 Verification uses committed migrations against disposable SQLite, including an actual upgrade preserving legacy customer/traveller values. Migration-diff comparison checks that these changes add no drift; the later visa-payables migration additionally aligns the existing SupplierDue booking foreign key; unrelated InvoiceCreditNote drift is retained. PostgreSQL models are checked for parity and schema validity; no PostgreSQL server upgrade or live provider call is claimed by these tests.
+
+See [travel Master completion](TRAVEL-MASTER-COMPLETION.md) for guardian consent, payer PAN, visa conditions, masked upload review, trip checks and booking-time loyalty selection.
