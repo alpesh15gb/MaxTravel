@@ -65,7 +65,7 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
   const staff=await context(width),customer=await context(width),page=await staff.newPage(),proposal=await customer.newPage();currentPage=page;
   const title=`Synthetic contiguous holiday ${width}`;
   await page.goto(base+'/login');await page.getByLabel('Work email',{exact:true}).fill('review@visual.test');await page.getByLabel('Password',{exact:true}).fill('Review-Visual-2026!');await page.getByRole('button',{name:'Sign in to workspace',exact:true}).click();await page.waitForURL('**/dashboard');
-  const menu=page.getByRole('button',{name:'Open navigation',exact:true});if(await menu.isVisible())await menu.click();await page.locator('#workspace-navigation').getByRole('link',{name:'Cases',exact:true}).click();await page.waitForURL('**/cases');await page.getByRole('navigation',{name:'Related client workspaces'}).getByRole('link',{name:'Enquiries & quotes',exact:true}).click();await page.waitForURL('**/sales');
+  const menu=page.getByRole('button',{name:'Open navigation',exact:true});if(await menu.isVisible())await menu.click();await page.locator('#workspace-navigation').getByRole('link',{name:'Bookings',exact:true}).click();await page.waitForURL('**/ticketing');await page.getByRole('link',{name:'Enquiries & quotes',exact:true}).click();await page.waitForURL('**/sales');
   await page.getByRole('button',{name:'New enquiry',exact:true}).click();await page.getByLabel('Customer',{exact:true}).selectOption(fixture.customerId);
   await page.getByLabel('Enquiry title',{exact:true}).fill(title);await page.getByLabel('Source',{exact:true}).fill('Synthetic browser fixture');await page.getByLabel('Product',{exact:true}).selectOption('HOTEL');await page.getByLabel('Destination / route',{exact:true}).fill('Kerala');
   const created=await savedAction(page,'create',()=>page.getByRole('button',{name:'Save enquiry',exact:true}).click());assert(created.id);
@@ -104,7 +104,11 @@ await withFixtureCleanup(async()=>{try{await within((async()=>{
  assert.deepEqual(report.errors,[]);assert.deepEqual(report.blocked,[]);report.passed=true;persist();console.log('PASS contiguous sales UI: login → create enquiry → follow-up → quote v1 → publish → newer private v2 → customer acceptance → exact v1 CRM booking; repeated clicks, slow committed responses, Back/reload, immutable consent; 1440/390.');
  })(),240000,'contiguous sales UI fixture');}catch(e){report.failure=String(e);persist();if(currentPage)await currentPage.screenshot({path:path.join(out,'failure.png'),timeout:3000,mask:[currentPage.locator('#sales-private-link')]}).catch(()=>{});throw e;}
 },async()=>{
- persist();const errors=[];if(browser)try{await within(browser.close(),3000,'browser close');}catch(e){errors.push(e);}if(db)try{await db.$disconnect();}catch(e){errors.push(e);}
+ persist();const errors=[];
+ // Playwright itself gives its owned browser 30 seconds to close before force-killing it.
+ // Leave five seconds for that cleanup; journey/action deadlines remain unchanged.
+ if(browser)try{const started=Date.now();await within(browser.close(),35000,'browser close');report.browserCloseMs=Date.now()-started;persist();}catch(error){errors.push(error);}
+ if(db)try{await db.$disconnect();}catch(e){errors.push(e);}
  if(process.platform==="win32"){if(fixture?.serverPid)try{process.kill(fixture.serverPid);}catch(error){if(error.code!=="ESRCH")errors.push(error);}try{await stopFixtureChild(server);}catch(error){errors.push(error);}}else if(server.pid){const signal=s=>{try{process.kill(-server.pid,s);return true;}catch(e){if(e.code==='ESRCH')return false;throw e;}};const gone=async ms=>{const end=Date.now()+ms;while(Date.now()<end){if(!signal(0))return;await new Promise(r=>setTimeout(r,100));}if(signal(0))throw Error('Owned fixture still alive');};try{if(signal('SIGTERM'))try{await gone(3000);}catch{signal('SIGKILL');await gone(2000);}}catch(e){errors.push(e);}}
  if(errors.length)throw new AggregateError(errors,'Fixture cleanup incomplete');process.removeListener('exit',stopOwnedOnExit);
 },e=>{report.passed=false;report.cleanupFailure=String(e);persist();});

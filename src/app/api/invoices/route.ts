@@ -1,3 +1,4 @@
+import {masterBilling} from "@/lib/customer-master";
 import { financialRequestKey, financialRequestHash, replayFinancialRequest, rememberFinancialRequest, financialConflict } from "@/lib/financial-idempotency";
 import { inrAmount } from "@/lib/money";
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
@@ -57,7 +58,7 @@ export async function POST(req: Request) {
         const placeOfSupply = text(b.placeOfSupply, "Place of supply", 80);
         const sac = text(b.sac, "Service code", 20);
         const subtotalMinor = Math.round(requestedAmount * 100);
-        const snapshot = buildInvoiceTaxSnapshot({ config, profile, subtotalMinor, description: description ?? "Travel services", buyer: { name: customer.name, companyName: customer.companyName, gstin: customer.gstNumber, address: customer.address, city: customer.city, state: buyerState }, placeOfSupply, sac });
+        const snapshot = buildInvoiceTaxSnapshot({ config, profile, subtotalMinor, description: description ?? "Travel services", buyer: { ...masterBilling(customer), state: buyerState }, placeOfSupply, sac });
         if (snapshot.totalMinor > 10000000000) throw new ApiError(400, "Tax inclusive invoice total exceeds ₹100,000,000.");
         amount = snapshot.totalMinor / 100;
         taxSnapshot = JSON.stringify(snapshot);

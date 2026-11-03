@@ -9,6 +9,7 @@ assert.equal(totpStep(secret,"287082",-1,59000),1);
 assert.equal(totpStep(secret,"287082",1,59000),null);
 assert.equal(totpStep(secret,"12345",-1,59000),null);
 process.env.CRM_DATA_ENCRYPTION_KEY=randomBytes(32).toString("hex");
+assert.equal(unseal(seal("","test-empty"),"test-empty"),"");
 const encrypted=seal(secret,"test-user");assert(!encrypted.includes(secret));assert.equal(unseal(encrypted,"test-user"),secret);assert.throws(()=>unseal(encrypted,"another-user"));
 assert.notEqual(hashToken("ABC"),hashToken("ABD"));delete process.env.CRM_DATA_ENCRYPTION_KEY;assert.throws(()=>seal(secret,"test"));
 console.log("Staff security: RFC vectors, replay boundary, encrypted context and missing-key checks passed.");

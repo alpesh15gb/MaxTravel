@@ -446,7 +446,7 @@ try {
   await checkCustomerSalesHistory(page, base, fixture);
   await context.close();
 } catch (error) {
-  console.error(`UI metrics gate could not complete: ${error.message}`);
+  console.error(`UI metrics gate could not complete: ${error.stack??error.message}`);
   process.exitCode = 1;
 } finally {
   if (browser) await browser.close();

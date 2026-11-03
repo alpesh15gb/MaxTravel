@@ -1,3 +1,4 @@
+import {caseCompletionIssues} from "@/lib/case-completion";
 import {createHash} from "node:crypto";
 import {z} from "zod";
 import {prisma} from "@/lib/db";
@@ -12,6 +13,7 @@ export async function POST(req:Request,{params}:{params:Promise<{id:string}>}){t
  if(row.updatedAt.toISOString()!==data.version)throw new ApiError(409,"The case changed. Your note is preserved; refresh and review the latest case before saving again.");
  if(data.ownerId!==row.ownerId)await assertCaseOwner(tx,user,data.ownerId,row.branchId);
  const closed=["COMPLETED","CANCELLED"].includes(data.status);if(closed&&data.nextFollowUpAt)throw new ApiError(400,"Clear the next follow-up when closing a case.");
+ if(data.status==="COMPLETED"&&row.status!=="COMPLETED"){const issues=await caseCompletionIssues(tx,row.id,new Date(),false);if(issues.length)throw new ApiError(409,issues.join(" "));}
  const config=readCaseConfig((await tx.settings.findUnique({where:{key:"case.configuration"}}))?.value);
  if(data.status==="COMPLETED"&&row.status!=="COMPLETED"&&config.requireResolvedWorkToClose){const pending=await tx.task.count({where:{serviceCaseId:row.id,required:true,OR:[{status:{in:["OPEN","IN_PROGRESS"]}},{status:"CANCELLED",waived:false}]}});if(pending)throw new ApiError(409,"Complete or explicitly waive the required case work before closing this case.");const [bookings,visas]=await Promise.all([tx.booking.findMany({where:{serviceCaseId:row.id},select:{status:true}}),tx.visaCase.findMany({where:{serviceCaseId:row.id},select:{closedAt:true,visaOutcome:true}})]);if(!bookings.length&&!visas.length||bookings.some(b=>!["TICKETED","CONFIRMED","REISSUED","CANCELLED","VOID","REFUNDED"].includes(b.status))||visas.some(v=>!v.closedAt&&!v.visaOutcome))throw new ApiError(409,"Resolve the linked booking or visa decision before completing this case. Case closure does not confirm a supplier booking or settle money.");}
  const updated=await tx.serviceCase.update({where:{id:row.id},data:{status:data.status,ownerId:data.ownerId,nextFollowUpAt:data.nextFollowUpAt?new Date(data.nextFollowUpAt):null,closedAt:closed?(isClosedCase(row)?row.closedAt:new Date()):null,updatedAt:new Date(Math.max(Date.now(),row.updatedAt.getTime()+1))}});

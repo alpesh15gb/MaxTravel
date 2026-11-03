@@ -131,7 +131,7 @@ export default function UniversalSearch({ dark = false }: { dark?: boolean }) {
           onKeyDown={onKeyDown}
           aria-label="Search your workspace"
           role="combobox" aria-expanded={open && q.trim().length >= 2} aria-controls="workspace-search-results"
-          placeholder="Search customers, PNRs, cases, invoices…"
+          placeholder="Search customers, PNRs, Max IDs, invoices…"
           className={dark
             ? "w-full bg-white/10 border border-white/15 rounded-lg pl-9 pr-16 py-2 text-sm text-white placeholder-slate-400 focus:ring-2 focus:ring-teal-400/50 focus:bg-white/15"
             : "w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 sm:pr-16 py-2 text-sm placeholder-slate-500 focus:ring-2 focus:ring-teal-500/30 focus:border-teal-200"}

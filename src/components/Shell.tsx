@@ -1,4 +1,5 @@
 "use client";
+import StaffChatBadge from "./StaffChatBadge";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -12,13 +13,13 @@ import Modal from "./Modal";
 import DensityControl from "./DensityControl";
 import Brand from "./Brand";
 import WorkspaceGuide from "./WorkspaceGuide";
-import { availableSections, sectionForPath, type SectionId } from "@/lib/workspace-sections";
+import { availableSections, sectionForPath } from "@/lib/workspace-sections";
 export interface ShellUser { name: string; roleName: string; branchName: string | null; employeeCode: string; permissions: string[]; }
 const QUICK: { href: string; label: string; icon: IconName; perm: string }[] = [
   { href:"/visa/new",label:"New visa case",icon:"visa",perm:"visa:create" },
   { href:"/ticketing/new",label:"New booking",icon:"plane",perm:"ticketing:create" },
   { href:"/sales",label:"Enquiries & quotes",icon:"customers",perm:"customer:view" },
-  { href:"/customers",label:"Find a customer",icon:"customers",perm:"customer:view" },
+  { href:"/masters",label:"Find a customer",icon:"customers",perm:"customer:view" },
   { href:"/work?new=1",label:"Add a follow-up task",icon:"tasks",perm:"task:create" },
 ];
 function initials(name: string) { return name.split(" ").filter(Boolean).map(n => n[0]).slice(0, 2).join("").toUpperCase(); }
@@ -39,8 +40,6 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
   const [quickOpen, setQuickOpen] = useState(false); const [userOpen, setUserOpen] = useState(false);
   const sections = availableSections(user.permissions);
   const activeSection = sectionForPath(path);
-  const [expanded, setExpanded] = useState<{ path: string; id: SectionId | null } | null>(null);
-  const openSection = expanded?.path === path ? expanded.id : activeSection?.id ?? sections[0]?.id;
   const [count, setCount] = useState(0); const [error, setError] = useState("");
   const drawerRef = useRef<HTMLElement>(null); const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const quickRef = useRef<HTMLDivElement>(null); const userRef = useRef<HTMLDivElement>(null);
@@ -96,6 +95,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
           <button className="btn-quick rounded-lg" aria-haspopup="menu" aria-expanded={quickOpen} onClick={() => setQuickOpen(o => !o)}><Icon name="sparkles" size={16} />Quick actions<Icon name="chevronDown" size={14} /></button>
           {quickOpen && <div role="menu" className="menu-panel">{quick.map(q => <Link key={q.href} role="menuitem" href={q.href} onClick={closeQuick} className="menu-item"><Icon name={q.icon} size={16} className="text-teal-600" />{q.label}</Link>)}</div>}
         </div>}
+        {user.permissions.includes("chat:use")&&<StaffChatBadge/>}
         <Link href="/notifications" className="icon-button" aria-label={`Notifications${count ? `, ${count} unread` : ""}`}><Icon name="bell" />{count > 0 && <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-micro font-semibold tracking-normal text-white">{count}</span>}</Link>
         <div ref={userRef} className="relative">
           <button className="flex h-10 items-center gap-2.5 rounded-lg px-2 text-left transition hover:bg-slate-50" aria-haspopup="menu" aria-expanded={userOpen} aria-label="Account menu" onClick={() => setUserOpen(o => !o)}>
@@ -108,6 +108,10 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
             {/* Density lives in the account menu rather than a module toolbar: it applies to every
                 screen, and this is the one control reachable from all of them at every width. */}
             <DensityControl mode="menu" />
+            {user.permissions.includes("employee:view")&&<Link role="menuitem" className="menu-item" href="/employees" onClick={()=>setUserOpen(false)}>Team & access</Link>}
+            {user.permissions.includes("settings:manage")&&<Link role="menuitem" className="menu-item" href="/settings" onClick={()=>setUserOpen(false)}>Agency settings</Link>}
+            {user.permissions.includes("settings:manage")&&<Link role="menuitem" className="menu-item" href="/imports" onClick={()=>setUserOpen(false)}>Client & Max ID import</Link>}
+            {user.permissions.includes("audit:view")&&<Link role="menuitem" className="menu-item" href="/audit" onClick={()=>setUserOpen(false)}>Audit history</Link>}
             <Link role="menuitem" className="menu-item" href="/account-security" onClick={()=>setUserOpen(false)}>Account security</Link>
             <button role="menuitem" className="menu-item" onClick={() => { setUserOpen(false); setPwOpen(true); }}><Icon name="shield" size={16} className="text-slate-500" />Change password</button>
             <button role="menuitem" className="menu-item text-rose-700" onClick={() => { setUserOpen(false); logout(); }}><Icon name="logout" size={16} />Sign out</button>
@@ -120,18 +124,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
         <div className="studio-brand-row"><Link href="/dashboard" aria-label="Max Travel Today" onClick={() => setMobile(false)}><Brand compact /></Link><button className="icon-button lg:hidden" aria-label="Close navigation" onClick={() => setMobile(false)}><Icon name="close" /></button></div>
         <div className="studio-workspace-label"><span className="studio-agency-monogram" aria-hidden="true">{initials(agencyName)}</span><span><strong title={agencyName}>{agencyName}</strong><small>Agency operations</small></span></div>
         <nav aria-label="Main navigation" className="tos-scroll flex-1 overflow-y-auto px-3 pb-5 pt-1">
-          {sections.map(section => {
-            const isOpen = openSection === section.id;
-            const id = `navigation-${section.id}`;
-            const links = section.href.startsWith("/workspace/") ? [{href:section.href,label:"Section overview",icon:section.icon},...section.links] : section.links;
-            return <section key={section.id} className={`studio-nav-group workspace-nav-section ${section.id==="administration"?"work-settings-nav":""} ${activeSection?.id===section.id?"is-current":""}`}>
-              <div className="workspace-section-nav-heading"><Link href={section.href} onClick={()=>setMobile(false)}><Icon name={section.icon} size={18}/><span>{section.title}</span></Link><button type="button" aria-label={`${isOpen?"Collapse":"Expand"} ${section.title}`} aria-expanded={isOpen} aria-controls={id} onClick={()=>setExpanded({path,id:isOpen?null:section.id})}><Icon name={isOpen?"chevronDown":"arrow"} size={15}/></button></div>
-              <div id={id} hidden={!isOpen}>{links.map(n => {
-                const active = path === n.href || (!n.href.startsWith("/workspace/") && path.startsWith(n.href + "/"));
-                return <Link key={n.href} onClick={() => setMobile(false)} href={n.href} aria-current={active ? "page" : undefined} className={`nav-link ${active ? "active" : ""}`}><Icon name={n.icon} size={17}/><span>{n.label}</span>{active && <span className="studio-active-dot" aria-hidden="true"/>}</Link>;
-              })}</div>
-            </section>;
-          })}
+          {sections.map(section => <Link key={section.id} href={section.href} onClick={()=>setMobile(false)} aria-current={activeSection?.id===section.id?"page":undefined} className={`nav-link ${activeSection?.id===section.id?"active":""}`}><Icon name={section.icon} size={18}/><span>{section.title}</span>{activeSection?.id===section.id&&<span className="studio-active-dot" aria-hidden="true"/>}</Link>)}
         </nav>
         <div className="studio-rail-footer">
           <div className="truncate text-xs font-semibold" title={agencyName}>{agencyName}</div>
@@ -140,7 +133,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
         </div>
       </aside>
       <div className="workspace-main-shell flex min-w-0 flex-1 flex-col">
-        <main id="workspace-content" tabIndex={-1} data-workspace-area={activeSection?.title??"Today / My work"} className="min-w-0 flex-1"><WorkspaceGuide key={path} path={path}/>{children}</main>
+        <main id="workspace-content" tabIndex={-1} data-workspace-area={activeSection?.title??"Today / My work"} className="min-w-0 flex-1">{activeSection&&activeSection.links.filter(link=>user.permissions.includes(link.permission)).length>1&&<nav aria-label={`${activeSection.title} tools`} className="no-print flex flex-wrap gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">{activeSection.links.filter(link=>user.permissions.includes(link.permission)).map(link=><Link key={link.href} href={link.href} aria-current={path===link.href||path.startsWith(link.href+"/")?"page":undefined} className={`rounded-lg px-3 py-2 text-sm ${path===link.href||path.startsWith(link.href+"/")?"bg-slate-100 font-semibold text-slate-900":"text-slate-600 hover:bg-slate-50"}`}>{link.label}</Link>)}</nav>}<WorkspaceGuide key={path} path={path}/>{children}</main>
         <footer className="no-print flex justify-between gap-3 border-t border-slate-200 px-6 py-3 text-small text-slate-600"><span>{agencyName} · Private agency workspace</span><span>Max Travel CRM</span></footer>
       </div>
     </div>

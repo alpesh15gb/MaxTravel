@@ -25,7 +25,7 @@ const toneFor = (status: string): Tone => COLUMNS.find(c => c.status === status)
 // Cards and rows render in pages so a list of 1,000+ customers stays fast and the board stays scannable.
 const PAGE = 40;
 
-export default function CustomersClient({ customers, canCreate, canExport }: { customers: C[]; canCreate: boolean; canExport: boolean }) {
+export default function CustomersClient({ customers, canCreate, canExport, heading="Customers", recordBase="/customers",recoveryContext }: { heading?:string; recordBase?:string;recoveryContext?:string; customers: C[]; canCreate: boolean; canExport: boolean }) {
   const sp = useSearchParams();
   const directorySearch = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<"board" | "list">("list");
@@ -66,7 +66,7 @@ export default function CustomersClient({ customers, canCreate, canExport }: { c
       <div className="flex items-start gap-3">
         <span className={`avatar ${avatarClass(c.name)}`} aria-hidden="true">{initialsOf(c.name)}</span>
         <div className="min-w-0 flex-1">
-          <Link href={`/customers/${c.id}`} className="board-card-title">{c.name}</Link>
+          <Link href={`${recordBase}/${c.id}`} className="board-card-title">{c.name}</Link>
           <div className="text-small text-slate-500">{c.code} · Joined {c.createdLabel}</div>
         </div>
       </div>
@@ -79,12 +79,12 @@ export default function CustomersClient({ customers, canCreate, canExport }: { c
         <span>Manager: {c.manager ?? "Unassigned"}</span>
         {c.companyName && <span className="shrink-0 font-medium text-slate-600">{c.companyName}</span>}
       </div>
-      <Link href={`/customers/${c.id}`} className="board-open-link">Open customer<Icon name="arrow" size={14}/></Link>
+      <Link href={`${recordBase}/${c.id}`} className="board-open-link">Open customer<Icon name="arrow" size={14}/></Link>
     </BoardCard>;
   }
 
   return <div className="workspace-page">
-    <PageHeader title="Customers" description="Each customer's travellers, bookings, visa cases and balances in one place."
+    <PageHeader title={heading} description="Each customer's travellers, bookings, visa cases and balances in one place."
       actions={<>{canExport && <a className="btn-secondary" href="/api/export?entity=customers"><Icon name="download" size={16} />Export</a>}{canCreate && <button className="btn-primary" onClick={() => setShow(true)}><Icon name="plus" size={17} />New customer</button>}</>} />
     <div className="hidden md:block"><div className="summary-strip" aria-label="Customer directory summary">
       <button type="button" className="text-left" aria-pressed={type === "ALL" && relationship === "ALL"} onClick={() => { setType("ALL"); setRelationship("ALL"); resetPaging(); }}><StatCard label="Customers" value={customers.length} icon="customers" note="View all customers" /></button>
@@ -133,7 +133,7 @@ export default function CustomersClient({ customers, canCreate, canExport }: { c
       <table className="customer-directory-table text-sm">
         <thead><tr>{["Customer", "Contact", "City", "Type", "Relationship manager", "Status"].map(t => <th key={t} className="px-5">{t}</th>)}</tr></thead>
         <tbody>{visible.slice(0, listShown).map(c => <tr key={c.id} className="border-t">
-          <td className="px-5"><Link href={`/customers/${c.id}`} className="flex items-center gap-3">
+          <td className="px-5"><Link href={`${recordBase}/${c.id}`} className="flex items-center gap-3">
             <span className={`avatar ${avatarClass(c.name)}`} aria-hidden="true">{initialsOf(c.name)}</span>
             <span><span className="block font-semibold hover:text-teal-700">{c.name}</span><span className="text-small text-slate-500">{c.code}</span></span>
           </Link></td>
@@ -150,37 +150,42 @@ export default function CustomersClient({ customers, canCreate, canExport }: { c
       </div>
     </div>}
 
-    {show && <NewCustomer onClose={() => setShow(false)} />}
+    {show && <NewCustomer recoveryContext={recoveryContext} recordBase={recordBase} onClose={() => setShow(false)} />}
   </div>;
 }
 
-function NewCustomer({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState({ name: "", phone: "", email: "", city: "", type: "INDIVIDUAL" });
+function NewCustomer({ onClose, recordBase,recoveryContext }: { onClose: () => void; recordBase:string;recoveryContext?:string }) {
+  const [form, setForm] = useState({ name: "", phone: "", email: "", city: "", type: "INDIVIDUAL",companyName:"",gstNumber:"" });
   const [busy, setBusy] = useState(false);
+  const [uncertain,setUncertain]=useState(false),pending=useRef<Record<string,unknown>|null>(null),flight=useRef(false);
   const [error, setError] = useState("");
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); setError("");
+    e.preventDefault(); if(flight.current)return;flight.current=true;setBusy(true); setError("");
     try {
-      const r = await fetch("/api/customers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) { setError(d.error ?? "Could not create customer."); return; }
-      location.assign(`/customers/${d.id}`);
-    } catch { setError("Connection failed. Your details are still here—please try again."); }
-    finally { setBusy(false); }
+      if(!pending.current)pending.current={...form,createPrimaryTraveller:form.type==="INDIVIDUAL",requestKey:crypto.randomUUID()};
+      const r = await fetch("/api/customers", { method: "POST", headers: { "Content-Type": "application/json",...(recoveryContext?{"x-sales-recovery-context":recoveryContext}:{}) }, body: JSON.stringify(pending.current) });
+      const d = await r.json();
+      if (!r.ok) { if(r.status>=500||r.status===408||r.status===429)throw Error("Unconfirmed save");pending.current=null;setUncertain(false);setError(d.error ?? "Could not create customer."); return; }
+      pending.current=null;setUncertain(false);
+      location.assign(`${recordBase}/${d.id}`);
+    } catch { setUncertain(Boolean(pending.current));setError("The save response was interrupted. Retry the same save to check its outcome; your details are retained."); }
+    finally { flight.current=false;setBusy(false); }
   }
-  return <Modal labelledBy="new-customer-title" onClose={onClose} width="max-w-lg" busy={busy}>
+  return <Modal labelledBy="new-customer-title" onClose={()=>{if(!busy&&!uncertain)onClose();}} width="max-w-lg" busy={busy||uncertain}>
     <form onSubmit={submit} className="space-y-4">
-      <div className="flex justify-between"><div><h2 id="new-customer-title" className="text-xl font-semibold">Add a customer</h2></div><button type="button" className="icon-button" aria-label="Close" onClick={onClose}><Icon name="close" /></button></div>
+      <div className="flex justify-between"><div><h2 id="new-customer-title" className="text-xl font-semibold">Add a customer</h2></div><button type="button" className="icon-button" aria-label="Close" disabled={busy||uncertain} onClick={onClose}><Icon name="close" /></button></div>
       <p className="text-xs leading-5 text-slate-500">Just the essentials. You can add family members, passport details and preferences in their workspace.</p>
-      <Field label="Full name *"><input autoFocus autoComplete="name" required maxLength={150} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></Field>
+      <fieldset disabled={busy||uncertain} className="space-y-4"><Field label="Full name *"><input autoFocus autoComplete="name" required maxLength={150} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></Field>
       <div className="form-grid">
         <Field label="Phone *"><input type="tel" required maxLength={40} value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></Field>
         <Field label="Email"><input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></Field>
         <Field label="City"><input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} /></Field>
         <Field label="Customer type"><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option value="INDIVIDUAL">Individual</option><option value="CORPORATE">Corporate</option><option value="SUB_AGENT">Sub-agent</option></select></Field>
       </div>
+      {form.type!=="INDIVIDUAL"&&<div className="form-grid"><Field label="Company / agency name *"><input required maxLength={200} value={form.companyName} onChange={e=>setForm({...form,companyName:e.target.value})}/></Field><Field label="GSTIN (optional)"><input maxLength={15} value={form.gstNumber} onChange={e=>setForm({...form,gstNumber:e.target.value.toUpperCase()})}/></Field></div>}
+      </fieldset>
       {error && <div role="alert" className="form-error">{error}</div>}
-      <div className="flex justify-end gap-2 pt-2"><button type="button" className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={busy}>{busy ? "Creating…" : "Create customer"}<Icon name="arrow" size={16} /></button></div>
+      <div className="flex justify-end gap-2 pt-2"><button type="button" className="btn-secondary" disabled={busy||uncertain} onClick={onClose}>Cancel</button><button className="btn-primary" disabled={busy}>{busy ? "Creating…" : uncertain?"Retry same save":"Create customer"}<Icon name="arrow" size={16} /></button></div>
     </form>
   </Modal>;
 }

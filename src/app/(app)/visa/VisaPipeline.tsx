@@ -276,7 +276,7 @@ export default function VisaPipeline({ cases, stages, perms, initialQuery, initi
           const column = columnForCase(c, stages);
           return <tr key={c.id} className="border-t">
             <td className="px-4"><Link className="text-xs font-semibold text-teal-700" href={`/visa/${c.id}`}>{c.caseNo}{c.serviceCaseNo&&<span className="block text-xs text-slate-600 mt-1">{c.serviceCaseNo}</span>}</Link><p className="mt-1 text-small text-slate-500">{c.travellers.join(", ")}</p></td>
-            <td className="px-4"><Link className="text-xs hover:text-teal-700" href={`/customers/${c.customerId}`}>{c.customerName}</Link></td>
+            <td className="px-4"><Link className="text-xs hover:text-teal-700" href={`/masters/${c.customerId}`}>{c.customerName}</Link></td>
             <td className="px-4"><span className="text-xs font-medium">{c.destination}</span><p className="mt-1 text-small text-slate-500">{c.visaType}</p></td>
             <td className="px-4"><Status tone={c.stageKey === "APPROVED" ? "success" : c.stageKey === "REJECTED" ? "danger" : "neutral"}>{c.stageName}</Status></td>
             <td className="px-4 text-xs text-slate-600">{c.docsReady}/{c.docsTotal} verified{needsDocs(c, column) ? <p className="mt-1 text-small text-amber-700">{c.docsTotal === 0 ? "No documents requested" : "Needs documents"}</p> : null}</td>

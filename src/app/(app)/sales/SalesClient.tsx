@@ -604,7 +604,7 @@ export default function SalesClient({ initialLeadId, initialCreate=false, initia
           {selected && view === "lead" && <>
             <div className="sales-record-header space-y-3"><div className="flex flex-wrap items-center gap-2"><span className="pill">{enumLabel(selected.stage)}</span><span className="text-sm">{enumLabel(selected.product)}</span></div>
               <CaseReference record={selected.serviceCase}/><h2 {...headingProps}>{selected.title}</h2><p className="text-sm text-slate-600">{customerName(selected.customerId)} · {data.customers.find(customer => customer.id === selected.customerId)?.code ?? "Customer code unavailable"} · {selected.source}</p>
-              <div className="sales-actions flex flex-wrap gap-2">{canQuote && canStartQuote(selected) && <button className={selected.quotes.length ? "btn" : "btn btn-primary"} disabled={locked} onClick={() => open("quote")}>New quote version</button>}<Link className="btn" href={`/customers/${selected.customerId}`}>Open customer</Link></div>
+              <div className="sales-actions flex flex-wrap gap-2">{canQuote && canStartQuote(selected) && <button className={selected.quotes.length ? "btn" : "btn btn-primary"} disabled={locked} onClick={() => open("quote")}>New quote version</button>}<Link className="btn" href={`/masters/${selected.customerId}`}>Open customer</Link></div>
             </div>
             {nextStep && <section className="mt-5 rounded-xl border bg-slate-50 p-4 space-y-2" aria-label="Enquiry next step">
               <p className="sales-eyebrow text-sm font-semibold">Next step · based on the loaded record</p>

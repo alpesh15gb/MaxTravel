@@ -147,7 +147,7 @@ export default function RefundsClient({ refunds, focus, canManage, canExport, ca
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="font-mono text-xs text-slate-500">{r.refundNo}</span>
           <span className="text-sm font-semibold tabular-nums">{money(r.amount)}</span>
-          <Link href={`/customers/${r.customerId}`} className="text-sm text-slate-700 hover:text-teal-700">{r.customer}</Link>
+          <Link href={`/masters/${r.customerId}`} className="text-sm text-slate-700 hover:text-teal-700">{r.customer}</Link>
           {r.booking && <Link href={`/ticketing/${r.booking.id}`} className="text-xs text-slate-500 hover:text-teal-700">{r.booking.bookingNo}</Link>}
         </div>
         <div className="mt-1 text-xs text-slate-600">{r.reason}</div>

@@ -92,7 +92,7 @@ async function run(){
  const analyst=await prisma.user.create({data:{name:"Report analyst",email:"analyst@example.test",phone:"9000000002",passwordHash:"unused-test-hash",employeeCode:"EMP-RA",roleId:role.id,branchId:branch.id}});
  const scoped={...user,id:analyst.id,accessMode:"ASSIGNED"} as SessionUser;
  const account=await prisma.customer.create({data:{name:"Scoped report account",code:"C-RA",phone:"9000000003",city:"Pune",branchId:branch.id,assignedToId:analyst.id}});
- const createBooking=async(bookingNo:string,status:string,sellingPrice:number,supplierCost:number,currency="INR")=>prisma.$transaction(async tx=>{const b=await tx.booking.create({data:{bookingNo,customerId:account.id,ownerId:analyst.id,branchId:branch.id,status,sellingPrice,supplierCost,currency}});await journalEntity(tx,"Booking",b.id,analyst.id);return b;});
+ const createBooking=async(bookingNo:string,status:string,sellingPrice:number,supplierCost:number,currency="INR")=>prisma.$transaction(async tx=>{const b=await tx.booking.create({data:{bookingNo,customerId:account.id,ownerId:analyst.id,branchId:branch.id,status,sellingPrice,supplierCost,supplierCostConfirmed:supplierCost>0,currency}});await journalEntity(tx,"Booking",b.id,analyst.id);return b;});
  const confirmed=await createBooking("BK-CONFIRMED","PNR_CREATED",200,120);
  const quote=await createBooking("BK-QUOTE","QUOTE_SENT",100,50);
  const fx=await createBooking("BK-USD","PNR_CREATED",900,500,"USD");

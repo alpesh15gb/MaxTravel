@@ -1,3 +1,6 @@
+import CustomerEmail from "@/components/CustomerEmail";
+import WorkPassport from "@/components/WorkPassport";
+import CollectionRequest from "@/components/CollectionRequest";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePage, canTouchRecord } from "@/lib/guard";
@@ -39,13 +42,14 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
   const suppliers = await prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
 
   return (
+    <>
     <VisaCaseView
       vc={{
         serviceCase: vc.serviceCase, id: vc.id, caseNo: vc.caseNo,
         customer: { id: vc.customer.id, name: vc.customer.name, code: vc.customer.code, phone: vc.customer.phone },
         stage: { id: vc.stage.id, key: vc.stage.key, name: vc.stage.name },
         destination: vc.destination, visaType: vc.visaType, visaCategory: vc.visaCategory,
-        travelDate: vc.travelDate?.toISOString() ?? null, intendedStay: vc.intendedStay,
+        supplierCost:showMoney?vc.supplierCost:null,travelEndDate:vc.travelEndDate?.toISOString()??null,travelDate: vc.travelDate?.toISOString() ?? null, intendedStay: vc.intendedStay,
         applicationDate: vc.applicationDate?.toISOString() ?? null,
         submissionDate: vc.submissionDate?.toISOString() ?? null,
         appointmentDate: vc.appointmentDate?.toISOString() ?? null,
@@ -92,7 +96,7 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
       }}
       stages={stages.map((s) => ({ id: s.id, key: s.key, name: s.name, seq: s.seq }))}
       suppliers={suppliers}
-      perms={{
+      perms={{customerMaster:can(user.permissions,"customer:view")&&canTouchRecord(user,vc.customer),
         audit: can(user.permissions, "audit:view"),
         edit: can(user.permissions, "visa:edit"),
         verify: can(user.permissions, "document:verify"),
@@ -101,5 +105,9 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
         money: showMoney,
       }}
     />
+    {can(user.permissions,"traveller:edit")&&can(user.permissions,"sensitive:view")&&<div className="workspace-page flex flex-wrap gap-3" aria-label="Applicant passport checks">{vc.travellers.map(t=><WorkPassport key={t.travellerId} type="VISA" id={vc.id} travellerId={t.travellerId} name={t.traveller.fullName}/>)}</div>}
+    {can(user.permissions,"email:send")&&<div className="workspace-page"><CustomerEmail customerId={vc.customerId} visaCaseId={vc.id}/></div>}
+    {can(user.permissions,"payment:request")&&<div className="workspace-page"><CollectionRequest type="VISA" id={vc.id}/></div>}
+    </>
   );
 }

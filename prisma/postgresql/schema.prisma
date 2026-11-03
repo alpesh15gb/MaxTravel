@@ -59,6 +59,8 @@ model Role {
 }
 
 model User {
+  staffChatMemberships StaffChatMember[]
+  staffChatMessages StaffChatMessage[]
   id                String              @id @default(cuid())
   employeeCode      String              @unique
   name              String
@@ -97,6 +99,7 @@ model User {
 
 // One permanent request identity from first contact through service and aftercare.
 model ServiceCase {
+  staffChatThread StaffChatThread?
   legacyReference String?
   legacyStage String?
   importSource String?
@@ -192,6 +195,11 @@ model ServiceCaseMutation {
 // ── Customers & Travellers ──────────────────────────────────────────────────
 
 model Customer {
+  emailOutbox ClientEmail[]
+  collections PaymentCollection[]
+  agencyMutations AgencyMutation[]
+  profileData String?
+  masterMutations MasterMutation[]
   mergedIntoId String?
   gstNumber       String?
   id              String           @id @default(cuid())
@@ -230,6 +238,9 @@ model Customer {
 }
 
 model Traveller {
+  profileData String?
+  loyaltyMemberships TravellerLoyaltyMembership[]
+  identityDocuments TravellerIdentityDocument[]
   passportLookup String?
   id                   String             @id @default(cuid())
   customerId           String
@@ -271,6 +282,10 @@ model VisaStage {
 
 // Admin-configurable workflow; default seed = the 16-stage spec flow.
 model VisaCase {
+  emailOutbox ClientEmail[]
+  supplierCost Float?
+  travelEndDate DateTime? @db.Timestamptz(3)
+  collections PaymentCollection[]
   @@index([serviceCaseId])
   serviceCaseId String?
   serviceCase ServiceCase? @relation(fields:[serviceCaseId],references:[id],onDelete:Restrict)
@@ -319,6 +334,7 @@ model VisaCase {
 
   @@index([customerId])
   @@index([stageId])
+  supplierDues SupplierDue[]
 }
 
 model CaseTraveller {
@@ -393,6 +409,7 @@ model ChecklistLink {
 // ── Documents ───────────────────────────────────────────────────────────────
 
 model Document {
+  identityRecords TravellerIdentityDocument[]
   sensitive Boolean @default(false)
   id                     String              @id @default(cuid())
   docNo                  String              @unique
@@ -463,6 +480,16 @@ model UploadLink {
 // ── Ticketing ───────────────────────────────────────────────────────────────
 
 model Booking {
+  airlineChangeFee Float @default(0)
+  noShowFee Float @default(0)
+  emailOutbox ClientEmail[]
+  collections PaymentCollection[]
+  serviceDescription String?
+  travelScope String @default("UNSPECIFIED")
+  travelEndDate DateTime? @db.Timestamptz(3)
+  supplierCostConfirmed Boolean @default(false)
+  artifacts BookingArtifact[]
+  deliveries ClientDelivery[]
   @@index([serviceCaseId])
   serviceCaseId String?
   serviceCase ServiceCase? @relation(fields:[serviceCaseId],references:[id],onDelete:Restrict)
@@ -535,6 +562,7 @@ model BookingTraveller {
 }
 
 model Ticket {
+  artifacts BookingArtifact[]
   id           String    @id @default(cuid())
   bookingId    String
   booking      Booking   @relation(fields: [bookingId], references: [id])
@@ -552,6 +580,12 @@ model Ticket {
 
 // Reissue chain: original ticket → reissue
 model Reissue {
+  taxDifference Float @default(0)
+  airlineFee Float @default(0)
+  noShowFee Float @default(0)
+  agencyFee Float @default(0)
+  quoteReference String?
+  quoteExpiresAt DateTime? @db.Timestamptz(3)
   id                String    @id @default(cuid())
   originalTicketId  String
   originalTicket    Ticket    @relation(fields: [originalTicketId], references: [id])
@@ -590,6 +624,7 @@ model Payment {
 }
 
 model Invoice {
+  collections PaymentCollection[]
   id          String    @id @default(cuid())
   invoiceNo   String    @unique // INV-4001
   documentKind String   @default("OPERATIONAL") // OPERATIONAL | TAX_INVOICE
@@ -646,6 +681,8 @@ model SupplierDue {
   supplier           Supplier               @relation(fields: [supplierId], references: [id])
   bookingId          String?
   booking            Booking?               @relation(fields: [bookingId], references: [id])
+  visaCaseId String?
+  visaCase VisaCase? @relation(fields:[visaCaseId],references:[id],onDelete:Restrict)
   description        String
   supplierInvoiceNo String?
   amount             Float
@@ -658,6 +695,7 @@ model SupplierDue {
 
   @@index([supplierId, dueDate])
   @@index([bookingId])
+  @@index([visaCaseId])
 }
 
 model SupplierSettlement {
@@ -1119,4 +1157,241 @@ model PackageMedia {
   sha256      String
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
   @@index([packageId, createdAt])
+}
+
+
+model TravellerLoyaltyMembership {
+  id String @id @default(cuid())
+  travellerId String
+  traveller Traveller @relation(fields:[travellerId],references:[id],onDelete:Restrict)
+  category String
+  providerName String
+  programName String
+  programKey String
+  carrierCodes String @default("[]")
+  memberNumber String
+  numberLookup String
+  memberName String?
+  tier String?
+  expiryDate String?
+  preferred Boolean @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  @@unique([travellerId,programKey,numberLookup],map:"traveller_loyalty_program_number_key")
+  @@index([travellerId,category])
+  @@index([expiryDate])
+}
+
+model TravellerIdentityDocument {
+  id String @id @default(cuid())
+  travellerId String
+  traveller Traveller @relation(fields:[travellerId],references:[id],onDelete:Restrict)
+  kind String
+  documentNumber String
+  numberLookup String
+  issuingCountry String
+  nationality String?
+  issueDate String?
+  expiryDate String?
+  placeOfIssue String?
+  visaType String?
+  entries String?
+  primaryPassport Boolean @default(false)
+  fileDocumentId String?
+  fileDocument Document? @relation(fields:[fileDocumentId],references:[id],onDelete:SetNull)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  @@unique([travellerId,kind,issuingCountry,numberLookup],map:"traveller_identity_number_key")
+  @@index([travellerId])
+  @@index([expiryDate])
+}
+
+model MasterMutation {
+  actorId String
+  requestKey String
+  bodyHash String
+  customerId String
+  customer Customer @relation(fields:[customerId],references:[id],onDelete:Restrict)
+  result String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@id([actorId,requestKey])
+  @@index([customerId])
+}
+
+
+// Internal staff conversations. Customer-facing delivery uses a different capability boundary.
+model StaffChatThread {
+  nextSequence Int @default(0)
+  id String @id @default(cuid())
+  key String @unique
+  kind String
+  caseId String? @unique
+  serviceCase ServiceCase? @relation(fields:[caseId],references:[id],onDelete:Restrict)
+  createdById String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  members StaffChatMember[]
+  messages StaffChatMessage[]
+}
+model StaffChatMember {
+  unreadCount Int @default(0)
+  id String @id @default(cuid())
+  threadId String
+  thread StaffChatThread @relation(fields:[threadId],references:[id],onDelete:Restrict)
+  userId String
+  user User @relation(fields:[userId],references:[id],onDelete:Restrict)
+  lastReadAt DateTime? @db.Timestamptz(3)
+  lastReadSequence Int @default(0)
+  joinedAt DateTime @default(now()) @db.Timestamptz(3)
+  @@unique([threadId,userId])
+  @@index([userId])
+}
+model StaffChatMessage {
+  sequence Int
+  id String @id @default(cuid())
+  threadId String
+  thread StaffChatThread @relation(fields:[threadId],references:[id],onDelete:Restrict)
+  authorId String
+  author User @relation(fields:[authorId],references:[id],onDelete:Restrict)
+  requestKey String
+  bodyHash String
+  body String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@unique([authorId,requestKey])
+  @@unique([threadId,sequence])
+}
+
+model BookingArtifact {
+ id String @id @default(cuid())
+ bookingId String
+ booking Booking @relation(fields:[bookingId],references:[id],onDelete:Restrict)
+ ticketId String?
+ ticket Ticket? @relation(fields:[ticketId],references:[id],onDelete:Restrict)
+ uploadedById String
+ requestKey String
+ bodyHash String
+ fileName String
+ storageName String
+ mimeType String
+ sizeBytes Int
+ fileHash String
+ revokedAt DateTime? @db.Timestamptz(3)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ @@unique([uploadedById,requestKey])
+ @@index([bookingId])
+}
+model ClientDelivery {
+  emails ClientEmail[]
+ id String @id @default(cuid())
+ bookingId String
+ booking Booking @relation(fields:[bookingId],references:[id],onDelete:Restrict)
+ createdById String
+ requestKey String
+ bodyHash String
+ tokenHash String @unique
+ tokenCipher String
+ artifactIds String
+ snapshotHash String
+ exceptionReason String?
+ expiresAt DateTime @db.Timestamptz(3)
+ revokedAt DateTime? @db.Timestamptz(3)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ @@unique([createdById,requestKey])
+ @@index([bookingId])
+}
+
+model AgencyMutation {
+ actorId String
+ requestKey String
+ customerId String
+ customer Customer @relation(fields:[customerId],references:[id],onDelete:Restrict)
+ bodyHash String
+ result String
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ @@id([actorId,requestKey])
+ @@index([customerId])
+}
+
+model ClientEmail {
+ visaCaseId String?
+ visaCase VisaCase? @relation(fields:[visaCaseId],references:[id],onDelete:Restrict)
+ collectionId String?
+ collection PaymentCollection? @relation(fields:[collectionId],references:[id],onDelete:Restrict)
+ id String @id @default(cuid())
+ customerId String
+ customer Customer @relation(fields:[customerId],references:[id],onDelete:Restrict)
+ bookingId String?
+ booking Booking? @relation(fields:[bookingId],references:[id],onDelete:Restrict)
+ deliveryId String?
+ delivery ClientDelivery? @relation(fields:[deliveryId],references:[id],onDelete:Restrict)
+ createdById String
+ requestKey String
+ bodyHash String
+ recipient String
+ subject String
+ body String
+ purpose String
+ status String @default("QUEUED")
+ messageId String @unique
+ attempts Int @default(0)
+ claimedAt DateTime? @db.Timestamptz(3)
+ sentAt DateTime? @db.Timestamptz(3)
+ lastError String?
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ @@unique([createdById,requestKey])
+ @@index([status,createdAt])
+}
+model PaymentCollection {
+ emails ClientEmail[]
+ id String @id @default(cuid())
+ provider String
+ reference String @unique
+ providerId String? @unique
+ customerId String
+ customer Customer @relation(fields:[customerId],references:[id],onDelete:Restrict)
+ bookingId String?
+ booking Booking? @relation(fields:[bookingId],references:[id],onDelete:Restrict)
+ visaCaseId String?
+ visaCase VisaCase? @relation(fields:[visaCaseId],references:[id],onDelete:Restrict)
+ invoiceId String?
+ invoice Invoice? @relation(fields:[invoiceId],references:[id],onDelete:Restrict)
+ amountMinor Int
+ currency String @default("INR")
+ checkoutUrl String?
+ activeKey String? @unique
+ createdById String
+ requestKey String
+ bodyHash String
+ status String @default("CREATING")
+ lastError String?
+ expiresAt DateTime @db.Timestamptz(3)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ updatedAt DateTime @updatedAt @db.Timestamptz(3)
+ @@unique([createdById,requestKey])
+ @@index([customerId])
+}
+model CollectionEvent {
+ id String @id
+ provider String
+ collectionId String
+ paymentId String
+ bodyHash String
+ status String @default("QUEUED")
+ attempts Int @default(0)
+ lastError String?
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ processedAt DateTime? @db.Timestamptz(3)
+ @@index([status,createdAt])
+}
+model CollectionSettlement {
+ id String @id @default(cuid())
+ provider String
+ paymentId String
+ collectionId String
+ amountMinor Int
+ currency String
+ receiptIds String
+ status String @default("POSTED")
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ @@unique([provider,paymentId])
 }

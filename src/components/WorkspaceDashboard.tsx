@@ -58,7 +58,7 @@ function Overview({ sectionId, todayLabel }: { sectionId: SectionId; todayLabel:
   }
   return <div className="workspace-page section-workspace" data-section={sectionId}>
     <div className="section-page-top"><PageHeader eyebrow={daily ? `${todayLabel} · ${data?.scope ?? "Your workspace"}` : "Agency workspace"} title={title} description={description} actions={data && <>
-      {data.caseServices.length > 0 ? <NewCase services={data.caseServices} canAddCustomer={data.canAddCustomer} triggerLabel="New case"/> : primary ? <Link className="btn-primary" href={primary.href}>{primary.title}<Icon name="arrow" size={15}/></Link> : fallback ? <Link className="btn-primary" href={fallback.href}>Open {fallbackLabel.toLowerCase()}<Icon name="arrow" size={15}/></Link> : null}
+      {data.caseServices.length > 0 ? <NewCase services={data.caseServices} canAddCustomer={data.canAddCustomer} triggerLabel="New Max ID"/> : primary ? <Link className="btn-primary" href={primary.href}>{primary.title}<Icon name="arrow" size={15}/></Link> : fallback ? <Link className="btn-primary" href={fallback.href}>Open {fallbackLabel.toLowerCase()}<Icon name="arrow" size={15}/></Link> : null}
     </>}/></div>
     {params.get("denied") && <p role="alert" className="form-error mb-5">Your role does not allow that action. Choose one of your available sections.</p>}
     {error && <div role="alert" className="form-error mb-5">{error} <button className="btn-secondary" onClick={()=>void load()}>Retry</button></div>}

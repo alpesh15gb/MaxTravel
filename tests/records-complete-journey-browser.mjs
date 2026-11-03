@@ -56,8 +56,8 @@ await runSyntheticJourney('records-complete-journey',3395,async({base,db,fixture
     assert.equal(await db.payment.count({where:{invoiceId}}),0);assert.equal(await db.refund.count({where:{invoiceId}}),0);
     await page.reload();await invoiceRow.getByRole('link',{name:'Credit note',exact:true}).waitFor();
     assert.equal(await invoiceRow.getByRole('button',{name:'Issue credit note',exact:true}).count(),0);
-    assert.equal(await invoiceRow.getByRole('button',{name:'Collect',exact:true}).count(),0);
-    assert.equal(await invoiceRow.getByRole('link',{name:'Collect',exact:true}).count(),0);
+    assert.equal(await invoiceRow.getByRole('button',{name:'Record receipt',exact:true}).count(),0);
+    assert.equal(await invoiceRow.getByRole('link',{name:'Record receipt',exact:true}).count(),0);
     await capture(page,`invoice-credited-${width}`);
     const creditDocument=await context.newPage();
     await creditDocument.goto(base+await invoiceRow.getByRole('link',{name:'Credit note',exact:true}).getAttribute('href'));
@@ -119,7 +119,7 @@ await runSyntheticJourney('records-complete-journey',3395,async({base,db,fixture
     await dialog.getByLabel('Frequent flyer',{exact:true}).fill(`SYNTHETIC-${width}`);
     await postResult(page,`/api/travellers/${traveller.id}`,()=>dialog.getByRole('button',{name:'Save',exact:true}).click());
     await dialog.waitFor({state:'hidden'});await page.reload();
-    assert.equal((await db.traveller.findUniqueOrThrow({where:{id:traveller.id}})).frequentFlyer,`SYNTHETIC-${width}`);
+    assert.match((await db.traveller.findUniqueOrThrow({where:{id:traveller.id}})).frequentFlyer,/^enc:v1\./,"Membership stays encrypted in raw storage; the form below verifies its readable value.");
     assert.equal(await db.traveller.count({where:{fullName:travellerName}}),1);
     await travellerPanel.getByText(`SYNTHETIC-${width}`,{exact:true}).waitFor();await capture(page,`traveller-edited-${width}`);
     check(`${width}: customer edit cancel→503 retained fields→save/reload; add traveller expired-passport rejection(no partial row)→correct expiry→edit cancel→save→reload with same traveller identity`);

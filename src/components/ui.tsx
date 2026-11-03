@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import {cloneElement,isValidElement,type ReactNode} from "react";
 import Icon, { type IconName } from "./Icon";
 
 export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description: string; actions?: ReactNode }) {
@@ -21,7 +21,10 @@ export function StatCard({ label, value, note, icon = "dashboard", tone = "neutr
 }
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return <label className="field"><span className="field-label">{label}</span>{children}{hint && <span className="field-hint">{hint}</span>}</label>;
+  // A wrapping label includes a select's option text in its computed name. Explicit names
+  // keep every dropdown addressable and prevent screen readers announcing all options as its label.
+  const control=isValidElement<Record<string,unknown>>(children)&&typeof children.type==="string"&&["input","select","textarea"].includes(children.type)?cloneElement(children,{"aria-label":children.props["aria-label"]??label,...(hint?{"aria-description":children.props["aria-description"]??hint}:{})}):children;
+  return <label className="field"><span className="field-label">{label}</span>{control}{hint && <span className="field-hint">{hint}</span>}</label>;
 }
 
 export function Status({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "success" | "warning" | "danger" | "info" }) {

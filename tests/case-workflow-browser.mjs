@@ -125,7 +125,7 @@ try {
   await page.goto(base + "/cases", { waitUntil: "networkidle" });
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New case", exact: true })
+    .getByRole("button", { name: "New Max ID", exact: true })
     .click();
   let d = page.getByRole("dialog");
   await d.getByLabel("Customer *").selectOption(fixture.customerId);
@@ -133,7 +133,7 @@ try {
   await d
     .getByLabel("Request title *")
     .fill("Family visa · workflow acceptance");
-  await d.getByRole("button", { name: "Create case ID", exact: true }).click();
+  await d.getByRole("button", { name: "Create Max ID", exact: true }).click();
   await page.waitForURL(/\/cases\/[^/?]+$/);
   const caseId = new URL(page.url()).pathname.split("/")[2],
     journey = await db.serviceCase.findUniqueOrThrow({ where: { id: caseId } }),
@@ -377,7 +377,7 @@ try {
     await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
     for (const [route, title] of [
       ["/dashboard", "Agency overview"],
-      ["/cases", "Cases"],
+      ["/cases", "Max IDs"],
       ["/work", "Team work"],
       ["/reports/work", "Work & team reports"],
       ["/work/settings", "Work templates & rules"],

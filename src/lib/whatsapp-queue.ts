@@ -16,11 +16,8 @@ import { CloudError,freezeTemplate,approvedTemplate,cloudSend,cloudUploadPdf } f
 export const RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "HOTEL_CONFIRMED", "BOOKING_DOCUMENT", "PAYMENT_RECEIVED", "STATUS_UPDATE", "DOC_REQUEST", "APPOINTMENT_REMINDER", "PNR_EXPIRY", "PAYMENT_REMINDER"] as const;
 const IMMEDIATE_RULES = ["BOOKING_CREATED", "TICKET_CONFIRMED", "HOTEL_CONFIRMED", "BOOKING_DOCUMENT", "PAYMENT_RECEIVED", "DOC_REQUEST"];
 export type AutomationRule = typeof RULES[number];
-export async function automationRules(tx: Prisma.TransactionClient = prisma): Promise<AutomationRule[]> {
-  const row = await tx.settings.findUnique({ where: { key: "whatsapp.automation" } });
-  try { const value = JSON.parse(row?.value ?? "[]"); return Array.isArray(value) ? RULES.filter(r => value.includes(r)) : []; }
-  catch { return []; }
-}
+/** Agency policy: email is primary; WhatsApp sends are explicit staff actions. */
+export async function automationRules(_tx:Prisma.TransactionClient=prisma):Promise<AutomationRule[]>{void _tx;return [];}
 
 export async function queueAutomation(tx: Prisma.TransactionClient, customerId: string, rule: AutomationRule, key: string, body: string, variables:Record<string,string>={},attachmentId?:string) {
   if(rule==="BOOKING_DOCUMENT") {

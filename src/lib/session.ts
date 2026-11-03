@@ -86,7 +86,14 @@ export async function getServerSession(): Promise<SessionUser | null> {
     const delegated = ROLE_ACCESS[role]==='ASSIGNED' ? await prisma.task.findMany({where:{unassigned:false,OR:[{ownerId:user.id},{reviewerId:user.id}]},select:{bookingId:true,visaCaseId:true,serviceCaseId:true,serviceWork:{select:{service:true}}}}) : [];
     const quoteCases=delegated.filter(t=>t.serviceCaseId&&["FLIGHT","HOTEL"].includes(t.serviceWork?.service??""));
     const quotes=ROLE_ACCESS[role]==="ASSIGNED"&&ROLE_PERMISSIONS[role].includes("ticketing:view")?await prisma.salesLead.findMany({where:{OR:[{serviceCase:{ownerId:user.id}},...quoteCases.map(t=>({serviceCaseId:t.serviceCaseId,product:t.serviceWork!.service}))]},select:{id:true}}):[];
-    const workRecordIds = [...new Set([...delegated.flatMap(t=>[t.bookingId,t.visaCaseId].filter((id):id is string=>!!id)),...quotes.map(q=>q.id)])];
+    // A service assignment grants its work records, not the customer's entire master or other services.
+    const bookingAssignments=delegated.filter(t=>t.serviceCaseId&&["FLIGHT","HOTEL","STAY","BUS","TRAIN","INSURANCE"].includes(t.serviceWork?.service??""));
+    const visaAssignments=delegated.filter(t=>t.serviceCaseId&&t.serviceWork?.service==="VISA");
+    const [assignedBookings,assignedVisas]=await Promise.all([
+      ROLE_PERMISSIONS[role]?.includes("ticketing:view")&&bookingAssignments.length?prisma.booking.findMany({where:{OR:bookingAssignments.map(t=>({serviceCaseId:t.serviceCaseId,product:t.serviceWork!.service}))},select:{id:true}}):[],
+      ROLE_PERMISSIONS[role]?.includes("visa:view")&&visaAssignments.length?prisma.visaCase.findMany({where:{serviceCaseId:{in:visaAssignments.map(t=>t.serviceCaseId!)}},select:{id:true}}):[],
+    ]);
+    const workRecordIds = [...new Set([...delegated.flatMap(t=>[t.bookingId,t.visaCaseId].filter((id):id is string=>!!id)),...quotes.map(q=>q.id),...assignedBookings.map(b=>b.id),...assignedVisas.map(v=>v.id)])];
     return { workRecordIds, mfaEnabled:!!mfa?.enabled, sessionId: session.id, id: user.id, name: user.name, email: user.email, role, roleName: user.role.name,
       branchId: user.branchId, branchName: user.branch?.name ?? null, employeeCode: user.employeeCode,
       accessMode: ROLE_ACCESS[role] ?? "ASSIGNED", permissions: ROLE_PERMISSIONS[role] ?? [] };

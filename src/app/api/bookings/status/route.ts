@@ -1,3 +1,6 @@
+import {z} from "zod";
+import {boundedJson} from "@/lib/bounded-json";
+import {passportReadiness} from "@/lib/travel-readiness";
 import { MANUAL_HOTEL_STATUSES, hotelStayProblem } from "@/lib/manual-hotel";
 import { enumLabel } from "@/lib/labels";
 import { inrAmount } from "@/lib/money";
@@ -25,7 +28,8 @@ const WITHDRAWING = ["CANCELLED", "VOID"];
 export async function POST(req: Request) {
   try {
     const user = await requireSession("ticketing:edit");
-    const body = await req.json();
+    const number=z.union([z.number(),z.string()]).optional();
+    const body=z.object({bookingId:z.string().min(1).max(200),status:z.string().max(40),travelScope:z.enum(["DOMESTIC","INTERNATIONAL","UNSPECIFIED"]).optional(),confirmationRecorded:z.boolean().optional(),confirmationRevision:z.string().optional(),confirmationSnapshot:z.record(z.string(),z.unknown()).optional(),tickets:z.array(z.object({travellerId:z.string(),ticketNo:z.string(),originalFare:number})).max(100).optional(),cancellationSupplierCharge:number,cancellationAgencyFee:number,refundAmount:number,cancellationReason:z.string().max(2000).optional()}).parse(await boundedJson(req));
     const { bookingId, status } = body;
     if (!bookingId || typeof status !== "string") throw new ApiError(400, "Select a booking and valid status.");
     if (["REISSUE_REQUESTED", "REISSUED"].includes(status)) throw new ApiError(400, "Use the reissue request and completion workflow; reissue states cannot be set by hand.");
@@ -47,11 +51,28 @@ export async function POST(req: Request) {
       if (!canTouchRecord(user, b)) throw new ApiError(403, "Booking is outside your access.");
       if (isWithdrawnBooking(b.status) && status !== b.status) throw new ApiError(400, "A cancelled, void or refunded booking stays closed. Create a new booking or a reissue for further travel.");
 
+      const travelScope=body.travelScope??b.travelScope;
+      if(!["UNSPECIFIED","DOMESTIC","INTERNATIONAL"].includes(travelScope))throw new ApiError(400,"Choose domestic or international travel.");
+      if(b.status!==status&&["CONFIRMED","TICKETED"].includes(status)){
+        if(!b.travellers.length)throw new ApiError(400,"Add the booking travellers before confirmation.");
+        const issues=passportReadiness(b.travellers.map(t=>t.traveller),travelScope,b.product,b.travelEndDate??b.hotelCheckOut??b.travelDate);
+        if(issues.length)throw new ApiError(400,issues.join(" "));
+      }
+      if(!["FLIGHT","HOTEL"].includes(b.product)){
+        if(!["ENQUIRY","QUOTE_SENT","PAYMENT_AWAITED","CONFIRMED","CANCELLED","VOID"].includes(status))throw new ApiError(400,"Use service confirmation for this booking.");
+        if(!WITHDRAWING.includes(status)){
+        if(b.status===status)return {booking:{id:b.id,status},refundNo:null};
+        if(b.status==="CONFIRMED"&&status!=="CONFIRMED")throw new ApiError(409,"A confirmed service cannot return to an enquiry.");
+        if(status==="CONFIRMED"&&(!b.pnr||!b.travelDate||!b.travelEndDate||!b.travellers.length||body.confirmationRecorded!==true))throw new ApiError(400,"Enter the actual supplier reference, start/end dates and travellers, then confirm supplier verification.");
+        if(status==="CONFIRMED"&&body.confirmationRevision!==b.updatedAt.toISOString())throw new ApiError(409,"The booking changed. Reload and review the current supplier details.");
+        const record=await tx.booking.update({where:{id:b.id},data:{status,travelScope}});await transactionAudit(tx,user,"STATUS","Booking",b.id,`${b.status} → ${status}`);return {booking:{id:record.id,status:record.status},refundNo:null};
+        }
+      }
       if(b.product==="HOTEL"){
         if(!MANUAL_HOTEL_STATUSES.includes(status))throw new ApiError(400,"Use hotel stay confirmation; airline ticket states do not apply to hotel bookings.");
         if(b.status==="CONFIRMED"&&!WITHDRAWING.includes(status)&&status!=="CONFIRMED")throw new ApiError(400,"A recorded hotel confirmation cannot be moved back to an enquiry. Use cancellation terms if the stay is withdrawn.");
         if(status==="CONFIRMED"){const problem=hotelStayProblem(b,true);if(problem)throw new ApiError(400,problem);const expected={hotelName:b.hotelName,pnr:b.pnr,supplierId:b.supplierId,hotelCheckIn:b.hotelCheckIn?.toISOString()??null,hotelCheckOut:b.hotelCheckOut?.toISOString()??null};if(Object.entries(expected).some(([key,value])=>body.confirmationSnapshot?.[key]!==value))throw new ApiError(409,"Stay details changed. Refresh and review the current supplier confirmation before recording it.");if(body.confirmationRecorded!==true)throw new ApiError(400,"Confirm that the supplier has already confirmed this stay. CRM does not make a hotel reservation.");}
-      }else if(!MANUAL.includes(status))throw new ApiError(400,"Use the airline ticket workflow for flight bookings.");
+      }else if(b.product==="FLIGHT"&&!MANUAL.includes(status))throw new ApiError(400,"Use the airline ticket workflow for flight bookings.");
 
       if (b.status === status) return { booking: { id: b.id, status: b.status }, refundNo: null };
       if (b.status === "REISSUED" && !WITHDRAWING.includes(status)) throw new ApiError(400, "A completed reissue cannot be moved back through booking statuses. Use the replacement booking.");
@@ -63,8 +84,9 @@ export async function POST(req: Request) {
       let refundNo: string | null = null;
       let cancellation: { cancellationSupplierCharge: number; cancellationAgencyFee: number; cancellationReason: string; cancelledAt: Date } | undefined;
       if (WITHDRAWING.includes(status)) {
+        if(!b.reissueOfId&&await tx.reissue.count({where:{originalBookingId:b.id,status:{in:["REQUESTED","IN_PROGRESS"]}}}))throw new ApiError(409,"Resolve the open reschedule request before cancelling its original booking.");
         if (!user.permissions.includes("refund:manage")) throw new ApiError(403, "Cancellation financial allocation requires refund permission. Ask finance to record the agreed terms.");
-        for (const key of ["cancellationSupplierCharge", "cancellationAgencyFee", "refundAmount"]) {
+        for (const key of ["cancellationSupplierCharge", "cancellationAgencyFee", "refundAmount"] as const) {
           if (body[key] === undefined || body[key] === null || body[key] === "") throw new ApiError(400, "Explicitly enter supplier charge, agency fee and refund amount (zero is allowed).");
         }
         const supplier = money(body.cancellationSupplierCharge, "Supplier cancellation charge");
@@ -112,12 +134,12 @@ export async function POST(req: Request) {
         if (!b.travellers.length || b.travellers.some(t => !tickets.some(ticket => ticket.travellerId === t.travellerId))) throw new ApiError(400, "Record real ticket numbers for every passenger before marking ticketed. No tickets are issued by this app.");
       }
 
-      const booking = await tx.booking.update({ where: { id: bookingId }, data: { status, ...cancellation } });
+      const booking = await tx.booking.update({ where: { id: bookingId }, data: { status, travelScope, ...cancellation } });
       if (status === "TICKETED" && b.status !== status) await queueBookingConfirmation(tx, bookingId, true);
       await tx.activity.create({ data: { customerId: b.customerId, actorId: user.id, type: "BOOKING", summary: `${b.bookingNo} → ${enumLabel(status)}`, link: `/ticketing/${bookingId}` } });
       await transactionAudit(tx, user, "STATUS", "Booking", bookingId, `${b.status} → ${status}${cancellation ? ` · supplier cancellation charge ${cancellation.cancellationSupplierCharge} · agency fee ${cancellation.cancellationAgencyFee} · ${cancellation.cancellationReason}` : ""}${refundNo ? ` · refund ${refundNo} requested` : ""}`);
       return { booking, refundNo };
     });
     return Response.json({ ok: true, ...result });
-  } catch (e) { return jsonError(e); }
+  } catch (e) { if(e instanceof z.ZodError)return Response.json({error:e.issues.map(i=>i.message).join(" ")},{status:400});return jsonError(e); }
 }

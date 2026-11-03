@@ -55,7 +55,7 @@ try {
  await db.user.create({data:{name:"Restricted staff",email:"staff@evolution.test",employeeCode:"TEST-STAFF",phone:"",passwordHash:ownerRow.passwordHash,roleId:staffRole.id,branchId:ownerRow.branchId}});
  const staffLogin=await post("/api/auth/login",{email:"staff@evolution.test",password});assert.equal(staffLogin.status,200);const staffCookie=staffLogin.headers.getSetCookie().map(c=>c.split(";")[0]).join("; ");
  await check("Restricted staff cannot message or change consent for another staff member's customer",async()=>{assert.equal((await post("/api/whatsapp/send",{customerId:alice.id,text:"Forbidden",requestId:randomBytes(16).toString("hex")},staffCookie)).status,403);assert.equal((await post("/api/whatsapp/settings",{customerId:alice.id,optIn:true},staffCookie)).status,403);});
- await check("Only administrators can enable automatic messaging rules",async()=>assert.equal((await post("/api/whatsapp/settings",{rules:["STATUS_UPDATE"]},staffCookie)).status,403));
+ await check("Non-admin staff cannot change messaging policy",async()=>assert.equal((await post("/api/whatsapp/settings",{rules:["STATUS_UPDATE"]},staffCookie)).status,403));
  const requestId=randomBytes(16).toString("hex");let message;
  await check("Provider status is authenticated and never exposes its key",async()=>{assert.equal((await fetch(base+"/api/whatsapp/connection")).status,401);const r=await fetch(base+"/api/whatsapp/connection",{headers:{cookie}});const text=await r.text();assert(!text.includes(key));assert.equal(JSON.parse(text).state,"open");});
  await check("Worker endpoint rejects unauthenticated calls",async()=>assert.equal((await post("/api/whatsapp/process")).status,403));
@@ -76,44 +76,14 @@ try {
  const traveller=await db.traveller.findFirstOrThrow({where:{customerId:alice.id}});
  const vc=await ok("/api/visa/cases",{customerId:alice.id,travellerIds:[traveller.id],destination:"France",visaType:"Visitor"},cookie);
  const next=await db.visaStage.findFirstOrThrow({where:{key:"ASSESSMENT"}}).catch(()=>db.visaStage.findFirstOrThrow({where:{key:{not:"ENQUIRY"}},orderBy:{seq:"asc"}}));
- await check("Automation stays off until enabled, even for opted-in customers",async()=>{await ok("/api/whatsapp/settings",{customerId:alice.id,optIn:true},cookie);await ok(`/api/visa/cases/${vc.caseId}/stage`,{stageId:next.id},cookie);assert.equal(await db.whatsAppMessage.count({where:{automation:{not:null}}}),0);});
- await check("Enabled stage automation queues once and repeated same-stage saves do not spam",async()=>{await ok("/api/whatsapp/settings",{rules:["STATUS_UPDATE","APPOINTMENT_REMINDER","PNR_EXPIRY","PAYMENT_REMINDER"]},cookie);const enquiry=await db.visaStage.findUniqueOrThrow({where:{key:"ENQUIRY"}});await ok(`/api/visa/cases/${vc.caseId}/stage`,{stageId:enquiry.id},cookie);await ok(`/api/visa/cases/${vc.caseId}/stage`,{stageId:enquiry.id},cookie);assert.equal(await db.whatsAppMessage.count({where:{automation:"STATUS_UPDATE"}}),1);});
- await check("Scheduled appointment and PNR reminders are deduplicated",async()=>{await db.visaCase.update({where:{id:vc.caseId},data:{appointmentDate:new Date(Date.now()+3600000)}});await ok("/api/bookings",{customerId:alice.id,travellerIds:[traveller.id],pnr:"TEST01",deadlineHours:2},cookie);await ok("/api/whatsapp/process",{},"",auth);await ok("/api/whatsapp/process",{},"",auth);assert.equal(await db.whatsAppMessage.count({where:{automation:"APPOINTMENT_REMINDER"}}),1);assert.equal(await db.whatsAppMessage.count({where:{automation:"PNR_EXPIRY"}}),1);});
- await check("Worker lease prevents concurrent drains",async()=>{await db.settings.upsert({where:{key:"whatsapp.worker.lease"},create:{key:"whatsapp.worker.lease",value:`${Date.now()}:test`},update:{value:`${Date.now()}:test`}});const r=await ok("/api/whatsapp/process",{},"",auth);assert.equal(r.busy,true);await db.settings.delete({where:{key:"whatsapp.worker.lease"}});});
-
- let confirmedBooking;
- await check("Booking and payment acknowledgements remain off unless explicitly enabled",async()=>{
-  const before=await db.whatsAppMessage.count({where:{automation:{in:["BOOKING_CREATED","PAYMENT_RECEIVED"]}}});
-  const booking=await ok("/api/bookings",{customerId:alice.id,travellerIds:[traveller.id],fare:100,pnr:"OFF001"},cookie);
-  await ok("/api/payments",{customerId:alice.id,bookingId:booking.bookingId,amount:10,mode:"UPI"},cookie);
-  assert.equal(await db.whatsAppMessage.count({where:{automation:{in:["BOOKING_CREATED","PAYMENT_RECEIVED"]}}}),before);
- });
- await check("Enabled booking creation queues an acknowledgement without claiming ticket issuance",async()=>{
-  await ok("/api/whatsapp/settings",{rules:["BOOKING_CREATED","TICKET_CONFIRMED","PAYMENT_RECEIVED"]},cookie);
-  confirmedBooking=await ok("/api/bookings",{customerId:alice.id,travellerIds:[traveller.id],fare:100,pnr:"CONF01",sector:"BOM-DXB"},cookie);
-  const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:BOOKING_CREATED:${confirmedBooking.bookingId}`}});
-  assert.equal(row.status,"QUEUED");assert(row.body.includes("Ticket issuance is not yet confirmed"));assert(row.body.includes("CONF01"));
- });
- await check("A committed payment queues the correct receipt; rejected payments queue nothing",async()=>{
-  const payment=await ok("/api/payments",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:25,mode:"UPI"},cookie);
-  const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:PAYMENT_RECEIVED:${payment.payment.id}`}});
-  assert(row.body.includes(payment.receiptNo));assert(row.body.includes("25"));assert(row.body.includes("after this payment: ₹75"));assert.equal(row.status,"QUEUED");
-  const n=await db.whatsAppMessage.count({where:{automation:"PAYMENT_RECEIVED"}});
-  assert.equal((await post("/api/payments",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:1000,mode:"UPI"},cookie)).status,400);
-  assert.equal(await db.whatsAppMessage.count({where:{automation:"PAYMENT_RECEIVED"}}),n);
- });
- await check("Ticket confirmations require actual ticket numbers and repeated saves do not duplicate",async()=>{
-  assert.equal((await post("/api/bookings/status",{bookingId:confirmedBooking.bookingId,status:"TICKETED",tickets:[]},cookie)).status,400);
-  const input={bookingId:confirmedBooking.bookingId,status:"TICKETED",tickets:[{travellerId:traveller.id,ticketNo:"123-1234567890"}]};
-  await ok("/api/bookings/status",input,cookie);await ok("/api/bookings/status",input,cookie);
-  const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:TICKET_CONFIRMED:${confirmedBooking.bookingId}`}});assert(row.body.includes("123-1234567890"));
-  assert.equal(await db.whatsAppMessage.count({where:{automation:"TICKET_CONFIRMED"}}),1);
- });
- await check("Transactional confirmations send outside reminder hours and obsolete booking notices are cancelled",async()=>{
-  const n=sends;await ok("/api/whatsapp/process",{},"",auth);assert.equal(sends,n+2);
-  assert.equal((await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:BOOKING_CREATED:${confirmedBooking.bookingId}`}})).status,"CANCELLED");
-  assert.equal((await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:TICKET_CONFIRMED:${confirmedBooking.bookingId}`}})).status,"READ");
- });
+ await check("Customer opt-in does not enable automatic WhatsApp notices",async()=>{await ok("/api/whatsapp/settings",{customerId:alice.id,optIn:true},cookie);await ok(`/api/visa/cases/${vc.caseId}/stage`,{stageId:next.id},cookie);assert.equal(await db.whatsAppMessage.count({where:{automation:{not:null}}}),0);});
+ await check("Even an administrator cannot turn on automatic WhatsApp rules",async()=>{assert.equal((await post("/api/whatsapp/settings",{rules:["STATUS_UPDATE","APPOINTMENT_REMINDER","PNR_EXPIRY","PAYMENT_REMINDER"]},cookie)).status,409);});
+ await check("Historical settings and due reminders do not bypass the manual-only policy",async()=>{await db.settings.upsert({where:{key:"whatsapp.automation"},create:{key:"whatsapp.automation",value:'["BOOKING_CREATED","STATUS_UPDATE","APPOINTMENT_REMINDER","PNR_EXPIRY","PAYMENT_REMINDER","PAYMENT_RECEIVED","DOC_REQUEST"]'},update:{value:'["BOOKING_CREATED","STATUS_UPDATE","APPOINTMENT_REMINDER","PNR_EXPIRY","PAYMENT_REMINDER","PAYMENT_RECEIVED","DOC_REQUEST"]'}});await db.visaCase.update({where:{id:vc.caseId},data:{appointmentDate:new Date(Date.now()+3600000)}});await ok("/api/bookings",{customerId:alice.id,travellerIds:[traveller.id],pnr:"TEST01",sector:"BOM-DEL",deadlineHours:2},cookie);const n=sends;await ok("/api/whatsapp/process",{},"",auth);await ok("/api/whatsapp/process",{},"",auth);assert.equal(sends,n);assert.equal(await db.whatsAppMessage.count({where:{automation:{not:null}}}),0);});
+ await check("Worker lease prevents concurrent drains",async()=>{await db.settings.upsert({where:{key:"whatsapp.worker.lease"},create:{key:"whatsapp.worker.lease",value:`${Date.now()}:test`},update:{value:`${Date.now()}:test`}});assert.equal((await ok("/api/whatsapp/process",{},"",auth)).busy,true);await db.settings.delete({where:{key:"whatsapp.worker.lease"}});});
+ const confirmedBooking=await ok("/api/bookings",{customerId:alice.id,travellerIds:[traveller.id],fare:100,pnr:"CONF01",sector:"BOM-DXB",travelScope:"INTERNATIONAL"},cookie);
+ await check("Receipts post money once and reject overpayment without an automatic WhatsApp",async()=>{const payment=await ok("/api/payments",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:25,mode:"UPI"},cookie);assert.equal((await db.payment.findUniqueOrThrow({where:{id:payment.payment.id}})).amount,25);const before=await db.payment.count();assert.equal((await post("/api/payments",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:1000,mode:"UPI"},cookie)).status,400);assert.equal(await db.payment.count(),before);assert.equal(await db.whatsAppMessage.count({where:{automation:{not:null}}}),0);});
+ await check("International ticket proof requires a passport; repeated confirmation does not duplicate a ticket or message",async()=>{const input={bookingId:confirmedBooking.bookingId,status:"TICKETED",tickets:[{travellerId:traveller.id,ticketNo:"123-1234567890"}]};assert.equal((await post("/api/bookings/status",input,cookie)).status,400);await db.traveller.update({where:{id:traveller.id},data:{passportNumber:"SYNTHETIC-EVOLUTION-PASSPORT",passportExpiry:new Date("2032-01-01")}});await ok("/api/bookings/status",input,cookie);await ok("/api/bookings/status",input,cookie);assert.equal(await db.ticket.count({where:{bookingId:confirmedBooking.bookingId}}),1);assert.equal(await db.whatsAppMessage.count({where:{automation:{not:null}}}),0);});
+ await check("A historical automated job is cancelled before provider delivery",async()=>{const row=await db.whatsAppMessage.create({data:{threadId:message.threadId,direction:"OUT",body:"Obsolete automatic notice",template:"TICKET_CONFIRMED",automation:"TICKET_CONFIRMED",instance:"max travel",recipient:"919000000002",status:"QUEUED",requestKey:`auto:TICKET_CONFIRMED:${confirmedBooking.bookingId}`}});const n=sends;await ok("/api/whatsapp/process",{},"",auth);assert.equal(sends,n);assert.equal((await db.whatsAppMessage.findUniqueOrThrow({where:{id:row.id}})).status,"CANCELLED");});
  await check("Payment template changes require administrator access and valid placeholders",async()=>{
   const valid="Thanks {customer}. Payment {amount}, receipt {receipt}. Balance for {balanceReference}: {balance}.";
   assert.equal((await post("/api/whatsapp/settings",{paymentTemplate:valid},staffCookie)).status,403);
@@ -123,90 +93,20 @@ try {
   await ok("/api/whatsapp/settings",{paymentTemplate:valid},cookie);
   assert.equal((await db.settings.findUniqueOrThrow({where:{key:"whatsapp.template.PAYMENT_RECEIVED"}})).value,valid);
  });
- await check("Custom receipts calculate linked-work balance across direct and invoiced payments",async()=>{
-  const inv=await ok("/api/invoices",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:100},cookie);
-  const payment=await ok("/api/payments",{customerId:alice.id,invoiceId:inv.invoiceId,amount:15,mode:"UPI"},cookie);
-  const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:PAYMENT_RECEIVED:${payment.payment.id}`}});
-  assert(row.body.startsWith("Thanks Alice."));assert(row.body.includes(payment.receiptNo));assert(row.body.includes(`Balance for ${confirmedBooking.bookingNo}: ₹60.`));assert(!row.body.includes("{"));
-  // An existing receipt retains its historical balance and template.
-  const old=await db.whatsAppMessage.findFirstOrThrow({where:{automation:"PAYMENT_RECEIVED",body:{contains:"after this payment"}}});assert(old.body.includes("₹75"));
- });
- await check("Standalone invoices and visa payments have their own balances; advances have none",async()=>{
-  const inv=await ok("/api/invoices",{customerId:alice.id,amount:80},cookie);
-  const visa=await ok("/api/visa/cases",{customerId:alice.id,travellerIds:[traveller.id],destination:"France",visaType:"Visitor",sellingPrice:120},cookie);
-  for(const [allocation,amount,expected] of [
-    [{invoiceId:inv.invoiceId},30,`Balance for ${inv.invoiceNo}: ₹50.`],
-    [{visaCaseId:visa.caseId},20,`Balance for ${visa.caseNo}: ₹100.`],
-    [{},10,"Not applicable (unallocated customer advance)"],
-  ]) {
-    const payment=await ok("/api/payments",{customerId:alice.id,...allocation,amount,mode:"CASH"},cookie);
-    const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:PAYMENT_RECEIVED:${payment.payment.id}`}});assert(row.body.includes(expected),row.body);
-  }
- });
- await check("A fully settled invoice reports a zero balance",async()=>{
-  const inv=await ok("/api/invoices",{customerId:alice.id,amount:10.50},cookie);
-  const payment=await ok("/api/payments",{customerId:alice.id,invoiceId:inv.invoiceId,amount:10.50,mode:"UPI"},cookie);
-  const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:PAYMENT_RECEIVED:${payment.payment.id}`}});assert(row.body.includes(`Balance for ${inv.invoiceNo}: \u20b90.`),row.body);
- });
- await check("A completed partial refund is reflected in the next booking balance",async()=>{
-  // Provider integration fixture: only a paid refund changes the receivable.
-  await db.refund.create({data:{refundNo:"TEST-REFUND",customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:10,status:"PAID"}});
-  const payment=await ok("/api/payments",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:5,mode:"UPI"},cookie);
-  const row=await db.whatsAppMessage.findUniqueOrThrow({where:{requestKey:`auto:PAYMENT_RECEIVED:${payment.payment.id}`}});assert(row.body.includes(`Balance for ${confirmedBooking.bookingNo}: ₹65.`),row.body);
-  await ok("/api/whatsapp/settings",{paymentTemplate:null},cookie);assert.equal(await db.settings.findUnique({where:{key:"whatsapp.template.PAYMENT_RECEIVED"}}),null);
- });
- let collectionCase, collectionLink;
+
+ await check("Linked invoices, direct receipts and paid refunds retain their actual balances without automated messages",async()=>{const inv=await ok("/api/invoices",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:100},cookie);await ok("/api/payments",{customerId:alice.id,invoiceId:inv.invoiceId,amount:15,mode:"UPI"},cookie);assert.equal((await db.invoice.findUniqueOrThrow({where:{id:inv.invoiceId}})).amountPaid,15);await db.refund.create({data:{refundNo:"TEST-REFUND",customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:10,status:"PAID"}});await ok("/api/payments",{customerId:alice.id,bookingId:confirmedBooking.bookingId,amount:5,mode:"UPI"},cookie);const paid=await db.payment.aggregate({where:{bookingId:confirmedBooking.bookingId},_sum:{amount:true}});assert.equal(100-(paid._sum.amount-10),65);assert.equal(await db.whatsAppMessage.count({where:{automation:{not:null},status:{not:"CANCELLED"}}}),0);});
+ await check("Standalone invoice, visa and unallocated receipts remain separate; full settlement reaches zero",async()=>{const inv=await ok("/api/invoices",{customerId:alice.id,amount:80},cookie),visa=await ok("/api/visa/cases",{customerId:alice.id,travellerIds:[traveller.id],destination:"France",visaType:"Visitor",sellingPrice:120},cookie);for(const [allocation,amount] of [[{invoiceId:inv.invoiceId},30],[{visaCaseId:visa.caseId},20],[{},10]]){const payment=await ok("/api/payments",{customerId:alice.id,...allocation,amount,mode:"CASH"},cookie);const row=await db.payment.findUniqueOrThrow({where:{id:payment.payment.id}});assert.equal(row.amount,amount);for(const key of ["invoiceId","visaCaseId"])assert.equal(row[key],allocation[key]??null);}assert.equal((await db.invoice.findUniqueOrThrow({where:{id:inv.invoiceId}})).amountPaid,30);assert.equal((await db.visaCase.findUniqueOrThrow({where:{id:visa.caseId}})).amountReceived,20);const full=await ok("/api/invoices",{customerId:alice.id,amount:10.5},cookie);await ok("/api/payments",{customerId:alice.id,invoiceId:full.invoiceId,amount:10.5,mode:"UPI"},cookie);const saved=await db.invoice.findUniqueOrThrow({where:{id:full.invoiceId}});assert.equal(saved.amount-saved.amountPaid,0);assert.equal(await db.whatsAppMessage.count({where:{automation:"PAYMENT_RECEIVED"}}),0);await ok("/api/whatsapp/settings",{paymentTemplate:null},cookie);});
  const checklist=await ok("/api/checklists",{country:"Collection test",visaType:"Visitor",applicantType:"STANDARD",items:[{name:"Passport copy",required:true,fileTypes:"pdf,jpg,png",maxSizeMb:1}]},cookie);
  const createCollection=()=>ok("/api/visa/cases",{customerId:alice.id,travellerIds:[traveller.id],destination:"Collection test",visaType:"Visitor",checklistId:checklist.checklist.id},cookie);
- await check("Document collection requires its rule, customer consent and pending checklist documents",async()=>{
-  const before=await db.uploadLink.count();await createCollection();assert.equal(await db.uploadLink.count(),before);
-  await ok("/api/whatsapp/settings",{rules:["BOOKING_CREATED","TICKET_CONFIRMED","PAYMENT_RECEIVED","DOC_REQUEST"]},cookie);
-  await ok("/api/whatsapp/settings",{customerId:alice.id,optIn:false},cookie);await createCollection();assert.equal(await db.uploadLink.count(),before);
-  await ok("/api/whatsapp/settings",{customerId:alice.id,optIn:true},cookie);
-  await ok("/api/visa/cases",{customerId:alice.id,travellerIds:[traveller.id],destination:"No checklist",visaType:"Visitor"},cookie);assert.equal(await db.uploadLink.count(),before);
- });
- await check("Creating a visa case queues a private seven-day case-specific document link",async()=>{
-  collectionCase=await createCollection();collectionLink=await db.uploadLink.findFirstOrThrow({where:{visaCaseId:collectionCase.caseId}});
-  assert.equal(collectionLink.customerId,alice.id);assert.equal(collectionLink.travellerId,null);assert(collectionLink.token.length>=32);assert(collectionLink.expiresAt>new Date(Date.now()+6*86400000));
-  const row=await db.whatsAppMessage.findFirstOrThrow({where:{automation:"DOC_REQUEST",requestKey:{endsWith:`:${collectionCase.caseId}`}}});
-  assert.equal(row.status,"QUEUED");assert(row.body.includes(collectionCase.caseNo));assert(row.body.includes("Passport copy"));assert(row.body.includes(`${base}/upload/${collectionLink.token}`));
-  assert(row.body.includes("\n\n1. Passport copy\n\n"));assert(row.body.includes(`*Private upload link*\n${base}/upload/${collectionLink.token}\n\n`));assert(row.body.includes("*Link expires:*"));
-  // A different case must never leak into this case's portal.
-  const other=await createCollection();await db.document.updateMany({where:{visaCaseId:other.caseId},data:{docType:"Private-other-case-document"}});
-  const page=await (await fetch(base+`/upload/${collectionLink.token}`)).text();assert(page.includes("Passport copy"));assert(!page.includes("Private-other-case-document"));
- });
- await check("Document requests send immediately and repeated worker polls do not duplicate",async()=>{
-  const queued=await db.whatsAppMessage.findFirstOrThrow({where:{automation:"DOC_REQUEST",requestKey:{endsWith:`:${collectionCase.caseId}`}}});
-  await db.whatsAppMessage.update({where:{id:queued.id},data:{body:`Hello customer, please provide documents for ${collectionCase.caseNo}: Passport copy. Upload privately: ${base}/upload/${collectionLink.token} . Keep this link private.`}});
-  await ok("/api/whatsapp/process",{},"",auth);const row=await db.whatsAppMessage.findFirstOrThrow({where:{automation:"DOC_REQUEST",requestKey:{endsWith:`:${collectionCase.caseId}`}}});assert.equal(row.status,"READ");
-  assert(row.body.includes("\n\n1. Passport copy\n\n"));assert(sent.some(message=>message.text===row.body));
-  const n=sends;await ok("/api/whatsapp/process",{},"",auth);assert.equal(sends,n);
- });
- await check("Entering a document stage includes the existing private link without duplicate same-stage saves",async()=>{
-  const stage=await db.visaStage.findFirstOrThrow({where:{name:{contains:"Document"}}});
-  await ok(`/api/visa/cases/${collectionCase.caseId}/stage`,{stageId:stage.id},cookie);await ok(`/api/visa/cases/${collectionCase.caseId}/stage`,{stageId:stage.id},cookie);
-  assert.equal(await db.uploadLink.count({where:{visaCaseId:collectionCase.caseId}}),1);
-  const rows=await db.whatsAppMessage.findMany({where:{automation:"DOC_REQUEST",thread:{customerId:alice.id},body:{contains:collectionCase.caseNo}}});assert.equal(rows.length,2);assert(rows.every(row=>row.body.includes(collectionLink.token)));
-  await db.uploadLink.update({where:{id:collectionLink.id},data:{revoked:true}});await ok("/api/whatsapp/process",{},"",auth);
-  assert.equal((await db.whatsAppMessage.findFirstOrThrow({where:{automation:"DOC_REQUEST",body:{contains:collectionCase.caseNo},status:"CANCELLED"}})).status,"CANCELLED");
- });
- await check("Expired, completed and closed-case document requests are cancelled before sending",async()=>{
-  for(const reason of ["expired","complete","closed"]) {
-    const vc=await createCollection();const link=await db.uploadLink.findFirstOrThrow({where:{visaCaseId:vc.caseId}});
-    if(reason==="expired")await db.uploadLink.update({where:{id:link.id},data:{expiresAt:new Date(Date.now()-1000)}});
-    if(reason==="complete")await db.document.updateMany({where:{visaCaseId:vc.caseId},data:{status:"RECEIVED"}});
-    if(reason==="closed")await db.visaCase.update({where:{id:vc.caseId},data:{closedAt:new Date()}});
-    const n=sends;await ok("/api/whatsapp/process",{},"",auth);assert.equal(sends,n);
-    assert.equal((await db.whatsAppMessage.findFirstOrThrow({where:{automation:"DOC_REQUEST",requestKey:{endsWith:`:${vc.caseId}`}}})).status,"CANCELLED");
-  }
- });
+ await check("Case creation never issues an upload link or WhatsApp request without a staff action",async()=>{const before=await db.uploadLink.count();await createCollection();assert.equal(await db.uploadLink.count(),before);assert.equal(await db.whatsAppMessage.count({where:{automation:"DOC_REQUEST"}}),0);});
+ await check("Staff can create a private case-specific upload link; another case stays isolated and revocation is enforced",async()=>{const target=await createCollection(),link=await ok("/api/upload-links",{customerId:alice.id,visaCaseId:target.caseId},cookie);const stored=await db.uploadLink.findUniqueOrThrow({where:{id:link.linkId}});assert.equal(stored.customerId,alice.id);assert.equal(stored.visaCaseId,target.caseId);assert(stored.token.length>=32);assert(stored.expiresAt>new Date(Date.now()+6*86400000));const other=await createCollection();await db.document.updateMany({where:{visaCaseId:other.caseId},data:{docType:"Private-other-case-document"}});const portal=await (await fetch(base+link.url)).text();assert(portal.includes("Passport copy"));assert(!portal.includes("Private-other-case-document"));await db.uploadLink.update({where:{id:link.linkId},data:{revoked:true}});const form=new FormData();form.append("file",new Blob(["%PDF-1.4 synthetic"],{type:"application/pdf"}),"test.pdf");assert.equal((await fetch(base+"/api/upload/"+link.token,{method:"POST",body:form})).status,410);});
  await check("Configured inbox renders staff attribution, consent and connection controls",async()=>{
-   browser=await chromium.launch({headless:true});const context=await browser.newContext();await context.addCookies([{name:"tos_session",value:cookie.split("=")[1],url:base}]);const page=await context.newPage();await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});assert(await page.getByRole("button",{name:"Send WhatsApp message",exact:true}).isVisible());assert(await page.getByText("Customer agreed to receive WhatsApp messages").isVisible());await page.getByText("Automatic messages and unmatched replies",{exact:true}).click();assert(await page.getByLabel("Payment received acknowledgement").isChecked());
+   browser=await chromium.launch({headless:true});const context=await browser.newContext();await context.addCookies([{name:"tos_session",value:cookie.split("=")[1],url:base}]);const page=await context.newPage();await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});assert(await page.getByRole("button",{name:"Send WhatsApp message",exact:true}).isVisible());assert(await page.getByText("Customer agreed to receive WhatsApp messages").isVisible());await page.getByText("Manual messaging settings and unmatched replies",{exact:true}).click();assert.equal(await page.getByLabel("Payment received acknowledgement").count(),0);assert(await page.getByText("Customer email is the primary channel.",{exact:false}).isVisible());
   const editor=page.getByLabel("Payment acknowledgement template",{exact:true});assert(await editor.isVisible());
   await editor.fill("Paid {amount}; receipt {receipt}; balance for {balanceReference}: {balance}. Thank you!");
   await page.getByRole("button",{name:"Save payment template",exact:true}).click();await page.getByRole("status").filter({hasText:"Payment template saved"}).waitFor();
   assert.equal((await db.settings.findUniqueOrThrow({where:{key:"whatsapp.template.PAYMENT_RECEIVED"}})).value,await editor.inputValue());
-  await page.getByRole("button",{name:"Restore default",exact:true}).click();await page.getByRole("status").filter({hasText:"Default payment template restored"}).waitFor();await page.screenshot({path:path.join(runtime,"desktop.png"),fullPage:true});await page.setViewportSize({width:390,height:844});await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});await page.getByText("Automatic messages and unmatched replies",{exact:true}).click();assert(await page.getByLabel("Payment acknowledgement template",{exact:true}).isVisible());assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(runtime,"phone.png"),fullPage:false});await browser.close();browser=null;
+  await page.getByRole("button",{name:"Restore default",exact:true}).click();await page.getByRole("status").filter({hasText:"Default payment template restored"}).waitFor();await page.screenshot({path:path.join(runtime,"desktop.png"),fullPage:true});await page.setViewportSize({width:390,height:844});await page.goto(base+`/whatsapp?customer=${alice.id}`,{waitUntil:"networkidle"});await page.getByText("Manual messaging settings and unmatched replies",{exact:true}).click();assert(await page.getByLabel("Payment acknowledgement template",{exact:true}).isVisible());assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(runtime,"phone.png"),fullPage:false});await browser.close();browser=null;
  });
  console.log(`${count} Evolution integration checks passed. Evidence: ${runtime}`);
 }finally{

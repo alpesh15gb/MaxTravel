@@ -1,7 +1,10 @@
 // Sequential isolated fixtures: never uses a deployed database or provider.
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { appendFileSync } from "node:fs";
 const root = process.cwd();
+// Explicitly create only the three named disposable fixtures before Prisma opens SQLite on Windows.
+for (const file of ["ticketing-journey-verification.db", "cancellation-verification.db", "financial-idempotency-verification.db"]) appendFileSync(path.join(root,"prisma",file), "");
 function run(args, extra = {}) {
   const result = spawnSync(process.execPath, args, {
     cwd: root, env: { ...process.env, ...extra }, stdio: "inherit",

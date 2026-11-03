@@ -43,6 +43,11 @@ export async function GET() {
       prisma.$queryRawUnsafe("SELECT COUNT(*) FROM \"_prisma_migrations\""),
       prisma.$queryRawUnsafe("SELECT t.\"workState\",t.\"version\",t.\"resultType\",w.\"templateVersion\",e.\"taskTitle\",e.\"caseNo\",m.\"bodyHash\",c.\"messageId\" FROM \"Task\" t,\"ServiceWork\" w,\"WorkEvent\" e,\"WorkMutation\" m,\"CaseMessage\" c LIMIT 0"),
       prisma.$queryRawUnsafe("SELECT s.\"id\", m.\"lastStep\", r.\"tokenHash\", l.\"title\", q.\"items\", i.\"documentId\", t.\"passportLookup\", d.\"sensitive\", a.\"keyHash\" FROM \"StaffSession\" s, \"StaffMfa\" m, \"StaffRecovery\" r, \"SalesLead\" l, \"SalesQuote\" q, \"IncomingMedia\" i, \"Traveller\" t, \"Document\" d, \"StaffAuthFailure\" a LIMIT 0"),
+      prisma.$queryRawUnsafe("SELECT v.\"visaCaseId\" FROM \"SupplierDue\" v LIMIT 0"),
+      prisma.$queryRawUnsafe("SELECT c.\"profileData\",t.\"profileData\",l.\"memberNumber\",i.\"documentNumber\",m.\"bodyHash\" FROM \"Customer\" c,\"Traveller\" t,\"TravellerLoyaltyMembership\" l,\"TravellerIdentityDocument\" i,\"MasterMutation\" m LIMIT 0"),
+      prisma.$queryRawUnsafe("SELECT t.\"nextSequence\",m.\"lastReadSequence\",s.\"sequence\",s.\"body\" FROM \"StaffChatThread\" t,\"StaffChatMember\" m,\"StaffChatMessage\" s LIMIT 0"),
+      prisma.$queryRawUnsafe("SELECT a.\"fileHash\",d.\"tokenCipher\",e.\"body\",e.\"visaCaseId\",p.\"amountMinor\",c.\"bodyHash\",s.\"paymentId\",m.\"bodyHash\" FROM \"BookingArtifact\" a,\"ClientDelivery\" d,\"ClientEmail\" e,\"PaymentCollection\" p,\"CollectionEvent\" c,\"CollectionSettlement\" s,\"AgencyMutation\" m LIMIT 0"),
+      prisma.$queryRawUnsafe("SELECT b.\"supplierCostConfirmed\",b.\"travelScope\",b.\"travelEndDate\",b.\"airlineChangeFee\",b.\"noShowFee\",v.\"supplierCost\",v.\"travelEndDate\",r.\"taxDifference\",r.\"quoteReference\" FROM \"Booking\" b,\"VisaCase\" v,\"Reissue\" r LIMIT 0"),
     ]))
     : false;
 

@@ -1,3 +1,4 @@
+import {salesRecoveryContext} from "@/lib/sales-recovery-context";
 import {isClosedCase} from "@/lib/case-constants";
 import {redirect} from "next/navigation";
 import {caseEntryContext} from "@/lib/service-cases";
@@ -30,7 +31,7 @@ export default async function NewVisaCasePage({ searchParams }: { searchParams: 
   ]);
 
   return (
-    <NewVisaCase serviceCase={journey?{id:journey.id,caseNo:journey.caseNo}:null}
+    <NewVisaCase recoveryContext={salesRecoveryContext(user)} serviceCase={journey?{id:journey.id,caseNo:journey.caseNo}:null}
       customers={customers}
       checklists={checklists}
       defaultCustomerId={customer ?? null}

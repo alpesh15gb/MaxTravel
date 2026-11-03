@@ -37,7 +37,7 @@ export function resultsForService(service?: string) {
             : ["QUOTE", "BOOKING", "BOOKING_RESOLUTION"].includes(r)))),
   );
 }
-export const serviceSchema = z.enum(["VISA", "FLIGHT", "HOTEL"]);
+export const serviceSchema = z.enum(["VISA", "FLIGHT", "HOTEL", "STAY", "BUS", "TRAIN", "INSURANCE"]);
 export const templateStepSchema = z.object({
   key: z.string().regex(/^[a-z][a-z0-9-]{0,39}$/),
   title: z.string().trim().min(3).max(160),

@@ -22,6 +22,10 @@ export const reportProductLabel = (product: string | null | undefined) => {
   switch (product?.trim().toUpperCase()) {
     case "FLIGHT": return "Flight";
     case "HOTEL": return "Hotel";
+    case "STAY":return "Stay";
+    case "BUS":return "Bus";
+    case "TRAIN":return "Train";
+    case "INSURANCE":return "Insurance";
     default: return "Booking (product not recorded)";
   }
 };

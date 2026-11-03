@@ -14,7 +14,7 @@ export async function GET(req: Request) {
         q.get("dataset") === "backlog"
           ? [
               [
-                "Case ID",
+                "Max ID",
                 "Task",
                 "Assignee",
                 "State",
@@ -35,7 +35,7 @@ export async function GET(req: Request) {
           : [
               [
                 "At UTC",
-                "Case ID",
+                "Max ID",
                 "Task",
                 "Event",
                 "Assignee at event",

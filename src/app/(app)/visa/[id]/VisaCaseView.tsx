@@ -40,7 +40,7 @@ type VC = {
   customer: { id: string; name: string; code: string; phone: string };
   stage: { id: string; key: string; name: string };
   destination: string; visaType: string; visaCategory: string | null;
-  travelDate: string | null; intendedStay: string | null;
+  supplierCost:number|null;travelEndDate:string|null;travelDate: string | null; intendedStay: string | null;
   applicationDate: string | null; submissionDate: string | null; appointmentDate: string | null;
   biometricsDate: string | null; expectedDecisionDate: string | null; decisionDate: string | null;
   visaOutcome: string | null; visaValidityUntil: string | null;
@@ -54,7 +54,7 @@ type VC = {
 };
 
 type Stage = { id: string; key: string; name: string; seq: number };
-type Perms = { audit: boolean; edit: boolean; verify: boolean; send: boolean; record: boolean; money: boolean };
+type Perms = {customerMaster:boolean; audit: boolean; edit: boolean; verify: boolean; send: boolean; record: boolean; money: boolean };
 
 // Document states use the same tones as every other status badge in the app.
 const docTone = (s: string): Tone => {
@@ -130,7 +130,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
               {vc.visaOutcome && <Status tone={vc.visaOutcome === "APPROVED" ? "success" : "danger"}>{vc.visaOutcome}</Status>}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
-              <Link href={`/customers/${vc.customer.id}`} className="font-medium text-slate-900 hover:text-teal-700">{vc.customer.name}</Link>
+              {perms.customerMaster?<Link href={`/masters/${vc.customer.id}`} className="font-medium text-slate-900 hover:text-teal-700">{vc.customer.name}</Link>:<span className="font-medium text-slate-900">{vc.customer.name}</span>}
               <span>({vc.customer.code})</span>
               <span>· {vc.destination} · {vc.visaType}{vc.visaCategory ? ` · ${vc.visaCategory}` : ""}</span>
               <span>· owner {vc.owner} · {vc.branch}</span>
@@ -159,7 +159,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
         </div>
       </section>
 
-      <RecordSectionNav label="Visa case sections" sections={[{id:"case-workflow",label:"Application progress"},{id:"case-documents",label:"Documents & applicants"},...(perms.money?[{id:"case-money",label:"Fees & collections"}]:[]),{id:"case-dates",label:"Dates & appointments"}]}/>
+      <RecordSectionNav label="Visa case sections" sections={[{id:"case-workflow",label:"Application progress"},{id:"case-documents",label:"Documents & applicants"},...(perms.money?[{id:"case-money",label:"Fees & collections"}]:[]),{id:"case-dates",label:"Dates & appointments"},{id:"customer-email",label:"Customer email"},{id:"booking-collections",label:"Collect payment"}]}/>
       <div className="record-next-step"><span>Current stage</span><strong>{vc.stage.name}</strong><p>Review each applicant’s requirements and evidence before progressing the application.</p></div>
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-5">
@@ -344,7 +344,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
 function EditCase({ vc, suppliers, canMoney, onClose }: { vc: VC; suppliers: { id: string; name: string }[]; canMoney: boolean; onClose: () => void }) {
   const router = useRouter();
   const [form, setForm] = useState({
-    visaCategory: vc.visaCategory ?? "", travelDate: dInput(vc.travelDate), intendedStay: vc.intendedStay ?? "",
+    supplierCost:vc.supplierCost===null?"":String(vc.supplierCost),supplierCostReason:"",travelEndDate:dInput(vc.travelEndDate),visaCategory: vc.visaCategory ?? "", travelDate: dInput(vc.travelDate), intendedStay: vc.intendedStay ?? "",
     submissionDate: dInput(vc.submissionDate), appointmentDate: appointmentInput(vc.appointmentDate),
     biometricsDate: dInput(vc.biometricsDate), expectedDecisionDate: dInput(vc.expectedDecisionDate),
     decisionDate: dInput(vc.decisionDate), visaValidityUntil: dInput(vc.visaValidityUntil),
@@ -363,7 +363,8 @@ function EditCase({ vc, suppliers, canMoney, onClose }: { vc: VC; suppliers: { i
           const payload: Record<string, unknown> = { ...form, appointmentDate: form.appointmentDate === appointmentInput(vc.appointmentDate) ? vc.appointmentDate : appointmentValue(form.appointmentDate), visaFee: Number(form.visaFee) || 0, serviceFee: Number(form.serviceFee) || 0, sellingPrice: Number(form.sellingPrice) || 0 };
           // Without finance visibility the fee fields are hidden, so never send them back — the
           // masked zeros must not overwrite the real fees.
-          if (!canMoney) { delete payload.visaFee; delete payload.serviceFee; delete payload.sellingPrice; }
+          if (!canMoney) { delete payload.visaFee; delete payload.serviceFee; delete payload.sellingPrice;delete payload.supplierCost;delete payload.supplierCostReason; }
+          if(String(vc.supplierCost??"")===form.supplierCost){delete payload.supplierCost;delete payload.supplierCostReason;}
           try {
             const r = await fetch(`/api/visa/cases/${vc.id}/edit`, {
               method: "POST", headers: { "Content-Type": "application/json" },
@@ -381,6 +382,7 @@ function EditCase({ vc, suppliers, canMoney, onClose }: { vc: VC; suppliers: { i
         <p className="text-xs text-slate-500">Appointment time is in Indian Standard Time (IST, UTC+05:30).</p>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Visa category"><input value={form.visaCategory} onChange={(e) => setForm({ ...form, visaCategory: e.target.value })} /></Field>
+          <Field label="Travel end date"><input type="date" value={form.travelEndDate} onChange={e=>setForm({...form,travelEndDate:e.target.value})}/></Field>
           <Field label="Travel date"><input type="date" value={form.travelDate} onChange={(e) => setForm({ ...form, travelDate: e.target.value })} /></Field>
           <Field label="Intended stay"><input value={form.intendedStay} onChange={(e) => setForm({ ...form, intendedStay: e.target.value })} /></Field>
           <Field label="Submission date"><input type="date" value={form.submissionDate} onChange={(e) => setForm({ ...form, submissionDate: e.target.value })} /></Field>
@@ -390,7 +392,7 @@ function EditCase({ vc, suppliers, canMoney, onClose }: { vc: VC; suppliers: { i
           <Field label="Actual decision"><input type="date" value={form.decisionDate} onChange={(e) => setForm({ ...form, decisionDate: e.target.value })} /></Field>
           <Field label="Visa valid until"><input type="date" value={form.visaValidityUntil} onChange={(e) => setForm({ ...form, visaValidityUntil: e.target.value })} /></Field>
           {canMoney && <>
-            <Field label="Visa fee ₹"><input type="number" value={form.visaFee} onChange={(e) => setForm({ ...form, visaFee: e.target.value })} /></Field>
+            <Field label="Confirmed supplier cost (INR, optional)"><input type="number" min="0" step="0.01" value={form.supplierCost} onChange={e=>setForm({...form,supplierCost:e.target.value})}/></Field><Field label="Supplier-cost confirmation reason"><input maxLength={1000} value={form.supplierCostReason} onChange={e=>setForm({...form,supplierCostReason:e.target.value})}/></Field><Field label="Visa fee ₹"><input type="number" value={form.visaFee} onChange={(e) => setForm({ ...form, visaFee: e.target.value })} /></Field>
             <Field label="Service fee ₹"><input type="number" value={form.serviceFee} onChange={(e) => setForm({ ...form, serviceFee: e.target.value })} /></Field>
             <Field label="Selling price ₹"><input type="number" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} /></Field>
           </>}

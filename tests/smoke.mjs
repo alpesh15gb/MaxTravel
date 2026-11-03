@@ -78,7 +78,7 @@ async function run() {
   await status("Invalid dates rejected", "/api/bookings", { customerId: alice.id, travellerIds: [aliceTraveller.id], travelDate: "bad" }, owner.cookie, 400);
   await status("Mock ticketing is disallowed", "/api/bookings/status", { bookingId: booking.bookingId, status: "TICKETED" }, owner.cookie, 400);
   assert.equal(await prisma.ticket.count(), 0);
-  await ok("/api/bookings/status", { bookingId: booking.bookingId, status: "TICKETED", tickets: [{ travellerId: aliceTraveller.id, ticketNo: "123-1234567890", originalFare: 210.30 }] }, owner.cookie);
+  await ok("/api/bookings/status", { bookingId: booking.bookingId, status: "TICKETED", travelScope:"DOMESTIC", tickets: [{ travellerId: aliceTraveller.id, ticketNo: "123-1234567890", originalFare: 210.30 }] }, owner.cookie);
   check("Actual ticket number stored without invention", () => {}); assert.equal((await prisma.ticket.findFirstOrThrow()).ticketNo, "123-1234567890");
   const inv = await ok("/api/invoices", { customerId: alice.id, visaCaseId: visa.caseId, amount: 100.10, description: "Visa service", dueDate: "2020-01-01" }, owner.cookie);
   check("Case, booking and invoice numbers share the agency format", () => { for (const value of [visa.caseNo, booking.bookingNo, inv.invoiceNo]) assert.match(String(value), /^[A-Z]+-\d{4}-\d{4,}$/); });
@@ -116,7 +116,7 @@ async function run() {
   const afterReject = await prisma.booking.findUniqueOrThrow({ where: { id: booking.bookingId } });
   check("A rejected refund neither cancels nor refunds the sale", () => assert.equal(afterReject.status, "TICKETED"));
   const supplier = await ok("/api/suppliers", { name: "Real test supplier", type: "CONSOLIDATOR", paymentDueDays: 15 }, owner.cookie);
-  const payable = await ok("/api/suppliers/dues", { supplierId: supplier.supplier.id, description: "Actual test payable", amount: 12.34, dueDate: "2020-01-01" }, owner.cookie);
+  const payable = await ok("/api/suppliers/dues", { requestKey:globalThis.crypto.randomUUID(),supplierId: supplier.supplier.id, description: "Actual test payable", amount: 12.34, dueDate: "2020-01-01" }, owner.cookie);
   const supplierSettlement = await ok("/api/suppliers/dues", { dueId: payable.due.id, amount: 12.34, method: "NEFT", requestKey: `smoke-${randomBytes(8).toString("hex")}` }, owner.cookie);
   const task = await ok("/api/tasks", { title: "Follow up regression", customerId: alice.id, dueAt: "2020-01-01", priority: "HIGH" }, owner.cookie);
   await ok("/api/tasks/status", { taskId: task.task.id, status: "DONE" }, owner.cookie);
@@ -243,7 +243,7 @@ async function run() {
   const refundBookingPage = await (await get(`/ticketing/${booking.bookingId}`, owner.cookie)).text();
   check("A partly refunded booking shows its refunds and net receipts on the sale", () => {
     assert(refundBookingPage.includes("net received"));
-    assert(refundBookingPage.includes("₹10 refunded"));
+    const text=refundBookingPage.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi," ").replace(/<!--.*?-->/gs,"").replace(/<[^>]*>/g,"").replace(/&nbsp;/g," ");assert(/(?:₹|INR\s*)10(?:\.00)? refunded/.test(text),"The actual rendered refund total must remain INR 10.");
   });
   const bookingPage = await (await get(`/ticketing/${booking.bookingId}`, owner.cookie)).text();
   check("An uncosted booking never shows the selling price as profit", () => {
@@ -287,7 +287,7 @@ async function run() {
     ])
       assert(!moduleHtml.includes(mark), `marketing copy ${mark}`);
     for (const plain of [
-      "Track flight bookings and manual hotel stays, guests, supplier references and flight ticketing deadlines.",
+      "Flights, hotels, stays, bus, train and insurance under each customer’s Max ID.",
       "Track applicants, destination requirements, documents and stages.",
       "Document requirements and uploaded files for each traveller.",
       "Invoices, receipts and outstanding balances.",
@@ -369,6 +369,8 @@ async function run() {
   const earlyStage = await prisma.visaStage.findFirstOrThrow({ where: { key: "ASSESSMENT" } });
   const exemptChecklist = await prisma.checklist.create({ data: { country: "Regression destination", visaType: "Visitor", applicantType: "EXEMPT" } });
   await ok("/api/visa/requirements", { caseId: case2.caseId, travellerId: aliceTraveller.id, checklistId: exemptChecklist.id }, owner.cookie);
+  await status("Visa confirmation needs passport details", `/api/visa/cases/${case2.caseId}/stage`, { stageId: approvedStage.id }, owner.cookie, 400);
+  await prisma.traveller.update({where:{id:aliceTraveller.id},data:{passportNumber:"SYNTHETIC-ALICE-PASSPORT",passportExpiry:new Date("2032-01-01")}});
   await ok(`/api/visa/cases/${case2.caseId}/stage`, { stageId: approvedStage.id }, owner.cookie);
   const outcomeBefore = await caseOutcome(case2.caseId);
   check("A recorded decision is written to the case", () => assert.equal(outcomeBefore, "APPROVED"));

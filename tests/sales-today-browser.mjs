@@ -70,7 +70,9 @@ export async function checkSalesToday(page, base, fixture) {
     const quotes=await db.salesQuote.findMany({where:{leadId:{in:leadIds}},select:{bookingId:true}});
     await db.salesQuote.deleteMany({where:{leadId:{in:leadIds}}});
     await db.salesLead.deleteMany({where:{id:{in:leadIds}}});
-    await db.booking.deleteMany({where:{id:{in:quotes.flatMap(q=>q.bookingId?[q.bookingId]:[])}}});
+    const bookingIds=quotes.flatMap(q=>q.bookingId?[q.bookingId]:[]);
+    await db.clientEmail.deleteMany({where:{bookingId:{in:bookingIds}}});
+    await db.booking.deleteMany({where:{id:{in:bookingIds}}});
     await db.$disconnect();
   }
 }

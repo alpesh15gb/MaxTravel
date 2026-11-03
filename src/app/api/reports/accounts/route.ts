@@ -24,8 +24,6 @@ export async function GET(req:Request){try{
  const exporting=format!=="json";if(exporting)assertCan(user,"export:data");
  const report=await buildAccountReport(user,params,exporting);
  if(!exporting)return Response.json(report,{headers:{"Cache-Control":"no-store"}});
- // Customer-facing PDF is deliberately restricted to single-party statements.
- if(format==="pdf"&&!["statement","supplier-statement"].includes(params.get("report")||"statement"))throw new ApiError(400,"PDF is available for customer and supplier statements; use Excel/CSV for registers.");
  const body=format==="csv"?accountCsv(report):format==="xlsx"?await accountWorkbook(report):await accountPdf(report);
  await audit(user,"EXPORT","FinancialReport",params.get("report")||"statement",`${report.period.from}–${report.period.to}; ${report.totalRows} rows; ${format}`);
  return new Response(typeof body==="string"?body:new Uint8Array(body),{headers:{"Content-Type":format==="csv"?"text/csv; charset=utf-8":format==="xlsx"?"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":"application/pdf","Content-Disposition":`attachment; filename="max-travel-${params.get("report")||"statement"}-${report.period.from}-to-${report.period.to}.${format}"`,"Cache-Control":"no-store"}});

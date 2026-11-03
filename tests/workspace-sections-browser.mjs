@@ -16,7 +16,7 @@ const report={checks:[],screens:[],errors:[],passed:false};
 const save=()=>{writeFileSync(path.join(out,"report.json"),JSON.stringify(report,null,2));writeFileSync(path.join(out,"server.log"),logs);};
 async function shot(name){await page.evaluate(()=>document.fonts.ready);const geometry=await page.evaluate(()=>({width:document.documentElement.scrollWidth,viewport:innerWidth}));assert(geometry.width<=geometry.viewport+1,`${name} must fit viewport`);await page.screenshot({path:path.join(out,name+".png"),fullPage:true,animations:"disabled"});report.screens.push(name);save();}
 async function login(context,email){const r=await context.request.post(base+"/api/auth/login",{data:{email,password:"Review-Visual-2026!"}});assert(r.ok(),"Fixture login must succeed");}
-const sections=[["/dashboard","Agency overview"],["/workspace/customers","Cases"],["/workspace/operations","Team work"],["/workspace/finance","Finance"],["/workspace/communications","WhatsApp desk"],["/reports","Reports & insights"],["/workspace/administration","Settings"]];
+const sections=[["/dashboard","Agency overview"],["/masters","Masters"],["/work","Team work"],["/suppliers","Suppliers & payables"],["/whatsapp","WhatsApp desk"],["/reports","Reports & insights"],["/workspace/administration","Settings"]];
 try{
   for(let i=0;i<180&&!logs.includes("VISUAL REVIEW READY");i++){if(child.exitCode!==null)throw Error(logs);await new Promise(r=>setTimeout(r,500));}
   assert(logs.includes("VISUAL REVIEW READY"),logs);
@@ -33,22 +33,21 @@ try{
       const main=page.getByRole("main");await main.getByRole("heading",{level:1,name:title,exact:true}).waitFor();
       if(["/dashboard","/workspace/finance","/workspace/administration"].includes(route))await main.getByRole("button",{name:"Refresh workspace",exact:true}).waitFor();
       assert.equal(await main.locator("h1").count(),1);
-      assert.equal(await main.locator("a.btn-primary:visible,button.btn-primary:visible").count(),1,"One primary action per screen");
+      assert.equal(await main.locator("a.btn-primary:visible,button.btn-primary:visible").count(),1,"One primary action per screen: "+route);
       if(width===390)await page.getByRole("button",{name:"Open navigation",exact:true}).click();
       const nav=page.getByRole("navigation",{name:"Main navigation",exact:true});
-      assert.equal(await nav.locator('.workspace-section-nav-heading button[aria-expanded="true"]').count(),1,"Only active section opens");
-      assert.equal(await nav.locator(".workspace-nav-section").count(),7);
+      assert.deepEqual(await nav.getByRole("link").allTextContents(),["Masters","Bookings","Tasks & follow-ups","Suppliers","Reporting"]);
       if(width===390){await page.keyboard.press("Escape");await page.getByRole("button",{name:"Open navigation",exact:true}).waitFor({state:"visible"});}
       await shot(`${width}-${route.split("/").filter(Boolean).join("-")}`);
     }
   }
-  report.checks.push("Seven section destinations, single primary action, one open group, desktop/phone fit, keyboard drawer closure");
+  report.checks.push("Five primary destinations, legacy routes, single primary action, desktop/phone fit, keyboard drawer closure");
   await page.setViewportSize({width:1440,height:1000});
   await page.goto(base+"/dashboard",{waitUntil:"networkidle"});
   const api=await(await context.request.get(base+"/api/pulse?section=today")).json();
   assert.equal(api.stats.length,4);
   const total=await db.serviceCase.count({where:{closedAt:null,status:{notIn:["COMPLETED","CANCELLED"]}}});
-  assert.equal(api.stats.find(s=>s.label==="Active cases").value,String(total));
+  assert.equal(api.stats.find(s=>s.label==="Active Max IDs").value,String(total));
   const owner=await db.user.findUniqueOrThrow({where:{email:"review@visual.test"}});
   const c=await db.customer.findUniqueOrThrow({where:{id:fixture.customerId}});
   const now=Date.now(),end=Math.floor((now+330*60000)/86400000)*86400000-330*60000+86400000;
@@ -63,12 +62,12 @@ try{
   report.checks.push("Exact scoped case count and India-day future follow-up boundary");
 
   // Main entry point creates a real fixture case ID and opens the same journey.
-  await page.getByRole("button",{name:"New case",exact:true}).click();
+  await page.getByRole("button",{name:"New Max ID",exact:true}).click();
   const dialog=page.getByRole("dialog",{name:"Register client request",exact:true});
   await dialog.getByRole("combobox",{name:"Customer *",exact:true}).selectOption(c.id);
   await dialog.getByLabel("Request title *",{exact:true}).fill("Dashboard section registration");
   const created=page.waitForResponse(r=>r.url()===base+"/api/cases"&&r.request().method()==="POST");
-  await dialog.getByRole("button",{name:"Create case ID",exact:true}).click();
+  await dialog.getByRole("button",{name:"Create Max ID",exact:true}).click();
   const createdData=await(await created).json();assert(createdData.caseId);await page.waitForURL(base+"/cases/"+createdData.caseId);
   assert.equal((await db.serviceCase.findUniqueOrThrow({where:{id:createdData.caseId}})).customerId,c.id);
   report.checks.push("Dashboard New case → existing customer → permanent case ID → journey");
@@ -78,19 +77,19 @@ try{
   const mine=await db.customer.create({data:{code:"SECTION-MINE",name:"Assigned Section Customer",phone:"+919000001011",city:"Test",branchId:c.branchId,assignedToId:staff.id}});
   const staffContext=await browser.newContext({viewport:{width:390,height:844}});await login(staffContext,staff.email);
   const restricted=await(await staffContext.request.get(base+"/api/pulse?section=today")).json();
-  assert.equal(restricted.mode,"personal");assert.equal(restricted.scope,"Assigned to you");assert.equal(restricted.stats.find(s=>s.label==="Active cases").value,"0");
+  assert.equal(restricted.mode,"personal");assert.equal(restricted.scope,"Assigned to you");assert.equal(restricted.stats.find(s=>s.label==="Active Max IDs").value,"0");
   assert(!JSON.stringify(restricted).includes(c.name));assert(!restricted.sections.some(s=>s.id==="administration"));assert(restricted.sections.some(s=>s.id==="reports"&&s.href==="/reports/work"));
   assert.equal((await staffContext.request.get(base+"/api/pulse?section=administration")).status(),403);
   const personalReports=await staffContext.request.get(base+"/api/pulse?section=reports");assert.equal(personalReports.status(),200);assert((await personalReports.json()).links.every(l=>l.href==="/reports/work"));
   assert.equal((await staffContext.request.post(base+"/api/payments",{data:{customerId:mine.id,amount:1}})).status(),403);
   const staffPage=await staffContext.newPage();await staffPage.goto(base+"/dashboard",{waitUntil:"networkidle"});await staffPage.getByRole("heading",{name:"My day",exact:true}).waitFor();
-  await staffPage.getByRole("button",{name:"New case",exact:true}).click();const staffDialog=staffPage.getByRole("dialog",{name:"Register client request",exact:true});
+  await staffPage.getByRole("button",{name:"New Max ID",exact:true}).click();const staffDialog=staffPage.getByRole("dialog",{name:"Register client request",exact:true});
   await staffDialog.getByRole("combobox",{name:"Customer *",exact:true}).selectOption(mine.id);
   assert.equal(await staffDialog.getByRole("link",{name:"Add a new customer in another tab"}).count(),0);
-  assert.deepEqual(await staffDialog.getByRole("combobox",{name:"Requested service",exact:true}).locator("option").evaluateAll(options=>options.map(o=>o.value)),["FLIGHT","HOTEL"]);
+  assert.deepEqual(await staffDialog.getByRole("combobox",{name:"Requested service",exact:true}).locator("option").evaluateAll(options=>options.map(o=>o.value)),["FLIGHT","HOTEL","STAY","BUS","TRAIN","INSURANCE"]);
   await staffDialog.getByLabel("Request title *",{exact:true}).fill("Assigned staff ticket request");
-  const staffCreated=staffPage.waitForResponse(r=>r.url()===base+"/api/cases"&&r.request().method()==="POST");await staffDialog.getByRole("button",{name:"Create case ID",exact:true}).click();assert((await staffCreated).ok());
-  const staffPulse=await(await staffContext.request.get(base+"/api/pulse?section=today")).json();assert.equal(staffPulse.stats.find(s=>s.label==="Active cases").value,"1");
+  const staffCreated=staffPage.waitForResponse(r=>r.url()===base+"/api/cases"&&r.request().method()==="POST");await staffDialog.getByRole("button",{name:"Create Max ID",exact:true}).click();assert((await staffCreated).ok());
+  const staffPulse=await(await staffContext.request.get(base+"/api/pulse?section=today")).json();assert.equal(staffPulse.stats.find(s=>s.label==="Active Max IDs").value,"1");
   await staffPage.goto(base+"/workspace/administration");await staffPage.waitForURL("**/dashboard?denied=**");
   await staffContext.close();report.checks.push("Staff assignment isolation, permission-filtered sections/services, server-side denied finance/admin writes, and staff case continuity");
 

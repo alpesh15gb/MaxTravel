@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePage, canTouchRecord } from "@/lib/guard";
 import { can } from "@/lib/rbac";
+import GenericBooking from "@/components/GenericBooking";
+import BookingCustody from "@/components/BookingCustody";
 import BookingView from "./BookingView";
 
 export const dynamic = "force-dynamic";
@@ -33,22 +35,24 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
   // list-page balance and Customer 360. Masking happens here so the client never receives them.
   const showMoney = can(user.permissions, "payment:view");
 
+  if(!["FLIGHT","HOTEL"].includes(b.product))return <><GenericBooking key={b.id} b={{id:b.id,bookingNo:b.bookingNo,product:b.product,customerName:b.customer.name,customerId:b.customerId,serviceCaseId:b.serviceCaseId,serviceCaseNo:b.serviceCase?.caseNo??null,status:b.status,sector:b.sector,serviceDescription:b.serviceDescription,pnr:b.pnr,travelDate:b.travelDate?.toISOString()??null,travelEndDate:b.travelEndDate?.toISOString()??null,travelScope:b.travelScope,hotelName:b.hotelName,hotelCheckIn:b.hotelCheckIn?.toISOString()??null,hotelCheckOut:b.hotelCheckOut?.toISOString()??null,updatedAt:b.updatedAt.toISOString(),travellers:b.travellers.map(t=>t.traveller.fullName),edit:b.gdsSource!=="TRIPJACK_API"&&can(user.permissions,"ticketing:edit")}}/><div className="workspace-page"><BookingCustody key={b.id+":"+b.updatedAt.toISOString()} bookingId={b.id}/></div></>;
   return (
+    <>
     <BookingView
       b={{
-        serviceCase: b.serviceCase, id: b.id, bookingNo: b.bookingNo, product:b.product, hotelName:b.hotelName, hotelCheckIn:b.hotelCheckIn?.toISOString()??null,hotelCheckOut:b.hotelCheckOut?.toISOString()??null, supplierId:b.supplierId,
+        serviceCase: b.serviceCase, id: b.id, revision:b.updatedAt.toISOString(),bookingNo: b.bookingNo, product:b.product, hotelName:b.hotelName, hotelCheckIn:b.hotelCheckIn?.toISOString()??null,hotelCheckOut:b.hotelCheckOut?.toISOString()??null, supplierId:b.supplierId,
         customer: { id: b.customer.id, name: b.customer.name, code: b.customer.code, phone: b.customer.phone },
         pnr: b.pnr, airline: b.airline, gdsSource: b.gdsSource, supplier: b.supplier?.name ?? null,
         cancellationSupplierCharge: showMoney ? b.cancellationSupplierCharge : null,
         cancellationAgencyFee: showMoney ? b.cancellationAgencyFee : null,
         cancellationReason: b.cancellationReason,
         status: b.status, sector: b.sector, flightNo: b.flightNo,
-        travelDate: b.travelDate?.toISOString() ?? null,
+        travelEndDate:b.travelEndDate?.toISOString()??null,travelDate: b.travelDate?.toISOString() ?? null,
         bookingDate: b.bookingDate.toISOString(),
         ticketingDeadline: b.ticketingDeadline?.toISOString() ?? null,
-        fare: showMoney ? b.fare : 0, taxes: showMoney ? b.taxes : 0, markup: showMoney ? b.markup : 0,
+        airlineChangeFee:showMoney?b.airlineChangeFee:0,noShowFee:showMoney?b.noShowFee:0,fare: showMoney ? b.fare : 0, taxes: showMoney ? b.taxes : 0, markup: showMoney ? b.markup : 0,
         serviceFee: showMoney ? b.serviceFee : 0,
-        sellingPrice: showMoney ? b.sellingPrice : 0, supplierCost: showMoney ? b.supplierCost : 0, currency: b.currency,
+        sellingPrice: showMoney ? b.sellingPrice : 0, supplierCost: showMoney ? b.supplierCost : 0,supplierCostConfirmed:b.supplierCostConfirmed,travelScope:b.travelScope, currency: b.currency,
         owner: b.owner.name, branch: b.branch.name,
         travellers: b.travellers.map((bt) => ({
           id: bt.traveller.id, fullName: bt.traveller.fullName, relation: bt.traveller.relation,
@@ -76,17 +80,18 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
       }}
       passengerOptions={b.customer.travellers.map(t => ({ id: t.id, fullName: t.fullName }))}
       suppliers={suppliers}
-      perms={{
+      perms={{customerMaster:can(user.permissions,"customer:view")&&canTouchRecord(user,b.customer),email:can(user.permissions,"email:send"),
         audit: can(user.permissions, "audit:view"),
         edit: b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "ticketing:edit"),
-        record: b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "payment:record"),
-        invoice: b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "invoice:create"),
+        record: b.currency==="INR"&&b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "payment:record"),
+        invoice: b.currency==="INR"&&b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "invoice:create"),
         send: can(user.permissions, "whatsapp:send"),
-        reissue: b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "reissue:manage"),
+        reissue: b.currency==="INR"&&b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "reissue:manage"),
         money: showMoney,
         // Cancelling a sale that still holds customer money raises a refund, so it needs refund:manage.
-        refund: can(user.permissions, "refund:manage"),
+        refund: b.currency==="INR"&&can(user.permissions, "refund:manage"),
       }}
     />
+    </>
   );
 }

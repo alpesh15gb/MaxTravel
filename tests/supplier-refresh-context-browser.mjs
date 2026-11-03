@@ -52,7 +52,7 @@ await runSyntheticJourney(`supplier-refresh-${baseline?'baseline':'fixed'}`,3404
    await card.getByRole('button',{name:'Record payment',exact:true}).click();dialog=page.getByRole('dialog',{name:'Record a supplier payment',exact:true});assert.equal(await dialog.getByRole('spinbutton',{name:/^Amount \(INR\)/}).inputValue(),'250.5');
    await postResult(page,'/api/suppliers/dues',()=>dialog.getByRole('button',{name:'Record payment',exact:true}).dblclick());await dialog.waitFor({state:'hidden'});await page.reload();
    const settled=await db.supplierDue.findUniqueOrThrow({where:{id:due.id}});assert.equal(settled.paidAmount,250.5);assert.equal(settled.paid,true);assert.equal(await db.supplierSettlement.count({where:{dueId:due.id}}),2);assert.equal((await db.supplierSettlement.findUniqueOrThrow({where:{id:original.id}})).reversalReason,'Synthetic correction before resettlement');
-   await card.getByText('Paid history (1)',{exact:true}).click();await capture(page,`correct-resettlement-${width}`);check(`${width}: held partial and reversal refresh disable stale money/edit actions; ${width===390?'explicit reload recovery':'authoritative refresh reconciliation'} opens250.50 default→doubleclick full settlement exactly once; original reversal history retained`);
+   await card.getByText('Settled & voided history (1)',{exact:true}).click();await capture(page,`correct-resettlement-${width}`);check(`${width}: held partial and reversal refresh disable stale money/edit actions; ${width===390?'explicit reload recovery':'authoritative refresh reconciliation'} opens250.50 default→doubleclick full settlement exactly once; original reversal history retained`);
   }
   await context.close();
  }

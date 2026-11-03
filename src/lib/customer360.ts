@@ -5,7 +5,7 @@ import { maskPassportFor } from "./serialize";
 import { canTouchRecord } from "./guard";
 import { bookingCharge, hasCancellationAllocation, isWithdrawnBooking, balanceOf, netReceived, refundedTotal, receivablesFrom } from "./receivables";
 
-// All dates → ISO strings; sensitive fields masked per permissions before leaving the server.
+// All dates â†’ ISO strings; sensitive fields masked per permissions before leaving the server.
 
 export async function loadCustomer360(customerId: string, user: SessionUser) {
   const c = await prisma.customer.findUnique({
@@ -43,6 +43,7 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
   });
   if (!c || !canTouchRecord(user, c)) return null;
   const can = (permission: string) => user.permissions.some(p => p === permission);
+  if (!can("traveller:view")) c.travellers = [];
   if (!can("visa:view")) c.visaCases = [];
   if (!can("ticketing:view")) c.bookings = [];
   if (!can("document:view")) c.documents = [];
@@ -92,7 +93,7 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
     customer: {
       id: c.id, code: c.code, name: c.name, type: c.type, phone: c.phone, email: c.email,
       city: c.city, address: c.address, status: c.status, companyName: c.companyName,
-      branch: c.branch?.name ?? "—",
+      branch: c.branch?.name ?? "â€”",
       manager: c.assignedTo ? { id: c.assignedTo.id, name: c.assignedTo.name } : null,
       createdAt: c.createdAt.toISOString(),
     },
@@ -109,7 +110,7 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
       passportIssueDate: t.passportIssueDate?.toISOString() ?? null,
       passportExpiry: t.passportExpiry?.toISOString() ?? null,
       passportPlace: t.passportPlace,
-      knownTravellerNumber: t.knownTravellerNumber, frequentFlyer: t.frequentFlyer,
+      knownTravellerNumber: maskPassportFor(user,t.knownTravellerNumber), frequentFlyer: maskPassportFor(user,t.frequentFlyer),
       primary: t.primary,
     })),
     visaCases: c.visaCases.map((v) => ({
@@ -165,7 +166,7 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
       owner: t.owner.name, dueAt: t.dueAt?.toISOString() ?? null,
     })),
     notes: c.notes.map((n) => ({
-      id: n.id, body: n.body, author: n.author?.name ?? "—", pinned: n.pinned,
+      id: n.id, body: n.body, author: n.author?.name ?? "â€”", pinned: n.pinned,
       createdAt: n.createdAt.toISOString(),
     })),
     activities: c.activities.map((a) => ({

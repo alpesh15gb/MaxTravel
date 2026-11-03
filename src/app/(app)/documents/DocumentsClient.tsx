@@ -132,7 +132,7 @@ export default function DocumentsClient({ documents, focus, perms, canExport, ca
                 <span className="text-xs text-slate-500"> · {d.docNo} · v{d.version}{d.traveller ? ` · ${d.traveller}` : ""}</span>
               </div>
               <div className="mt-1 text-xs text-slate-500">
-                <Link href={`/customers/${d.customerId}`} className="font-medium text-slate-700 hover:text-teal-700">{d.customer}</Link>
+                <Link href={`/masters/${d.customerId}`} className="font-medium text-slate-700 hover:text-teal-700">{d.customer}</Link>
                 {d.visaCaseId && <> · <Link href={`/visa/${d.visaCaseId}`} className="hover:text-teal-700">{d.visaCase}</Link></>}
                 {d.uploadedAt ? ` · ${d.uploadSource ?? "staff"} ${dateLabel(d.uploadedAt)}` : " · not uploaded"}
                 {d.verifiedBy ? ` · verified by ${d.verifiedBy}` : ""}

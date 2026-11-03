@@ -1,3 +1,4 @@
+import CaseProfit from "@/components/CaseProfit";
 import {isClosedCase} from "@/lib/case-constants";
 import { taskScope } from "@/lib/work-engine";
 import { Suspense } from "react";
@@ -244,13 +245,14 @@ export default async function CasePage({
   return (
     <div className="workspace-page work-desk">
       <PageHeader
-        eyebrow="Permanent case ID"
+        eyebrow="Permanent Max ID"
         title={base.caseNo}
         description={base.title}
-        actions={
+        actions={<>
+          {user.permissions.includes("chat:use")&&<Link className="btn-secondary" href={"/team-chat?case="+base.id}>Discuss with team</Link>}
           <Link className="btn-secondary" href="/cases">
-            Back to cases
-          </Link>
+            Back to Max IDs
+          </Link></>
         }
       />
       {base.importedAt&&<section className="panel p-5 space-y-2" aria-label="Imported case provenance"><h2 className="font-semibold">Imported case history</h2><p className="break-words">Original reference: <strong>{base.legacyReference}</strong> · Source: {base.importSource}</p>{base.legacyStage&&<p>Original stage: {base.legacyStage}</p>}<p className="text-sm text-slate-600">Imported {dateTimeLabel(base.importedAt)}. Historical status is retained for context. Review the original documents and record supplier confirmations and financial transactions through the linked workflows.</p></section>}
@@ -285,7 +287,7 @@ export default async function CasePage({
         </p>
         <p className="mt-2 text-slate-600">
           {base.nextFollowUpAt
-            ? "Case follow-up: " + dateTimeLabel(base.nextFollowUpAt)
+            ? "Max ID follow-up: " + dateTimeLabel(base.nextFollowUpAt)
             : "Set a follow-up when waiting on a customer or authority."}
         </p>
         <details className="case-contact-details">
@@ -339,7 +341,7 @@ export default async function CasePage({
           </div>
           <div className="work-context-links mb-5">
             {canTouchRecord(user, customer) && (
-              <Link href={"/customers/" + customer.id}>
+              <Link href={"/masters/" + customer.id}>
                 Customer & travellers
               </Link>
             )}
@@ -461,9 +463,10 @@ export default async function CasePage({
           customerAccess={canTouchRecord(user, customer)}
         />
       )}
+      {tab === "money" && finance && <CaseProfit user={user} id={base.id}/>}
       {tab === "money" && finance && (
         <section className="panel p-5">
-          <h2 className="text-lg font-semibold">Case receipts and refunds</h2>
+          <h2 className="text-lg font-semibold">Max ID receipts and refunds</h2>
           <ul className="case-record-list">
             {payments.map((p) => (
               <li key={p.id}>
@@ -502,7 +505,7 @@ export default async function CasePage({
       )}
       {tab === "history" && (
         <section className="panel p-5">
-          <h2 className="text-lg font-semibold">Case history</h2>
+          <h2 className="text-lg font-semibold">Max ID history</h2>
           <ol className="case-history">
             {events.map((e) => (
               <li key={e.id}>

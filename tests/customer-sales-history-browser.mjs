@@ -55,7 +55,7 @@ export async function checkCustomerSalesHistory(page, base, fixture) {
     const selectedBody = await selected.json();
     assert.equal(selectedBody.lead.id, lead.id);
     assert.equal(selectedBody.lead.customerId, customerId);
-    assert.equal(await page.locator(`a[href="/customers/${customerId}"]`).count() > 0, true);
+    assert.equal(await page.locator(`a[href="/masters/${customerId}"]`).count() > 0, true);
     await page.goBack({ waitUntil: "networkidle" });
     assert.equal(new URL(page.url()).pathname, `/customers/${customerId}`);
     await exact.waitFor({ state: "visible" });

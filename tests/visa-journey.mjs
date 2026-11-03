@@ -34,6 +34,8 @@ try{
  const stages=Object.fromEntries((await prisma.visaStage.findMany()).map(s=>[s.key,s.id]));
  await post(`/api/visa/cases/${noChecklist.caseId}/stage`,{stageId:stages.READY_FOR_SUBMISSION},400);
  await post('/api/visa/requirements',{caseId:noChecklist.caseId,travellerId:missing,checklistId:empty.id});
+ await post(`/api/visa/cases/${noChecklist.caseId}/stage`,{stageId:stages.READY_FOR_SUBMISSION},400);
+ await prisma.traveller.update({where:{id:missing},data:{passportNumber:'SYNTHETIC-VISA-PASSPORT',passportExpiry:new Date('2035-01-01')}});
  await post(`/api/visa/cases/${noChecklist.caseId}/stage`,{stageId:stages.READY_FOR_SUBMISSION});
  await post(`/api/visa/cases/${noChecklist.caseId}/stage`,{stageId:stages.APPOINTMENT_BOOKED},400);
  const appointment='2029-01-05T09:45:00+05:30';await post(`/api/visa/cases/${noChecklist.caseId}/edit`,{appointmentDate:appointment});

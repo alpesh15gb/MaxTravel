@@ -45,7 +45,7 @@ await ok("/api/payments", { customerId: customer.id, bookingId: booking.bookingI
 const invoice = await ok("/api/invoices", { customerId: customer.id, amount: 250, description: "Service charge", dueDate: "2026-11-01" }, owner);
 const refund = await ok("/api/refunds", { customerId: customer.id, bookingId: booking.bookingId, amount: 100, reason: "Change of plan" }, owner);
 const supplier = await ok("/api/suppliers", { name: "Verify Supplier", type: "CONSOLIDATOR", city: "Mumbai", paymentDueDays: 10 }, owner);
-const due = await ok("/api/suppliers/dues", { supplierId: supplier.supplier.id, description: "Consolidator bill", amount: 500, dueDate: "2026-09-01" }, owner);
+const due = await ok("/api/suppliers/dues", { requestKey:globalThis.crypto.randomUUID(),supplierId: supplier.supplier.id, description: "Consolidator bill", amount: 500, dueDate: "2026-09-01" }, owner);
 const task = await ok("/api/tasks", { title: "Verify callback", priority: "HIGH", customerId: customer.id, details: "Original details" }, owner);
 const opsRole = await prisma.role.findUniqueOrThrow({ where: { key: "OPERATIONS" } });
 const ops = await ok("/api/employees", { name: "Ops Staff", email: "ops@impl.test", password, roleId: opsRole.id }, owner);

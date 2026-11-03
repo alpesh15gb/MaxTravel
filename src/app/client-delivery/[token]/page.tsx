@@ -1,0 +1,8 @@
+import Image from "next/image";
+import {prisma} from "@/lib/db";
+import {publicDelivery} from "@/lib/booking-custody";
+import {inrAmount} from "@/lib/money";
+import {ApiError} from "@/lib/guard";
+export const dynamic="force-dynamic";
+export const metadata={title:"Your travel documents | MaxTravel",robots:{index:false,follow:false},referrer:"no-referrer"};
+export default async function DeliveryPage({params}:{params:Promise<{token:string}>}){const {token}=await params;let data;let problem="";try{data=await publicDelivery(prisma,token);}catch(e){problem=e instanceof ApiError?e.message:"Your travel documents are temporarily unavailable. Please contact your agency.";}return <main className="mx-auto max-w-2xl px-5 py-16"><Image width={320} height={65} src="/brand/maxtravel-logo.jpg" alt="MaxTravel" className="mb-10 h-auto w-52"/><section className="panel space-y-5 p-6 sm:p-9"><h1 className="text-2xl font-semibold">Your travel documents</h1>{problem?<p role="alert">{problem}</p>:data?.available?<><p>Your agency has released the current documents below. Keep this private link safe.</p><ul className="space-y-3">{data.files.map(f=><li key={f.id}><a className="btn-primary" href={`/api/client-delivery/${encodeURIComponent(token)}?file=${encodeURIComponent(f.id)}`}>Download {f.name}</a></li>)}</ul></>:<><p>{data?.reason}</p>{data?.dueMinor!=null&&<p>Amount to settle: <strong>{inrAmount(data.dueMinor/100)}</strong></p>}<p>Contact your agency to complete payment and receive the current documents.</p></>}<p className="text-sm text-slate-500">Document availability is checked whenever you download. Replaced or withdrawn tickets are not released through an old link.</p></section></main>;}

@@ -10,14 +10,27 @@ export async function recordCaseEventForEntity(tx:Prisma.TransactionClient,actor
     let bookingId:string|null=null,visaCaseId:string|null=null;
     if(entity==="Payment"){const row=await tx.payment.findUnique({where:{id}});bookingId=row?.bookingId??null;visaCaseId=row?.visaCaseId??null;if(row?.invoiceId&&!bookingId&&!visaCaseId){const invoice=await tx.invoice.findUnique({where:{id:row.invoiceId}});bookingId=invoice?.bookingId??null;visaCaseId=invoice?.visaCaseId??null;}reference=row?.receiptNo??"Receipt";permission="payment:view";href="/payments";}
     if(entity==="Invoice"){const row=await tx.invoice.findUnique({where:{id}});bookingId=row?.bookingId??null;visaCaseId=row?.visaCaseId??null;reference=row?.invoiceNo??"Invoice";permission="invoice:view";href=`/payments?focus=${id}`;}
-    if(entity==="Refund"){const row=await tx.refund.findUnique({where:{id}});bookingId=row?.bookingId??null;reference=row?`${row.refundNo} · ${row.status.toLowerCase()}`:"Refund";permission="refund:view";href=`/refunds?focus=${id}`;}
+    if(entity==="Refund"){const row=await tx.refund.findUnique({where:{id}});bookingId=row?.bookingId??null;if(row?.invoiceId&&!bookingId){const invoice=await tx.invoice.findUnique({where:{id:row.invoiceId}});bookingId=invoice?.bookingId??null;visaCaseId=invoice?.visaCaseId??null;}reference=row?`${row.refundNo} · ${row.status.toLowerCase()}`:"Refund";permission="refund:view";href=`/refunds?focus=${id}`;}
     if(entity==="Document"){const row=await tx.document.findUnique({where:{id}});visaCaseId=row?.visaCaseId??null;reference=row?`${row.docNo} · ${row.status.toLowerCase()} · ${row.verificationStatus.toLowerCase()}`:"Document";permission="document:view";href=`/documents?focus=${id}`;}
     if(entity==="Task"){const row=await tx.task.findUnique({where:{id}});bookingId=row?.bookingId??null;visaCaseId=row?.visaCaseId??null;reference=row?`Task · ${row.status.toLowerCase()}`:"Task";permission="task:view";href=`/tasks?focus=${id}`;}
+    if(entity==="SupplierDue"){const row=await tx.supplierDue.findUnique({where:{id}});bookingId=row?.bookingId??null;visaCaseId=row?.visaCaseId??null;reference="Supplier payable";permission="supplier:view";href="/suppliers";}
     if(entity==="Ticket"){const row=await tx.ticket.findUnique({where:{id}});bookingId=row?.bookingId??null;reference="Ticket";permission="ticketing:view";}
     if(entity==="Reissue"){const row=await tx.reissue.findUnique({where:{id}});bookingId=row?.originalBookingId??null;reference="Reissue";permission="ticketing:view";}
     if(bookingId)caseId=(await tx.booking.findUnique({where:{id:bookingId},select:{serviceCaseId:true}}))?.serviceCaseId??null;
     if(visaCaseId)caseId=(await tx.visaCase.findUnique({where:{id:visaCaseId},select:{serviceCaseId:true}}))?.serviceCaseId??null;
     if(!href&&bookingId)href=`/ticketing/${bookingId}`;
+  }
+  if(caseId){
+    // Lock/touch the parent alongside source changes, including concurrent closure.
+    const current=await tx.serviceCase.update({where:{id:caseId},data:{updatedAt:new Date()},select:{status:true,closedAt:true}});
+    if(current.closedAt||["COMPLETED","CANCELLED"].includes(current.status)){
+      const {caseCompletionIssues}=await import("./case-completion");
+      if((await caseCompletionIssues(tx,caseId,new Date(),true)).length){
+        await tx.serviceCase.update({where:{id:caseId},data:{status:"IN_PROGRESS",closedAt:null}});
+        await tx.serviceCaseEvent.create({data:{caseId,actorId,kind:"AUTO_REOPENED",summary:"Max ID reopened because a source change requires further work or reconciliation.",permission,href:href||null}});
+        await tx.auditLog.create({data:{userId:actorId,action:"AUTO_REOPEN",entity:"ServiceCase",entityId:caseId,detail:JSON.stringify({source:entity,sourceId:id,action})}});
+      }
+    }
   }
   if(caseId)await tx.serviceCaseEvent.create({data:{caseId,actorId,kind:"RECORD",summary:summaryOverride?`${reference}: ${summaryOverride}`.slice(0,1000):`${reference}: ${action.replaceAll("_"," ").toLowerCase()}`,permission,href:href||null}});
 }

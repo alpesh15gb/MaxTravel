@@ -84,7 +84,7 @@ try {
   await post("/api/refunds/update", { refundId: foreignRefund.id, status: "SUPPLIER_PENDING" }, 403);
   assert.equal((await prisma.refund.findUniqueOrThrow({ where: { id: foreignRefund.id } })).status, "REQUESTED", "Customer access must not grant foreign booking access");
   await post("/api/auth/login", { email: user.email, password });
-  const created = await post("/api/bookings", { customerId: customer.id, travellerIds: customer.travellers.map(t => t.id), fare: 1000, pnr: "TEST12", sector: "DEL-BOM" });
+  const created = await post("/api/bookings", { customerId: customer.id, travellerIds: customer.travellers.map(t => t.id), fare: 1000, pnr: "TEST12", sector: "DEL-BOM", travelScope:"DOMESTIC" });
   const bookingId = created.bookingId;
   await post("/api/invoices", { customerId: customer.id, bookingId, amount: 600 });
   await post("/api/invoices", { customerId: customer.id, bookingId, amount: 400 });
@@ -107,7 +107,7 @@ try {
   await post("/api/bookings/status", { bookingId, status: "ENQUIRY" }, 400);
   await post("/api/bookings/extend-deadline", { bookingId, hours: 24 }, 400);
   const ticket = await prisma.ticket.findFirstOrThrow({ where: { bookingId } });
-  const reissue = await post("/api/reissues", { originalTicketId: ticket.id, reason: "Synthetic date change", fareDifference: 100 });
+  const reissue = await post("/api/reissues", { requestKey:randomUUID(),originalTicketId: ticket.id, reason: "Synthetic date change", quoteReference:"SYNTHETIC-QUOTE-CHANGE",travelDate:new Date(Date.now()+30*86400000).toISOString().slice(0,10),fareDifference: 100 });
   const replacementId = reissue.reissueBookingId;
   const request = await prisma.reissue.findFirstOrThrow({ where: { reissuedBookingId: replacementId } });
   await post("/api/reissues/status", { reissueId: request.id, status: "DONE" }, 400);
@@ -286,7 +286,7 @@ try {
   assert.equal(await prisma.refund.count({ where: { bookingId: replacementId, amount: 50 } }), 1);
   assert.equal(await prisma.auditLog.count({ where: { entity: "Reissue", entityId: request.id, action: "STATUS" } }), 1);
   assert.equal((await prisma.booking.findUniqueOrThrow({ where: { id: bookingId } })).status, "TICKETED");
-  const successful = await post("/api/reissues", { originalTicketId: ticket.id, reason: "Synthetic replacement", fareDifference: 100 });
+  const successful = await post("/api/reissues", { requestKey:randomUUID(),originalTicketId: ticket.id, reason: "Synthetic replacement",quoteReference:"SYNTHETIC-QUOTE-REPLACEMENT",travelDate:new Date(Date.now()+30*86400000).toISOString().slice(0,10),fareDifference: 100 });
   const successRequest = await prisma.reissue.findFirstOrThrow({ where: { reissuedBookingId: successful.reissueBookingId } });
   await post("/api/bookings/status", { bookingId: successful.reissueBookingId, status: "TICKETED", tickets: [{ travellerId: ticket.travellerId, ticketNo: `${ticketPrefix}9` }] });
   await post("/api/reissues/status", { reissueId: successRequest.id, status: "IN_PROGRESS" });

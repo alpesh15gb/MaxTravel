@@ -1,4 +1,7 @@
 export type Permission =
+  | "payment:request"
+  | "email:send"
+  | "chat:use"
   | "work:team" | "work:assign" | "work:review" | "work:report" | "case:assign"
   | "dashboard:view"
   | "search:use"
@@ -23,6 +26,9 @@ export type Permission =
   | "export:data";
 
 export const ALL_PERMISSIONS: Permission[] = [
+  "payment:request",
+  "email:send",
+  "chat:use",
   "work:team", "work:assign", "work:review", "work:report", "case:assign",
   "dashboard:view", "search:use",
   "customer:view", "customer:create", "customer:edit", "customer:delete",
@@ -229,3 +235,10 @@ ROLE_PERMISSIONS.ACCOUNTS.push("task:create", "task:edit");
 for (const role of ["OWNER", "BRANCH_MANAGER", "VISA_MANAGER", "TICKETING_MANAGER", "OPERATIONS"] as const) {
   ROLE_PERMISSIONS[role].push("work:team", "work:assign", "work:review", "work:report", "case:assign");
 }
+
+// Internal communication is separate from changing operational or financial records.
+for(const role of Object.keys(ROLE_PERMISSIONS) as RoleKey[])if(role!=="READ_ONLY"&&!ROLE_PERMISSIONS[role].includes("chat:use"))ROLE_PERMISSIONS[role].push("chat:use");
+
+for(const role of ["OWNER","BRANCH_MANAGER","VISA_MANAGER","VISA_EXECUTIVE","TICKETING_MANAGER","TICKETING_EXECUTIVE","TRAVEL_EXECUTIVE","OPERATIONS","ACCOUNTS"] as RoleKey[]){if(ROLE_PERMISSIONS[role]&&!ROLE_PERMISSIONS[role].includes("email:send"))ROLE_PERMISSIONS[role].push("email:send");}
+
+for(const role of ["OWNER","BRANCH_MANAGER","VISA_MANAGER","VISA_EXECUTIVE","TICKETING_MANAGER","TICKETING_EXECUTIVE","TRAVEL_EXECUTIVE","OPERATIONS","ACCOUNTS"] as RoleKey[]){if(!ROLE_PERMISSIONS[role].includes("payment:request"))ROLE_PERMISSIONS[role].push("payment:request");}

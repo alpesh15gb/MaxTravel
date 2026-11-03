@@ -3,7 +3,7 @@ import { sectionForPath } from "./workspace-sections";
 
 export type WorkAction = { id: string; title: string; description: string; href: string; permission: string; group: "Customers & sales" | "Travel operations" | "Money & accounts"; icon: IconName; steps: readonly string[] };
 export const WORK_ACTIONS: readonly WorkAction[] = [
-  {id:"case",title:"Register a client request",description:"Assign a permanent case ID at first contact and track the complete client journey.",href:"/cases",permission:"customer:view",group:"Customers & sales",icon:"compass",steps:["Choose the customer and service","Get the case ID","Track service work and follow-ups"]},
+  {id:"case",title:"Register a client request",description:"Assign a permanent Max ID at first contact and track the complete client journey.",href:"/cases",permission:"customer:view",group:"Customers & sales",icon:"compass",steps:["Choose the customer and service","Get the Max ID","Track service work and follow-ups"]},
   { id:"customer",title:"Add a customer",description:"Create one customer record and add the people who travel with them.",href:"/customers?action=new",permission:"customer:create",group:"Customers & sales",icon:"customers",steps:["Check for an existing customer","Save contact details","Add their travellers"] },
   { id:"enquiry",title:"Prepare a quotation",description:"Capture a travel request, prepare options and track the customer's decision.",href:"/sales?action=new",permission:"customer:create",group:"Customers & sales",icon:"compass",steps:["Select or add the customer","Capture the request","Prepare and publish a quote"] },
   { id:"followup",title:"Plan a follow-up",description:"Give a task an owner and due date so it returns to the daily work queue.",href:"/work?new=1",permission:"task:create",group:"Customers & sales",icon:"tasks",steps:["Describe the next action","Choose an owner and date","Link the customer when relevant"] },
@@ -26,11 +26,15 @@ export function availableWorkActions(permissions:readonly string[]){return WORK_
 
 type Guide = { match: RegExp; area: string; title: string; parent?: { label: string; href: string }; steps: readonly string[] };
 export const SCREEN_GUIDES: readonly Guide[] = [
+  {match:/^\/email$/,area:"Masters",title:"Customer email",steps:["Review queued, rejected or uncertain delivery","Open the linked customer or work record","Record any retry or delivery review"]},
+  {match:/^\/team-chat$/,area:"Tasks & follow-ups",title:"Internal messages",steps:["Choose a colleague or Max ID discussion","Send a work update","Review replies and unread messages"]},
+  {match:/^\/masters\/[^/]+/,area:"Masters",title:"Customer master",parent:{label:"Masters",href:"/masters"},steps:["Review customer and individual traveller details","Manage memberships and identity documents for the correct traveller","Upload files and check staff activity"]},
+  {match:/^\/masters$/,area:"Masters",title:"Customer masters",steps:["Search before adding a customer","Open the customer master","Maintain travellers, memberships and documents"]},
   {match:/^\/start-work$/,area:"Daily work",title:"Start work",steps:["Choose the transaction or service","Open its guided flow","Return to the case to track the next action"]},
   {match:/^\/work\/settings$/,area:"Agency administration",title:"Work settings",parent:{label:"Settings",href:"/settings"},steps:["Edit future service templates and working hours","Review the impact preview","Save the version without changing existing tasks"]},
   {match:/^\/reports\/work$/,area:"Reporting",title:"Work & team reports",steps:["Choose the dates, service and assignee","Compare current backlog with dated outcomes","Drill into work or export the complete permitted dataset"]},
-  {match:/^\/cases\/[^/]+/,area:"Client journeys",title:"Case journey",parent:{label:"Cases",href:"/cases"},steps:["Confirm the case ID and responsible owner","Review linked work and history","Record the next action, follow-up or closure"]},
-  {match:/^\/cases$/,area:"Client journeys",title:"Cases",steps:["Register a customer request at first contact","Find its permanent case ID","Open the journey to review progress and follow-ups"]},
+  {match:/^\/cases\/[^/]+/,area:"Client journeys",title:"Max ID journey",parent:{label:"Max IDs",href:"/cases"},steps:["Confirm the Max ID and responsible owner","Review linked work and history","Record the next action, follow-up or closure"]},
+  {match:/^\/cases$/,area:"Client journeys",title:"Max IDs",steps:["Register a customer request at first contact","Find its permanent Max ID","Open the journey to review progress and follow-ups"]},
   {match:/^\/dashboard$/,area:"Daily work",title:"Home",steps:["Review urgent work and deadlines","Open the record that needs attention","Complete the action and return to your queue"]},
   {match:/^\/work$/,area:"Daily work",title:"Work",steps:["Find the case and next action","Assign or perform the work with its deadline","Record the outcome, waiting reason or review decision"]},
   {match:/^\/sales/,area:"Customers & sales",title:"Enquiries & quotes",steps:["Capture a customer request","Prepare and publish a quote for acceptance","Create a CRM booking from the accepted quote"]},

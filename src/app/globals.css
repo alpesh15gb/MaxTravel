@@ -947,3 +947,8 @@ main table tbody tr:hover { background:var(--brand-50); }
   --desk-accent:#215cc2; --desk-accent-hover:#174aa3; --desk-link:#2457a7;
   --desk-navy:#183c64; --desk-navy-hover:#22588c;
 }
+
+/* Keep the unavailable delivery action legible alongside the payment hold. */
+.btn-secondary.client-delivery-action:disabled {
+  background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; opacity:1; box-shadow:none; cursor:not-allowed;
+}

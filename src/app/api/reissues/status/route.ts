@@ -1,3 +1,6 @@
+import {z} from "zod";
+import {passportReadiness} from "@/lib/travel-readiness";
+import {boundedJson} from "@/lib/bounded-json";
 import { requireSession, jsonError, ApiError, canTouchRecord } from "@/lib/guard";
 import { prisma } from "@/lib/db";
 import { transactionAudit } from "@/lib/transactions";
@@ -6,11 +9,11 @@ import { isWithdrawnBooking } from "@/lib/receivables";
 export async function POST(req: Request) {
   try {
     const user = await requireSession("reissue:manage");
-    const { reissueId, status } = await req.json();
+    const {reissueId,status}=z.object({reissueId:z.string().min(1).max(200),status:z.enum(["REQUESTED","IN_PROGRESS","DONE","REJECTED"])}).parse(await boundedJson(req));
     const reissue = await prisma.$transaction(async tx => {
       const r = await tx.reissue.findUnique({
         where: { id: String(reissueId ?? "") },
-        include: { originalBooking: true, originalTicket: true, reissuedBooking: { include: { tickets: true, travellers: true, payments: true } } },
+        include: { originalBooking: true, originalTicket: true, reissuedBooking: { include: { tickets: true, travellers: {include:{traveller:true}}, payments: true } } },
       });
       if (!r) throw new ApiError(404, "Reissue not found.");
       if (r.originalBooking.gdsSource === "TRIPJACK_API") throw new ApiError(409, "Online booking changes must be handled by the booking platform.");
@@ -23,6 +26,7 @@ export async function POST(req: Request) {
         throw new ApiError(409, "A linked booking is closed. This reissue cannot proceed or reopen it; review cancellation/refunds and reject the request instead.");
       }
       if (status === "DONE") {
+        if(replacement){const issues=passportReadiness(replacement.travellers.map(t=>t.traveller),replacement.travelScope,"FLIGHT",replacement.travelEndDate??replacement.travelDate);if(issues.length)throw new ApiError(400,issues.join(" "));}
         if (r.originalTicket.status !== "OK") throw new ApiError(409, "The original ticket is no longer active. Review its cancellation or previous reissue.");
         if (!replacement || !replacement.travellers.length || replacement.travellers.some(t => !replacement.tickets.some(ticket => ticket.travellerId === t.travellerId && ticket.status === "OK"))) {
           throw new ApiError(400, "Record actual replacement ticket numbers on the new booking before completing the reissue.");
@@ -39,7 +43,7 @@ export async function POST(req: Request) {
         await tx.booking.update({ where: { id: replacement!.id }, data: { status: "REISSUED" } });
       }
       if (status === "REJECTED") {
-        if (replacement && !isWithdrawnBooking(replacement.status)) await tx.booking.update({ where: { id: replacement.id }, data: { status: "CANCELLED" } });
+        if (replacement && !isWithdrawnBooking(replacement.status)) await tx.booking.update({ where: { id: replacement.id }, data: { status: "CANCELLED",cancellationSupplierCharge:0,cancellationAgencyFee:0,cancellationReason:"Unissued reschedule request rejected",cancelledAt:new Date() } });
         if (r.originalBooking.status === "REISSUE_REQUESTED") {
           const siblings = await tx.reissue.findMany({ where: { originalBookingId: r.originalBookingId }, select: { status: true } });
           const originalStatus = siblings.some(s => ["REQUESTED", "IN_PROGRESS"].includes(s.status)) ? "REISSUE_REQUESTED" : siblings.some(s => s.status === "DONE") ? "REISSUED" : "TICKETED";
@@ -50,5 +54,5 @@ export async function POST(req: Request) {
       return updated;
     });
     return Response.json({ ok: true, reissue });
-  } catch (e) { return jsonError(e); }
+  } catch (e) {if(e instanceof z.ZodError)return Response.json({error:"Choose a valid reschedule and status."},{status:400});return jsonError(e); }
 }

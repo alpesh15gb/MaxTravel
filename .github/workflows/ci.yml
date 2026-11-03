@@ -92,6 +92,12 @@ jobs:
         run: npm run build
       - name: Run the test chain
         run: npm test
+      - name: Verify private Masters, internal chat and agency daily-work browsers
+        if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
+        run: |
+          npm run test:masters
+          npm run test:chat
+          npm run test:agency-browser
       - name: Verify report filters, metadata, permissions and responsive details
         if: ${{ !cancelled() && steps.audit_build.outcome == 'success' }}
         timeout-minutes: 5

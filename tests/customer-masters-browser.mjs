@@ -1,0 +1,77 @@
+import {runSyntheticJourney} from "./synthetic-ui-journey-fixture.mjs";
+// Real production UI, scoped API and disposable database; no live customer/supplier traffic.
+import assert from 'node:assert/strict';
+import {randomUUID,randomBytes} from 'node:crypto';
+import {existsSync} from 'node:fs';
+for(const file of ['.env','.env.local','.env.production','.env.production.local'])assert(!existsSync(file),'Run Masters browser checks in an isolated checkout without private environment files');
+// Preserve the Windows process environment: Playwright needs it to reap its owned browser.
+const external=Object.keys(process.env).filter(key=>/^(SMTP_|MAIL_FROM$|BLOB_READ_WRITE_TOKEN$|PAYGLOCAL_|RAZORPAY_|TRIPJACK_|EVOLUTION_|META_)/i.test(key)&&process.env[key]);assert.equal(external.length,0,"Run in a clean test environment without provider credentials");Object.assign(process.env,{CRM_DATA_ENCRYPTION_KEY:randomBytes(32).toString('hex'),JWT_SECRET:randomBytes(32).toString('hex'),PRIVATE_STORAGE:'local',WA_PROVIDER:'manual',UPLOAD_SCAN_REQUIRED:'false',NEXT_TELEMETRY_DISABLED:'1'});
+await runSyntheticJourney('customer-masters',3249,async({base,db,fixture,session,capture,postResult,lostResponseRetry,check})=>{
+ const {page,context}=await session(1440),url='/masters/'+fixture.customerId,api='/api/masters/'+fixture.customerId;
+ await page.goto(base+'/masters');
+ assert.deepEqual(await page.getByRole('navigation',{name:'Main navigation',exact:true}).getByRole('link').allTextContents(),['Masters','Bookings','Tasks & follow-ups','Suppliers','Reporting']);
+ await page.getByRole('heading',{name:'Masters',exact:true}).waitFor();await capture(page,'01-master-directory');
+ await page.getByRole('button',{name:'New customer',exact:true}).click();let create=page.getByRole('dialog',{name:'Add a customer',exact:true});await create.getByLabel('Full name *',{exact:true}).fill('Synthetic Corporate Account');await create.getByLabel('Phone *',{exact:true}).fill('+919000000088');await create.getByLabel('Customer type',{exact:true}).selectOption('CORPORATE');await create.getByLabel('Company / agency name *',{exact:true}).fill('Synthetic Corporate Ltd');
+ let birthCalls=0,birthKey,firstBirth,secondBirth;const birthHandler=async route=>{if(route.request().method()!=='POST')return route.fallback();const body=route.request().postDataJSON();birthCalls++;if(birthCalls===1)birthKey=body.requestKey;else assert.equal(body.requestKey,birthKey);const response=await route.fetch();assert(response.ok());const value=await response.json();if(birthCalls===1){firstBirth=value;return route.abort('failed');}secondBirth=value;return route.fulfill({response});};await page.route('**/api/customers',birthHandler);
+ await create.getByRole('button',{name:'Create customer',exact:true}).click();await create.getByRole('alert').waitFor();await create.getByRole('button',{name:'Retry same save',exact:true}).click();await page.waitForURL('**/masters/*');await page.unroute('**/api/customers',birthHandler);assert.equal(birthCalls,2);assert.equal(firstBirth.id,secondBirth.id);assert.equal(new URL(page.url()).pathname,'/masters/'+secondBirth.id);assert.equal(await db.customer.count({where:{name:'Synthetic Corporate Account'}}),1);assert.equal(await db.traveller.count({where:{customerId:secondBirth.id}}),0);check('Corporate customer creation retries safely, opens its master and does not invent a traveller');
+
+ await page.goto(base+url);await page.getByRole('button',{name:'Edit customer',exact:true}).click();
+ let dialog=page.getByRole('dialog',{name:'Edit customer master',exact:true});
+ await dialog.getByRole('button',{name:'Billing and company',exact:true}).click();
+ await dialog.getByLabel('Billing name',{exact:true}).fill('Synthetic Corporate Billing');await dialog.getByLabel('Billing address',{exact:true}).fill('12 Synthetic Street');
+ await postResult(page,api,()=>dialog.getByRole('button',{name:'Save master',exact:true}).click());
+ await dialog.waitFor({state:'hidden'});await page.getByText('Synthetic Corporate Billing',{exact:true}).waitFor();check('Five direct navigation sections and customer billing saved through real UI');
+ await page.getByRole('button',{name:'Add traveller',exact:true}).click();dialog=page.getByRole('dialog',{name:'Add traveller',exact:true});
+ await dialog.getByLabel('Full name as on travel ID *',{exact:true}).fill('Riya Profile Test');await dialog.getByLabel('Date of birth',{exact:true}).fill('1991-05-04');
+ await dialog.getByRole('button',{name:'Emergency contact',exact:true}).click();await dialog.getByLabel('Emergency contact name',{exact:true}).fill('Synthetic Contact');await dialog.getByLabel('Emergency contact phone',{exact:true}).fill('+919000000099');
+ await dialog.getByRole('button',{name:'Flight preferences',exact:true}).click();await dialog.getByLabel('Home airport (IATA code)',{exact:true}).fill('BOM');await dialog.getByLabel('Seat preference',{exact:true}).selectOption('AISLE');
+ await postResult(page,api,()=>dialog.getByRole('button',{name:'Save master',exact:true}).click());await dialog.waitFor({state:'hidden'});
+ await page.getByRole('button',{name:'Travellers & memberships',exact:true}).click();await page.getByRole('heading',{name:'Riya Profile Test',exact:true}).waitFor();
+ const traveller=await db.traveller.findFirstOrThrow({where:{customerId:fixture.customerId,fullName:'Riya Profile Test'}});
+ const card=page.locator('section').filter({has:page.getByRole('heading',{name:'Riya Profile Test',exact:true})});
+ await card.getByText('Synthetic Contact · +919000000099',{exact:true}).waitFor();check('Traveller name, birth date, emergency contact and flight preferences persist');
+ async function membership(provider,program,number,carrier,type='AIRLINE'){
+  await card.getByRole('button',{name:'Add membership',exact:true}).click();const d=page.getByRole('dialog',{name:'Add membership',exact:true});
+  await d.getByLabel('Membership type',{exact:true}).selectOption(type);await d.getByLabel('Airline / provider *',{exact:true}).fill(provider);await d.getByLabel('Program name *',{exact:true}).fill(program);await d.getByLabel('Membership number *',{exact:true}).fill(number);
+  if(type==='AIRLINE')await d.getByLabel('Eligible airline codes (comma separated)',{exact:true}).fill(carrier);
+  await d.getByLabel('Preferred account for this program',{exact:true}).check();
+  await postResult(page,api,()=>d.getByRole('button',{name:'Save master',exact:true}).click());await d.waitFor({state:'hidden'});await card.getByRole('heading',{name:program,exact:true}).waitFor();
+ }
+ await membership('Emirates','Skywards','SYNTHETIC-EK-001','EK');await membership('Air France / KLM','Flying Blue','SYNTHETIC-AFKL-002','AF, KL');await membership('Fixture Hotels','Fixture Rewards','SYNTHETIC-HOTEL-003','','HOTEL');
+ assert.equal(await db.travellerLoyaltyMembership.count({where:{travellerId:traveller.id}}),3);
+ await capture(page,'02-traveller-memberships');check('Three memberships on one traveller, shared AF/KL program and hotel loyalty');
+ await card.getByRole('button',{name:'Add travel document',exact:true}).click();dialog=page.getByRole('dialog',{name:'Add travel document',exact:true});
+ await dialog.getByLabel('Document number *',{exact:true}).fill('SYNTHETIC-PASSPORT-001');await dialog.getByLabel('Expiry / valid until',{exact:true}).fill('2031-12-31');await dialog.getByLabel('Use as primary passport for new work',{exact:true}).check();
+ await postResult(page,api,()=>dialog.getByRole('button',{name:'Save master',exact:true}).click());await dialog.waitFor({state:'hidden'});
+ assert.equal((await db.traveller.findUniqueOrThrow({where:{id:traveller.id}})).passportNumber.startsWith('enc:v1.'),true);
+ await card.getByRole('button',{name:'Add travel document',exact:true}).click();dialog=page.getByRole('dialog',{name:'Add travel document',exact:true});
+ await dialog.getByLabel('Document type',{exact:true}).selectOption('VISA');await dialog.getByLabel('Document number *',{exact:true}).fill('SYNTHETIC-VISA-002');await dialog.getByLabel('Expiry / valid until',{exact:true}).fill('2020-01-01');await dialog.getByLabel('Visa type',{exact:true}).fill('Visitor');await dialog.getByLabel('Entries',{exact:true}).selectOption('MULTIPLE');
+ await postResult(page,api,()=>dialog.getByRole('button',{name:'Save master',exact:true}).click());await dialog.waitFor({state:'hidden'});
+ assert.equal(await db.travellerIdentityDocument.count({where:{travellerId:traveller.id}}),2);await card.getByText('Expired — retain for history; review travel requirements.',{exact:true}).waitFor();check('Primary passport synchronization and multiple historic travel identities');
+ await page.getByRole('button',{name:'Upload document',exact:true}).first().click();dialog=page.getByRole('dialog',{name:'Upload document',exact:true});
+ await dialog.getByLabel('Document type *',{exact:true}).fill('Synthetic passport scan');await dialog.getByLabel('Traveller',{exact:true}).selectOption(traveller.id);
+ await dialog.getByLabel('File *',{exact:false}).setInputFiles({name:'fixture.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF')});
+ await postResult(page,api+'/documents',()=>dialog.getByRole('button',{name:'Upload document',exact:true}).click());await dialog.waitFor({state:'hidden'});
+ const document=await db.document.findFirstOrThrow({where:{travellerId:traveller.id,docType:'Synthetic passport scan'}});assert.equal(document.verificationStatus,'PENDING');assert.equal(document.uploadSource,'STAFF');
+ await card.getByRole('button',{name:'Edit travel document',exact:true}).first().click();dialog=page.getByRole('dialog',{name:'Edit travel document',exact:true});await dialog.getByLabel('Link an uploaded traveller file',{exact:true}).selectOption(document.id);
+ await postResult(page,api,()=>dialog.getByRole('button',{name:'Save master',exact:true}).click());await dialog.waitFor({state:'hidden'});await card.getByRole('button',{name:'View uploaded file',exact:true}).waitFor();
+ const signedResponse=await context.request.post(base+'/api/documents/'+document.id+'/file');assert(signedResponse.ok(),'Staff file signing must succeed: '+signedResponse.status());const signed=await signedResponse.json();assert(signed.url);const download=await context.request.get(new URL(signed.url,base).href);assert(download.ok());assert((await download.body()).subarray(0,5).equals(Buffer.from('%PDF-')));assert.equal(await db.documentAccessLog.count({where:{documentId:document.id}}),1);
+ await page.getByRole('button',{name:'Documents',exact:true}).click();await page.getByText('Synthetic passport scan',{exact:true}).waitFor();await capture(page,'03-customer-document-library');check('Manual private upload, pending verification and explicit traveller file link');
+ await page.getByRole('button',{name:'Edit customer',exact:true}).click();dialog=page.getByRole('dialog',{name:'Edit customer master',exact:true});await dialog.getByLabel('City',{exact:true}).fill('Synthetic Retry City');
+ const retry=await lostResponseRetry(page,api,dialog.getByRole('button',{name:/^(Save master|Retry same save)$/}),dialog.getByRole('alert'));
+ assert.equal(retry.result.replayed,true);await dialog.waitFor({state:'hidden'}); const owner=await db.user.findUniqueOrThrow({where:{email:'review@visual.test'}});assert(await db.masterMutation.findUnique({where:{actorId_requestKey:{actorId:owner.id,requestKey:retry.key}}}));check('Lost acknowledgement retries the exact same save without duplicating the transaction');
+ await page.getByRole('button',{name:'Staff activity',exact:true}).click();await page.getByText('Asha Verma · Uploaded file',{exact:true}).waitFor();await capture(page,'04-staff-audit');
+ const audit=await db.auditLog.findMany({where:{action:{startsWith:'MASTER_'}}});assert(!JSON.stringify(audit).includes('SYNTHETIC-PASSPORT-001'));assert(!JSON.stringify(audit).includes('SYNTHETIC-AFKL-002'));check('Actual staff actor and field-level audit without raw membership/passport values');
+ await page.setViewportSize({width:390,height:844});await capture(page,'05-mobile-master');await page.getByLabel('Customer master section',{exact:true}).selectOption('travellers');await capture(page,'06-mobile-memberships');
+ await card.getByRole('button',{name:'Edit traveller profile',exact:true}).click();assert(await page.getByRole('dialog').evaluate(el=>el.scrollWidth<=el.clientWidth+1),'Traveller editor controls must fit the phone dialog, not merely the page.');await capture(page,'07-mobile-editor');await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();check('Mobile master, traveller lists and editor have no page overflow');
+ const role=await db.role.findUniqueOrThrow({where:{key:'TICKETING_EXECUTIVE'}}),staff=await db.user.create({data:{name:'Restricted Profile Staff',employeeCode:'MASTER-UI',email:'master-staff@visual.test',phone:'',passwordHash:owner.passwordHash,roleId:role.id,branchId:owner.branchId}});
+ await page.setViewportSize({width:1440,height:1000});await page.reload();await page.getByRole('button',{name:'Assign relationship manager',exact:true}).click();dialog=page.getByRole('dialog',{name:'Assign relationship manager',exact:true});await dialog.getByLabel('Relationship manager *',{exact:true}).selectOption(staff.id);await postResult(page,api,()=>dialog.getByRole('button',{name:'Save master',exact:true}).click());await dialog.waitFor({state:'hidden'});assert.equal((await db.customer.findUniqueOrThrow({where:{id:fixture.customerId}})).assignedToId,staff.id);check('Admin assigns an eligible relationship manager through Masters; staff profile access follows that assignment');
+ const s=await session(1440,false);assert((await s.context.request.post(base+'/api/auth/login',{data:{email:staff.email,password:'Review-Visual-2026!'}})).ok());await s.page.goto(base+url);
+ const restricted=await (await s.context.request.get(base+api)).json();assert.equal(restricted.travellers.find(t=>t.id===traveller.id).memberships[0].memberNumber,null);assert(!JSON.stringify(restricted).includes('SYNTHETIC-PASSPORT-001'));
+ assert.equal((await s.context.request.post(base+api,{headers:{'x-master-context':restricted.actorContext},data:{action:'IDENTITY',requestKey:randomUUID(),baseRevision:restricted.revision,travellerId:traveller.id,data:{}}})).status(),403);
+ const outside=await db.customer.findFirstOrThrow({where:{id:{not:fixture.customerId},OR:[{assignedToId:null},{assignedToId:{not:staff.id}}]}});assert.equal((await s.context.request.get(base+'/api/masters/'+outside.id)).status(),404);
+ assert.equal((await s.context.request.post(base+api,{headers:{'x-master-context':'stale'},data:{}})).status(),409);
+ await s.page.getByRole('button',{name:'Travellers & memberships',exact:true}).click();await capture(s.page,'08-staff-masked-master');check('Restricted staff see masked numbers, cannot change identities and cannot read an unassigned customer');
+ await page.goto(base+url+'?tab=payments');await page.getByRole('link',{name:'Customer statement',exact:true}).click();await page.waitForURL('**/reports?**');assert.equal(new URL(page.url()).searchParams.get('customerId'),fixture.customerId);check('The customer Accounts section opens its scoped statement directly, including legacy payment deep links');
+ await s.context.close();await context.close();
+});

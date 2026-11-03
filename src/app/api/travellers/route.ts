@@ -1,3 +1,4 @@
+import {boundedJson} from "@/lib/bounded-json";
 import { requireSession, jsonError, ApiError, canTouchRecord } from "@/lib/guard";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
@@ -8,8 +9,9 @@ import { birthDate, passportExpiry, passportIssueDate, relation } from "@/lib/tr
 export async function POST(req: Request) {
   try {
     const user = await requireSession("traveller:create");
-    const b = await req.json();
-    const customerId: string = b.customerId;
+    const b = await boundedJson(req);
+    if (!user.permissions.includes("sensitive:view") && (b.knownTravellerNumber || b.frequentFlyer || b.passportNumber || b.passportPlace)) throw new ApiError(403,"Private traveller identifiers require sensitive-data permission.");
+    const customerId = text(b.customerId, "Customer", 200) ?? "";
     const name: string | null = text(b.fullName, "Traveller name", 150);
     if (!customerId || !name) throw new ApiError(400, customerId ? "Enter the traveller's full name." : "customerId and fullName required");
 

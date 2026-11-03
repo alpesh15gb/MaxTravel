@@ -24,7 +24,7 @@ try {
   for (let n = 0; n < 80; n++) { try { if ((await fetch(origin + "/api/health")).ok) { ready = true; break; } } catch {} await new Promise(r => setTimeout(r, 500)); }
   assert(ready, logs);
   await post("/api/auth/login", { email: user.email, password });
-  const booking=await post("/api/bookings",{customerId:customer.id,travellerIds:customer.travellers.map(t=>t.id),fare:1000});
+  const booking=await post("/api/bookings",{customerId:customer.id,travellerIds:customer.travellers.map(t=>t.id),sector:"BOM-DEL",travelScope:"DOMESTIC",fare:1000});
   const invoiceBody={customerId:customer.id,bookingId:booking.bookingId,amount:1000,description:"Private description not stored in replay record",requestKey:randomUUID()};
   const invoice=await post("/api/invoices",invoiceBody);
   assert.deepEqual(await post("/api/invoices",invoiceBody),invoice,"Full invoiced balance replay must bypass mutable aggregate ceiling");

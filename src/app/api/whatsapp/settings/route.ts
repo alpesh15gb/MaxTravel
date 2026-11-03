@@ -36,6 +36,7 @@ export async function POST(req: Request) {
         await transactionAudit(tx,user,"UPDATE","WhatsAppAutomation","paymentTemplate",b.paymentTemplate === null ? "Default payment template restored" : "Payment template updated");
       } else {
         if (!user.permissions.includes("settings:manage")) throw new ApiError(403,"Administrator access required.");
+        if(Array.isArray(b.rules)&&b.rules.length)throw new ApiError(409,"Automatic WhatsApp messages are disabled. Use customer email or an explicit manual message.");
         if (!Array.isArray(b.rules) || b.rules.some((r: unknown)=>!RULES.includes(r as typeof RULES[number]))) throw new ApiError(400,"Choose valid automation rules.");
         await tx.settings.upsert({ where: { key: "whatsapp.automation" }, create: { key: "whatsapp.automation", value: JSON.stringify(b.rules) }, update: { value: JSON.stringify(b.rules) } });
         await tx.whatsAppMessage.updateMany({ where: { status: "QUEUED", automation: { in: RULES.filter(r=>!b.rules.includes(r)) } }, data: { status: "CANCELLED", lastError: "Automatic messaging rule disabled." } });

@@ -1,3 +1,5 @@
+import {boundedJson} from "@/lib/bounded-json";
+import {passportReadiness} from "@/lib/travel-readiness";
 import { hotelDate, hotelStayProblem } from "@/lib/manual-hotel";
 import { isReservedBookingSource } from "@/lib/booking-policy";
 import { requireSession, jsonError, ApiError, canTouchRecord } from "@/lib/guard";
@@ -6,13 +8,15 @@ import { optionalId, money, date, text, transactionAudit, travellersFor } from "
 import { isWithdrawnBooking } from "@/lib/receivables";
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireSession("ticketing:edit"); const { id } = await ctx.params; const b = await req.json();
+    const user = await requireSession("ticketing:edit"); const { id } = await ctx.params; const b = await boundedJson(req);
     if (isReservedBookingSource(b.gdsSource)) throw new ApiError(400, "Online booking sources can only be set by the booking integration.");
     await prisma.$transaction(async tx => {
       const current = await tx.booking.findUnique({ where: { id }, include: { tickets: true, payments: true, Invoice: true } });
       if (!current) throw new ApiError(404, "Booking not found.");
       if (current.gdsSource === "TRIPJACK_API") throw new ApiError(409,"Manage online bookings from the booking platform.");
+      if(b.gdsSource!==undefined&&optionalId(b.gdsSource)==="TRIPJACK_API")throw new ApiError(400,"Online booking sources are assigned by the signed integration, not manual entry.");
       if (!canTouchRecord(user, current)) throw new ApiError(403, "Booking is outside your access.");
+      if(current.reissueOfId)throw new ApiError(409,"Reschedule price and itinerary come from the reviewed change quote. Reject an unissued request and create a new quote if those terms changed.");
       if (isWithdrawnBooking(current.status)) throw new ApiError(400, "Closed bookings cannot be amended.");
       if (b.travellerIds !== undefined) {
         if (current.tickets.length) throw new ApiError(400, "Issued tickets lock the passenger list. Use a reissue or a new booking for passenger changes.");
@@ -20,6 +24,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         await tx.bookingTraveller.deleteMany({ where: { bookingId: id } });
         await tx.bookingTraveller.createMany({ data: travellers.map(traveller => ({ bookingId: id, travellerId: traveller.id })) });
       }
+      if(b.travelScope!==undefined&&typeof b.travelScope!=="string")throw new ApiError(400,"Choose a valid travel scope.");
+      const travelScope=b.travelScope??current.travelScope;if(!["UNSPECIFIED","DOMESTIC","INTERNATIONAL"].includes(travelScope))throw new ApiError(400,"Choose a valid travel scope.");
+      const travelEndDate=b.travelEndDate===undefined?current.travelEndDate:date(b.travelEndDate,"Travel end date");
+      const start=b.travelDate===undefined?current.travelDate:date(b.travelDate,"Travel date");if(start&&travelEndDate&&travelEndDate<start)throw new ApiError(400,"Travel end date cannot precede start date.");
+      if(!["FLIGHT","HOTEL"].includes(current.product)&&current.status==="CONFIRMED")throw new ApiError(409,"Confirmed service details are locked. Use cancellation and a replacement service for changed arrangements.");
       const hotel = current.product === "HOTEL";
       if(hotel && ["airline","flightNo","ticketingDeadline"].some(key=>b[key]!==undefined))throw new ApiError(400,"Hotel stays do not have airline tickets or ticketing deadlines.");
       const pnr = b.pnr === undefined ? current.pnr : hotel ? text(b.pnr,"Supplier confirmation reference",100) : optionalId(b.pnr);
@@ -28,7 +37,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       const hotelName=hotel&&b.hotelName!==undefined?text(b.hotelName,"Hotel name",200):current.hotelName;
       if(hotel){const problem=hotelStayProblem({hotelName,hotelCheckIn,hotelCheckOut,pnr},current.status==="CONFIRMED");if(problem)throw new ApiError(400,problem);}
       else if(["hotelName","hotelCheckIn","hotelCheckOut"].some(key=>b[key]!==undefined))throw new ApiError(400,"Hotel stay fields only apply to hotel bookings.");
-      if (current.tickets.length && pnr !== current.pnr) throw new ApiError(400, "Issued tickets need a reissue workflow to change PNR.");
+      if (current.tickets.length && current.pnr && pnr !== current.pnr) throw new ApiError(400, "Issued tickets need a reissue workflow to change PNR.");
+      if(current.tickets.length){
+        const changedText=(["airline","sector","flightNo","gdsSource"] as const).some(key=>b[key]!==undefined&&current[key]&&optionalId(b[key])!==current[key]);
+        if(changedText||current.travelDate&&start?.getTime()!==current.travelDate.getTime()||current.travelEndDate&&travelEndDate?.getTime()!==current.travelEndDate.getTime())throw new ApiError(409,"Issued itinerary details are locked. Use the reviewed reschedule workflow for changed travel arrangements.");
+        if(travelScope==="UNSPECIFIED")throw new ApiError(400,"Choose the recorded domestic or international travel scope.");
+        const people=await tx.traveller.findMany({where:{bookingTravellers:{some:{bookingId:id}}}});
+        const problems=passportReadiness(people,travelScope,"FLIGHT",travelEndDate??start);if(problems.length)throw new ApiError(400,problems.join(" "));
+      }
       const financial = ["fare", "taxes", "markup", "serviceFee", "supplierCost"] as const;
       const values = Object.fromEntries(financial.map(key => [key, b[key] === undefined ? current[key] : money(b[key], key)])) as Record<typeof financial[number], number>;
       if (financial.some(key => values[key] !== current[key])) {
@@ -39,7 +55,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       if (supplierId && !await tx.supplier.findUnique({ where: { id: supplierId } })) throw new ApiError(400, "Supplier not found.");
       if(hotel&&current.status==="CONFIRMED"&&(hotelName!==current.hotelName||pnr!==current.pnr||hotelCheckIn?.getTime()!==current.hotelCheckIn?.getTime()||hotelCheckOut?.getTime()!==current.hotelCheckOut?.getTime()||supplierId!==current.supplierId))throw new ApiError(409,"Confirmed hotel stay details are locked. Record cancellation terms and create a new stay for changed supplier arrangements.");
       const sellingPrice = money(values.fare + values.taxes + values.markup + values.serviceFee);
-      await tx.booking.update({ where: { id }, data: { ...values, sellingPrice, pnr, supplierId, hotelName,hotelCheckIn,hotelCheckOut,status: !hotel && pnr && current.status === "ENQUIRY" ? "PNR_CREATED" : current.status, airline: b.airline === undefined ? current.airline : optionalId(b.airline), sector: b.sector === undefined ? current.sector : optionalId(b.sector), flightNo: b.flightNo === undefined ? current.flightNo : optionalId(b.flightNo), gdsSource: b.gdsSource === undefined ? current.gdsSource : optionalId(b.gdsSource), travelDate: b.travelDate === undefined ? current.travelDate : date(b.travelDate), ticketingDeadline: b.ticketingDeadline === undefined ? current.ticketingDeadline : date(b.ticketingDeadline) } });
+      await tx.booking.update({ where: { id }, data: { ...values,travelScope,travelEndDate:hotel?hotelCheckOut:travelEndDate,serviceDescription:b.serviceDescription===undefined?current.serviceDescription:text(b.serviceDescription,"Service description",2000), sellingPrice, pnr, supplierId, hotelName,hotelCheckIn,hotelCheckOut,status: current.product==="FLIGHT" && pnr && current.status === "ENQUIRY" ? "PNR_CREATED" : current.status, airline: b.airline === undefined ? current.airline : optionalId(b.airline), sector: b.sector === undefined ? current.sector : optionalId(b.sector), flightNo: b.flightNo === undefined ? current.flightNo : optionalId(b.flightNo), gdsSource: b.gdsSource === undefined ? current.gdsSource : optionalId(b.gdsSource), travelDate: hotel?hotelCheckIn:b.travelDate === undefined ? current.travelDate : date(b.travelDate), ticketingDeadline: b.ticketingDeadline === undefined ? current.ticketingDeadline : date(b.ticketingDeadline) } });
       await transactionAudit(tx, user, "EDIT", "Booking", id, "Booking details corrected");
     });
     return Response.json({ ok: true });

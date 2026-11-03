@@ -28,7 +28,7 @@ export async function buildReport(user: SessionUser, params: URLSearchParams) {
   const dates = { gte: period.start, lt: period.end };
   // One transaction gives every card and table the same database snapshot.
   const [bookings, cases, invoices, payments, refunds, tasks] = await prisma.$transaction([
-    prisma.booking.findMany({ where: work, select: { id:true, bookingNo:true, status:true, sellingPrice:true, supplierCost:true, cancellationSupplierCharge:true, cancellationAgencyFee:true, currency:true, bookingDate:true, customer:{select:{name:true}}, payments:{select:{amount:true}}, refunds:{select:{amount:true,status:true}} } }),
+    prisma.booking.findMany({ where: work, select: { id:true, bookingNo:true, status:true, sellingPrice:true, supplierCost:true,supplierCostConfirmed:true, cancellationSupplierCharge:true, cancellationAgencyFee:true, currency:true, bookingDate:true, customer:{select:{name:true}}, payments:{select:{amount:true}}, refunds:{select:{amount:true,status:true}} } }),
     prisma.visaCase.findMany({ where: work, select: { id:true, caseNo:true, createdAt:true, destination:true, sellingPrice:true, amountReceived:true, stage:{select:{name:true}}, customer:{select:{name:true}} } }),
     prisma.invoice.findMany({ where: { customer:{is:customerScope} }, select: { invoiceNo:true, bookingId:true, visaCaseId:true, amount:true, amountPaid:true, status:true, issuedOn:true, dueDate:true, customer:{select:{name:true}} } }),
     prisma.payment.findMany({ where: { customer:{is:customerScope}, receivedOn:dates, OR:[{bookingId:null},{booking:{currency:"INR"}}] }, select:{ amount:true, mode:true, receivedOn:true } }),
@@ -46,7 +46,7 @@ export async function buildReport(user: SessionUser, params: URLSearchParams) {
   const collected = sum(payments.map(p=>p.amount));
   const returned = sum(refunds.map(r=>r.amount));
   const confirmed = periodBookings.filter(b=>!["ENQUIRY","QUOTE_SENT"].includes(b.status));
-  const costed = confirmed.filter(b=>isWithdrawnBooking(b.status)?hasCancellationAllocation(b):b.supplierCost>0);
+  const costed = confirmed.filter(b=>isWithdrawnBooking(b.status)?hasCancellationAllocation(b):b.supplierCostConfirmed);
   const unknownCancellations=periodBookings.filter(b=>isWithdrawnBooking(b.status)&&!hasCancellationAllocation(b)).length;
   const trend = new Map<string, {month:string;sales:number;collections:number}>();
   for (let d = new Date(period.start.getTime()+330*60000); d.toISOString().slice(0,7) <= period.to.slice(0,7); d = new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))) {
@@ -71,7 +71,7 @@ export async function buildReport(user: SessionUser, params: URLSearchParams) {
     ...invoices.filter(i=>!i.bookingId&&!i.visaCaseId&&i.status!=="PAID"&&i.status!=="CREDITED").map(i=>({reference:i.invoiceNo,customer:i.customer.name,type:"Invoice",amount:balanceOf(i.amount,i.amountPaid),href:"/payments"})),
   ].filter(r=>r.amount>0).sort((a,b)=>b.amount-a.amount);
   return {period:{from:period.from,to:period.to},generatedAt:new Date().toISOString(),sales,collected,returned,netCollections:round2(collected-returned),receivables,
-    margin:sum(costed.map(b=>isWithdrawnBooking(b.status)?b.cancellationAgencyFee!:round2(b.sellingPrice-b.supplierCost))),uncosted:confirmed.filter(b=>!isWithdrawnBooking(b.status)&&b.supplierCost<=0).length,unknownCancellations,
+    margin:sum(costed.map(b=>isWithdrawnBooking(b.status)?b.cancellationAgencyFee!:round2(b.sellingPrice-b.supplierCost))),uncosted:confirmed.filter(b=>!isWithdrawnBooking(b.status)&&!b.supplierCostConfirmed).length,unknownCancellations,
     excludedCurrency:bookings.filter(b=>b.currency!=="INR").length,
     bookings:periodBookings.length,visaCases:periodCases.length,trend:[...trend.values()],pipeline:[...pipeline].map(([label,value])=>({label,value})),visaStages:[...visaStages].map(([label,value])=>({label,value})),modes:[...modes].map(([label,value])=>({label,value})),
     tasks:[...taskStatuses].map(([label,value])=>({label,value})),outstanding:outstanding.slice(0,100),outstandingCount:outstanding.length };

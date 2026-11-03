@@ -278,7 +278,7 @@ export default function WorkDesk({
                 className="control"
                 type="search"
                 defaultValue={params.get("q") ?? ""}
-                placeholder="Case ID, action or colleague"
+                placeholder="Max ID, action or colleague"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") change("q", e.currentTarget.value);
                 }}

@@ -23,7 +23,7 @@ export default async function Customer360Page({
   }
   const { id } = await params;
   const alias=await prisma.customer.findUnique({where:{id}});
-  if(alias?.mergedIntoId&&canTouchRecord(user,alias))redirect(`/customers/${alias.mergedIntoId}`);
+  if(alias?.mergedIntoId&&canTouchRecord(user,alias))redirect(`/masters/${alias.mergedIntoId}`);
   const { tab } = await searchParams;
   const data = await loadCustomer360(id, user);
   if (!data) notFound();

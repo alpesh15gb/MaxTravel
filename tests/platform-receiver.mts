@@ -13,6 +13,7 @@ try{
  assert.equal((await send(base,randomUUID(),false)).response.status,401);
  const first=await send(base);assert.equal(first.response.status,200);const mapped=await first.response.json();assert.equal((await first.repeat()).status,200);
  assert.equal((await prisma.booking.findUniqueOrThrow({where:{id:mapped.bookingId}})).hotelName,"Confirmed Test Hotel");
+ const imported=await prisma.booking.findUniqueOrThrow({where:{id:mapped.bookingId}});assert.equal(imported.supplierCostConfirmed,true);assert.equal(imported.supplierCost,90);assert.equal(imported.travelEndDate?.toISOString().slice(0,10),"2026-12-22");
  assert.equal(await prisma.booking.count({where:{id:mapped.bookingId}}),1);assert.equal(await prisma.payment.count({where:{bookingId:mapped.bookingId}}),1);
  const outboundBefore=await prisma.whatsAppMessage.count({where:{thread:{customerId:mapped.customerId}}});
  const tracking={id:randomUUID(),status:"SUPPLIER_PENDING",supplierStatus:"CANCELLATION_PENDING",lastCheckedAt:"2026-11-01T10:00:00Z",nextCheckAt:"2026-11-02T10:00:00Z",followUpRequired:true,checkError:null};

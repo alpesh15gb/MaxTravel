@@ -92,6 +92,7 @@ export async function travellersFor(tx: Prisma.TransactionClient, customerId: st
 }
 export async function transactionAudit(tx: Prisma.TransactionClient, user: SessionUser, action: string, entity: string, entityId: string, detail: string) {
   if (!(entity === "VisaCase" && action === "STAGE")) await journalEntity(tx, entity, entityId, user.id);
-  await tx.auditLog.create({ data: { userId: user.id, action, entity, entityId, detail } });
+  const event=await tx.auditLog.create({ data: { userId: user.id, action, entity, entityId, detail } });
+  if(["Booking","VisaCase","Payment"].includes(entity)){const {queueTransactionEmail}=await import("./customer-email");await queueTransactionEmail(tx,user.id,entity,entityId,action,event.id);}
   await recordCaseEventForEntity(tx,user.id,action,entity,entityId);
 }

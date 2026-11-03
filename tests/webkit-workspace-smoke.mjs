@@ -87,19 +87,18 @@ await withFixtureCleanup(async () => {
     await screenshot(`${name}-dashboard`);
     const mobile = name === "iphone-emulation";
     const navigation = mobile ? await openMobileDrawer() : page.locator("#workspace-navigation");
-    const customer = navigation.getByRole("link", { name: "Cases", exact: true });
+    const customer = navigation.getByRole("link", { name: "Masters", exact: true });
     const reachable = await customer.evaluate(node => { const r = node.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { top: r.top, bottom: r.bottom, height: innerHeight, hit: node === hit || node.contains(hit) }; });
-    assert(reachable.hit && reachable.top >= 0 && reachable.bottom <= reachable.height, "Case navigation must be genuinely pointer-reachable");
+    assert(reachable.hit && reachable.top >= 0 && reachable.bottom <= reachable.height, "Masters navigation must be genuinely pointer-reachable");
     if (mobile) await screenshot(`${name}-navigation`);
-    await customer.click(); await page.waitForURL("**/cases");
+    await customer.click(); await page.waitForURL("**/masters");
     if (mobile) await page.locator("#workspace-navigation").waitFor({ state: "hidden" });
-    await page.getByRole("navigation",{name:"Related client workspaces",exact:true}).getByRole("link",{name:"Customers",exact:true}).click();await page.waitForURL("**/customers");
-    const seededCustomer = page.locator(`main a[href="/customers/${fixture.customerId}"]:visible`).filter({ hasText: "Meera Sharma" });
+    const seededCustomer = page.locator(`main a[href="/masters/${fixture.customerId}"]:visible`).filter({ hasText: "Meera Sharma" });
     await seededCustomer.waitFor();
     assert((await seededCustomer.innerText()).includes("Meera Sharma"), "Seeded customer content must render before capture");
     await screenshot(`${name}-customers`);
-    await seededCustomer.click(); await page.waitForURL(`**/customers/${fixture.customerId}`);
-    const identity = page.getByRole("region", { name: "Customer record", exact: true });
+    await seededCustomer.click(); await page.waitForURL(`**/masters/${fixture.customerId}`);
+    const identity = page.locator("main");
     await identity.getByRole("heading", { name: "Meera Sharma", exact: true }).waitFor();
     assert((await identity.innerText()).includes("meera@example.test"), "Actual customer identity email must render");
     assert((await identity.innerText()).includes("+919812345678"), "Actual customer identity phone must render");
@@ -111,7 +110,8 @@ await withFixtureCleanup(async () => {
       if (url.origin === base && url.pathname === "/api/reports/accounts" && !url.searchParams.has("options")) reportReads.push(url);
     };
     page.on("request", captureReportRead);
-    await identity.getByRole("link", { name: "Customer statement", exact: true }).click();
+    if(mobile)await page.getByLabel("Customer master section",{exact:true}).selectOption("accounts");else await page.getByRole("button",{name:"Accounts",exact:true}).click();
+    await page.getByRole("link", { name: "Customer statement", exact: true }).click();
     await page.waitForURL("**/reports?**");
     // Use the associated accessible name; raw wrapping-label text includes every option.
     const customerFilter = page.locator("#report-filters").getByRole("combobox", { name: "Customer *", exact: true });

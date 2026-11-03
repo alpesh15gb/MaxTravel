@@ -1,3 +1,4 @@
+import CustomerMoments from "./CustomerMoments";
 import WorkRefresh from "./WorkRefresh";
 import Link from "next/link";
 import { PageHeader, EmptyState } from "./ui";
@@ -15,7 +16,7 @@ export default async function WorkHome({ user }: { user: SessionUser }) {
     services = [
       ...(user.permissions.includes("visa:create") ? ["VISA"] : []),
       ...(user.permissions.includes("ticketing:create")
-        ? ["FLIGHT", "HOTEL"]
+        ? ["FLIGHT", "HOTEL", "STAY", "BUS", "TRAIN", "INSURANCE"]
         : []),
     ];
   const [data, report, pulse, priority] = await Promise.all([
@@ -86,7 +87,7 @@ export default async function WorkHome({ user }: { user: SessionUser }) {
               <NewCase
                 services={services}
                 canAddCustomer={user.permissions.includes("customer:create")}
-                triggerLabel="New case"
+                triggerLabel="New Max ID"
               />
             ) : (
               <Link className="btn-primary" href="/work">
@@ -96,6 +97,7 @@ export default async function WorkHome({ user }: { user: SessionUser }) {
           </>
         }
       />
+      {manager&&<CustomerMoments user={user}/>}
       <div className="work-summary" aria-label="Daily work summary">
         {(manager
           ? [

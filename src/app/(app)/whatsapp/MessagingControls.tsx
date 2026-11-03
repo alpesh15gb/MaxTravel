@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { DEFAULT_PAYMENT_TEMPLATE, PAYMENT_TOKENS, PAYMENT_PREVIEW, paymentTemplateError, renderPaymentTemplate } from "@/lib/whatsapp-templates";
 import { useRouter } from "next/navigation";
 import type { MetaInboundHealth } from "@/lib/meta-inbound";
-const RULE_LABELS: Record<string,string> = { BOOKING_CREATED: "Booking created acknowledgement", TICKET_CONFIRMED: "Ticket confirmation after ticket numbers are recorded", HOTEL_CONFIRMED: "Hotel booking confirmation", BOOKING_DOCUMENT:"Send confirmed booking PDF automatically (Meta document template)", PAYMENT_RECEIVED: "Payment received acknowledgement", STATUS_UPDATE: "Visa stage changes", DOC_REQUEST: "Document upload links for new cases and document stages", APPOINTMENT_REMINDER: "Appointments within 24 hours", PNR_EXPIRY: "Ticketing deadlines within 24 hours", PAYMENT_REMINDER: "One reminder per overdue invoice due date" };
-export default function MessagingControls({ paymentTemplate, configured, canManage, rules, unmatched, customers }: {
+
+export default function MessagingControls({ paymentTemplate, configured, canManage, unmatched, customers }: {
   paymentTemplate: string; configured: boolean; canManage: boolean; rules: string[];
   unmatched: { id: string; phone: string; body: string; reason: string }[];
   customers: { id: string; name: string }[];
@@ -16,7 +16,6 @@ export default function MessagingControls({ paymentTemplate, configured, canMana
   const [savedTemplate,setSavedTemplate] = useState(paymentTemplate);
   const [notice,setNotice] = useState("");
   const templateError = paymentTemplateError(template);
-  const [enabled,setEnabled] = useState(rules);
   const [error,setError] = useState(""); const [busy,setBusy] = useState(false);
   useEffect(()=>{
     if (!configured) return;
@@ -39,9 +38,8 @@ export default function MessagingControls({ paymentTemplate, configured, canMana
       <strong>WhatsApp did not provide readable message content</strong>
       <p className="mt-1 text-xs leading-5">{inbound.errorCodes.length?`Meta error ${inbound.errorCodes.join(", ")}. `:""}Ask the sender to send a new plain-text message. If fresh text also fails, check the WhatsApp Business connection with Meta support using this error code. Opening Incoming documents cannot recover missing text.</p>
     </div>}
-    {configured&&canManage&&<details className="panel p-4"><summary className="cursor-pointer text-sm font-semibold">Automatic messages and unmatched replies</summary>
-      <p className="my-3 text-xs leading-5 text-slate-600">Messages require customer consent. Meta automatic updates also need a mapped, approved utility template. Editing local wording does not edit or approve a Meta template. Booking, ticket, payment confirmations and document requests send immediately; other updates send between 09:00 and 20:00 India time. Sending STOP withdraws consent. New rules start disabled; review them before enabling.</p>
-      <div className="space-y-3">{Object.entries(RULE_LABELS).map(([key,label])=><label key={key} className="flex items-center gap-3 text-sm"><input type="checkbox" checked={enabled.includes(key)} disabled={busy} onChange={async e=>{const next=e.target.checked?[...enabled,key]:enabled.filter(x=>x!==key);if(await save({rules:next}))setEnabled(next);}}/>{label}</label>)}</div>
+    {configured&&canManage&&<details className="panel p-4"><summary className="cursor-pointer text-sm font-semibold">Manual messaging settings and unmatched replies</summary>
+      <p className="my-3 text-sm text-slate-600">Customer email is the primary channel. Automatic WhatsApp messages are disabled. Staff can choose a manual message where appropriate; use protected delivery links for tickets and vouchers.</p>
       <div className="mt-5 border-t border-slate-200 pt-4">
         <label htmlFor="payment-template" className="text-sm font-semibold">Payment acknowledgement template</label>
         <p className="my-2 text-xs leading-5 text-slate-600">The balance is for the linked booking or visa case, or a standalone invoice, after this payment was recorded. Customer advances have no allocated balance. Changes apply to future messages; queued messages keep their original wording.</p>

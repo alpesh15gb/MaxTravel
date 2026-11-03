@@ -14,8 +14,8 @@ from urllib.parse import unquote, urlsplit
 import uuid
 
 HELPER_SHA = '5b88f65d42e5b006cdfecc092c254c9196669bb5762ef776a1e75027f44a5fac'
-KEEP = set('Branch Role User Settings VisaStage Checklist ChecklistItem QuickReply TravelPackage PackageMedia StaffSession StaffMfa StaffRecovery StaffAuthFailure AuditLog PlatformEvent _prisma_migrations'.split())
-BUSINESS = set('FinancialEntry ServiceCase DataImportBatch DataImportIdentity ServiceCaseEvent ServiceCaseMutation Customer Traveller VisaCase CaseTraveller VisaCaseStatus ChecklistLink Document DocumentAccessLog UploadLink Booking BookingTraveller Ticket Reissue Payment Invoice InvoiceCreditNote Supplier SupplierDue SupplierSettlement Refund Task ServiceWork WorkEvent WorkMutation TaskComment Note WhatsAppThread WhatsAppMessage CaseMessage WhatsAppAttachment Notification Activity WhatsAppInbound PlatformCommand PlatformCustomerLink PlatformBookingLink SalesLead SalesQuote IncomingMedia FinancialMutation'.split())
+KEEP = set('CollectionSettlement Branch Role User Settings VisaStage Checklist ChecklistItem QuickReply TravelPackage PackageMedia StaffSession StaffMfa StaffRecovery StaffAuthFailure AuditLog PlatformEvent _prisma_migrations'.split())
+BUSINESS = set('AgencyMutation BookingArtifact ClientDelivery ClientEmail PaymentCollection CollectionEvent StaffChatMessage StaffChatMember StaffChatThread MasterMutation TravellerLoyaltyMembership TravellerIdentityDocument FinancialEntry ServiceCase DataImportBatch DataImportIdentity ServiceCaseEvent ServiceCaseMutation Customer Traveller VisaCase CaseTraveller VisaCaseStatus ChecklistLink Document DocumentAccessLog UploadLink Booking BookingTraveller Ticket Reissue Payment Invoice InvoiceCreditNote Supplier SupplierDue SupplierSettlement Refund Task ServiceWork WorkEvent WorkMutation TaskComment Note WhatsAppThread WhatsAppMessage CaseMessage WhatsAppAttachment Notification Activity WhatsAppInbound PlatformCommand PlatformCustomerLink PlatformBookingLink SalesLead SalesQuote IncomingMedia FinancialMutation'.split())
 
 # Human-readable business references only. Staff IDs and unknown/future counters stay intact.
 BUSINESS_COUNTERS = tuple('counter.'+prefix for prefix in ('CASE','C','VC','BK','INV','CN','RCP','RF','DOC'))
@@ -66,6 +66,8 @@ def clean_candidate(path, email, clear_audit=False, reset_numbering=False):
     db = sqlite3.connect(path)
     try:
         owner, before = inspect_database(db, email)
+        if before.get('CollectionSettlement', 0) or db.execute("SELECT count(*) FROM PaymentCollection WHERE status NOT IN ('FAILED','CANCELLED','EXPIRED')").fetchone()[0]:
+            raise ResetError('Gateway captures or unresolved payment links require reconciliation before a business-data reset. No data cleared.')
         keys = BUSINESS_COUNTERS if reset_numbering else ()
         preserved = {t: digest_table(db,t,settings_keys=keys,settings_prefixes=DERIVED_SETTINGS_PREFIXES) for t in KEEP if not (clear_audit and t == 'AuditLog')}
         schema = db.execute('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name').fetchall()

@@ -1,3 +1,4 @@
+import {salesRecoveryContext} from "@/lib/sales-recovery-context";
 import { prisma } from "@/lib/db";
 import { requirePage } from "@/lib/guard";
 import { can } from "@/lib/rbac";
@@ -20,7 +21,7 @@ export default async function CustomersPage() {
   });
 
   return (
-    <CustomersClient
+    <CustomersClient recoveryContext={salesRecoveryContext(user)}
       customers={customers.map(c => ({ ...mapCustomer(c), createdLabel: dateLabel(c.createdAt) }))}
       canCreate={user.permissions.includes("customer:create")}
       canExport={can(user.permissions, "export:data")}

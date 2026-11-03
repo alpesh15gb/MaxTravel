@@ -4,21 +4,21 @@ import type { Permission } from "./permissions";
 export type SectionId = "today" | "customers" | "operations" | "finance" | "communications" | "reports" | "administration";
 export type WorkspaceLink = { href: string; label: string; description: string; icon: IconName; permission: Permission };
 export type WorkspaceSection = { id: SectionId; title: string; description: string; icon: IconName; href: string; links: WorkspaceLink[] };
-export const WORKSPACE_SECTIONS: WorkspaceSection[] = [
+const LEGACY_SECTIONS: WorkspaceSection[] = [
   { id: "today", title: "Home", description: "Priorities, appointments and follow-ups for your working day.", icon: "dashboard", href: "/dashboard", links: [
     { href: "/dashboard", label: "Daily overview", description: "See the next decisions and follow-ups.", icon: "dashboard", permission: "dashboard:view" },
-    { href: "/tasks", label: "Tasks & follow-ups", description: "Plan, assign and complete the next action.", icon: "tasks", permission: "task:view" },
+    { href: "/tasks", label: "Follow-up diary", description: "Plan, assign and complete the next action.", icon: "tasks", permission: "task:view" },
     { href: "/notifications", label: "Notifications", description: "Review updates to your work.", icon: "bell", permission: "dashboard:view" },
   ] },
-  { id: "customers", title: "Cases", description: "Start at the customer, register a case ID and follow the complete journey.", icon: "customers", href: "/cases", links: [
-    { href: "/cases", label: "Cases & journeys", description: "One permanent case ID from first contact to completion.", icon: "compass", permission: "customer:view" },
+  { id: "customers", title: "Max IDs", description: "Start at the customer, register a Max ID and follow the complete journey.", icon: "customers", href: "/cases", links: [
+    { href: "/cases", label: "Max IDs & journeys", description: "One permanent Max ID from first contact to completion.", icon: "compass", permission: "customer:view" },
     { href: "/customers", label: "Customers", description: "Customer details, travellers and related work.", icon: "customers", permission: "customer:view" },
     { href: "/sales", label: "Enquiries & quotes", description: "Prepare options and follow the customer's decision.", icon: "compass", permission: "customer:view" },
   ] },
   { id: "operations", title: "Work", description: "Manage bookings, visa applications and the documents needed to deliver them.", icon: "plane", href: "/work", links: [
     { href: "/work/service-alerts", label: "Service alerts", description: "Sales handoffs, holds, appointments and source exceptions.", icon: "bell", permission: "dashboard:view" },
     { href: "/work", label: "Work register", description: "Assign, execute, review and follow up work.", icon: "tasks", permission: "task:view" },
-    { href: "/ticketing", label: "Flights & hotels", description: "Itineraries, stays, confirmations and servicing.", icon: "plane", permission: "ticketing:view" },
+    { href: "/ticketing", label: "Travel bookings", description: "Itineraries, stays, confirmations and servicing.", icon: "plane", permission: "ticketing:view" },
     { href: "/online-bookings", label: "Online bookings", description: "Transactions received from the booking app.", icon: "plane", permission: "ticketing:view" },
     { href: "/visa", label: "Visa applications", description: "Applicants, appointments and application stages.", icon: "visa", permission: "visa:view" },
     { href: "/documents", label: "Document verification", description: "Review documents against the client's requirements.", icon: "documents", permission: "document:view" },
@@ -49,19 +49,31 @@ export const WORKSPACE_SECTIONS: WorkspaceSection[] = [
   ] },
 ];
 
+const legacy=(id:SectionId)=>LEGACY_SECTIONS.find(s=>s.id===id)!;
+export const WORKSPACE_SECTIONS:WorkspaceSection[]=[
+ {...legacy("customers"),title:"Masters",href:"/masters",description:"Customer details, travellers, documents and staff activity.",links:[{href:"/masters",label:"Customer masters",description:"Complete customer and traveller profiles.",icon:"customers",permission:"customer:view"},{href:"/email",label:"Customer email",description:"Queued updates, failures and delivery review.",icon:"message",permission:"email:send"},...legacy("communications").links, ...legacy("operations").links.filter(l=>l.href==="/documents")]},
+ {...legacy("operations"),title:"Bookings",href:"/ticketing",description:"Create and manage travel bookings and visa work.",links:legacy("operations").links.filter(l=>["/ticketing","/online-bookings","/visa"].includes(l.href)).concat(legacy("customers").links.filter(l=>["/cases","/sales"].includes(l.href)),legacy("finance").links.filter(l=>l.href!=="/suppliers"))},
+ {...legacy("today"),title:"Tasks & follow-ups",href:"/work",description:"Assign, perform and follow up daily work.",links:[{href:"/work",label:"Work register",description:"One queue for assigned work.",icon:"tasks",permission:"task:view"},...legacy("today").links,...legacy("operations").links.filter(l=>l.href==="/work/service-alerts")]},
+ {...legacy("finance"),title:"Suppliers",href:"/suppliers",description:"Supplier accounts, due dates and settlements.",links:legacy("finance").links.filter(l=>l.href==="/suppliers")},
+ {...legacy("reports"),title:"Reporting",href:"/reports/work",description:"Operational and financial reports and exports."},
+];
+
 export function availableSections(permissions: readonly string[]) {
-  return WORKSPACE_SECTIONS.map(section => ({ ...section, links: section.links.filter(link => permissions.includes(link.permission)) })).filter(section => section.links.length > 0);
+  return WORKSPACE_SECTIONS.map(section => ({ ...section, links: section.links.filter(link => permissions.includes(link.permission)) })).filter(section => section.links.length > 0).map(section=>({...section,href:section.links.some(link=>link.href===section.href)?section.href:section.links[0].href}));
 }
-export const findSection = (id: string) => WORKSPACE_SECTIONS.find(section => section.id === id);
+export const findSection = (id: string) => WORKSPACE_SECTIONS.find(section => section.id === id) ?? LEGACY_SECTIONS.find(section=>section.id===id);
 export function sectionForPath(path: string) {
-  if(path.startsWith("/work/settings")) return findSection("administration");
+  if(path==="/team-chat")return findSection("today");
+  if(path==="/customers"||path.startsWith("/customers/"))return findSection("customers");
+  if(path.startsWith("/settings")||path.startsWith("/employees")||path.startsWith("/audit")||path.startsWith("/imports")||path.startsWith("/checklists")||path.startsWith("/work/settings")) return findSection("administration");
   return WORKSPACE_SECTIONS.find(section => path === section.href || section.links.some(link => path === link.href || path.startsWith(link.href + "/"))) ??
     (path.startsWith("/visa-requirements") ? findSection("operations") : undefined);
 }
 export function sectionForKind(kind: string): SectionId {
-  if (/SALES|CASE_FOLLOW/.test(kind)) return "customers";
-  if (/PAYMENT|REFUND|SUPPLIER|INVOICE|CAPPED_DUES/.test(kind)) return "finance";
-  if (/WHATSAPP|MESSAGE|CAPPED_THREADS/.test(kind)) return "communications";
+  if (/SALES|CASE_FOLLOW/.test(kind)) return "operations";
+  if (/SUPPLIER/.test(kind)) return "finance";
+  if (/PAYMENT|REFUND|INVOICE|CAPPED_DUES/.test(kind)) return "operations";
+  if (/WHATSAPP|MESSAGE|CAPPED_THREADS/.test(kind)) return "customers";
   if (/TASK/.test(kind)) return "today";
   return "operations";
 }

@@ -1,3 +1,4 @@
+import {passportReadiness} from "@/lib/travel-readiness";
 import { requireSession, jsonError, ApiError, canTouchRecord } from "@/lib/guard";
 import { queueStageUpdate } from "@/lib/whatsapp-queue";
 import { prisma } from "@/lib/db";
@@ -10,7 +11,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const { stageId, note } = await req.json();
     if (!stageId) throw new ApiError(400, "Choose a workflow stage.");
     await prisma.$transaction(async tx => {
-      const vc = await tx.visaCase.findUnique({ where: { id }, include: { stage: true, documents: true, travellers: true, checklistLinks: true } });
+      const vc = await tx.visaCase.findUnique({ where: { id }, include: { stage: true, documents: true, travellers: {include:{traveller:true}}, checklistLinks: true } });
       if (!vc) throw new ApiError(404, "Case not found.");
       if (!canTouchRecord(user, vc)) throw new ApiError(403, "Case is outside your access.");
       const target = await tx.visaStage.findUnique({ where: { id: String(stageId) } });
@@ -24,6 +25,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       // stage let anyone with visa:edit quietly reopen an APPROVED case and erase the outcome.
       if ((decision || reopening) && !user.permissions.includes("visa:approve")) throw new ApiError(403, "Visa decisions require approval permission.");
       if (ready && target.seq >= ready.seq && !["REJECTED", "CLOSED"].includes(target.key)) {
+        const passportIssues=passportReadiness(vc.travellers.map(t=>t.traveller),"INTERNATIONAL","VISA",vc.travelEndDate??vc.travelDate);if(passportIssues.length)throw new ApiError(400,passportIssues.join(" "));
         if (!vc.travellers.length || vc.travellers.some(t => !vc.checklistLinks.some(link => link.travellerId === t.travellerId))) throw new ApiError(400, "Assign a checklist to every applicant in Manage applicant checklists before submission. Use an explicitly configured checklist even when no documents are required.");
         const items = await tx.checklistItem.findMany({ where: { id: { in: vc.documents.flatMap(d => d.checklistItemId ? [d.checklistItemId] : []) } } });
         const incomplete = vc.documents.filter(d => {

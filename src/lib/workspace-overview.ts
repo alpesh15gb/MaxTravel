@@ -8,19 +8,19 @@ export type WorkspaceStat = { label: string; value: string; href: string; note: 
 export function overviewFor(pulse: Awaited<ReturnType<typeof computePulse>>, sectionId: SectionId, user: SessionUser) {
   const section = findSection(sectionId)!;
   const sections = availableSections(user.permissions);
-  const links = sections.find(s => s.id === sectionId)?.links ?? [];
+  const links = sections.find(s => s.id === sectionId)?.links ?? section.links.filter(link=>user.permissions.includes(link.permission));
   const items = sectionId === "today" ? pulse.items : pulse.items.filter(item => sectionForKind(item.kind) === sectionId);
   const followups = pulse.items.filter(item => /^(CASE_FOLLOWUP|TASK_(?:OVERDUE|DUE_TODAY)|SALES_FOLLOW_UP|LIST_CAPPED_(?:TASKS|CASE_FOLLOW|SALES))/.test(item.kind));
   const stats: WorkspaceStat[] = [];
   const add = (label: string, value: number | null, href: string, icon: IconName, note: string) => { if (value !== null) stats.push({ label, value: String(value), href, icon, note }); };
-  if (sectionId === "today" || sectionId === "customers") add("Active cases", pulse.workspaceStats.activeCases, "/cases", "compass", "Open client journeys in your access scope");
+  if (sectionId === "today" || sectionId === "customers") add("Active Max IDs", pulse.workspaceStats.activeCases, "/cases", "compass", "Open client journeys in your access scope");
   if (sectionId === "today") {
     add("Due follow-ups", pulse.workspaceStats.dueFollowups, "/dashboard?view=followups", "tasks", "Due today in India, including overdue work");
     if(pulse.workspaceStats.activeCases!==null||pulse.workspaceStats.dueFollowups!==null||pulse.workspaceStats.unread!==null) add("Urgent priorities", items.filter(i => i.severity === "URGENT").length, "/dashboard?view=all&priority=URGENT", "clock", "In the current attention queue");
     add("Unread messages", pulse.workspaceStats.unread, "/whatsapp", "message", "Across your accessible customer conversations");
   } else if (sectionId === "customers") {
     add("Customers", pulse.workspaceStats.customers, "/customers", "customers", "Records you are permitted to view");
-    add("Case follow-ups shown", items.filter(i => i.kind === "CASE_FOLLOWUP").length, "/cases", "tasks", "Due and overdue cases in this queue");
+    add("Max ID follow-ups shown", items.filter(i => i.kind === "CASE_FOLLOWUP").length, "/cases", "tasks", "Due and overdue Max IDs in this queue");
     add("Sales actions shown", items.filter(i => /SALES/.test(i.kind)).length, "/sales", "compass", "Enquiries and quotation decisions to review");
   } else if (sectionId === "operations" || sectionId === "finance") {
     const allowed = sectionId === "operations" ? ["/visa", "/ticketing"] : ["/payments"];
@@ -32,7 +32,7 @@ export function overviewFor(pulse: Awaited<ReturnType<typeof computePulse>>, sec
   }
   const caseServices = user.permissions.includes("customer:view") ? [
     ...(user.permissions.includes("visa:create") ? ["VISA"] : []),
-    ...(user.permissions.includes("ticketing:create") ? ["FLIGHT", "HOTEL"] : []),
+    ...(user.permissions.includes("ticketing:create") ? ["FLIGHT", "HOTEL","STAY","BUS","TRAIN","INSURANCE"] : []),
   ] : [];
   const actionSections: Record<string, SectionId> = {case:"customers",customer:"customers",enquiry:"customers",followup:"today",booking:"operations",hotel:"operations",visa:"operations",online:"operations",documents:"communications",payment:"finance",invoice:"finance",advance:"finance",supplier:"finance",refund:"finance",report:"reports"};
   const actions = availableWorkActions(user.permissions).filter(action => action.id !== "case" && actionSections[action.id] === sectionId);

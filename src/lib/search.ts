@@ -26,14 +26,14 @@ export async function universalSearch(prisma:PrismaClient,query:string,user:Sess
  ]);
  const groups:SearchResponse["groups"]=[];const add=(key:SearchGroupKey,label:string,hits:Omit<SearchHit,"group">[])=>{if(hits.length)groups.push({key,label,hits:hits.map(h=>({...h,group:key}))});};
  add("CASE","Client cases",journeys.map(c=>({id:c.id,title:c.caseNo,subtitle:`${c.customer.name} · ${c.title}`,context:`${c.status} · ${c.owner.name}`,href:`/cases/${c.id}`})));
- add("CUSTOMER","Customers",customers.map(c=>({id:c.id,title:c.name,subtitle:`${c.code} · ${c.phone}`,context:c.city,href:`/customers/${c.id}`})));
+ add("CUSTOMER","Customers",customers.map(c=>({id:c.id,title:c.name,subtitle:`${c.code} · ${c.phone}`,context:c.city,href:`/masters/${c.id}`})));
  add("EMPLOYEE","Team",employees.map(e=>({id:e.id,title:e.name,subtitle:e.employeeCode,context:e.role.name,href:`/employees/${e.id}`})));
  add("VISA_CASE","Visa cases",cases.map(v=>({id:v.id,title:v.caseNo,subtitle:`${v.customer.name} · ${v.destination}`,context:v.stage.name,href:`/visa/${v.id}`})));
  add("BOOKING","Bookings & PNRs",bookings.map(b=>({id:b.id,title:b.pnr??b.bookingNo,subtitle:`${b.customer.name} · ${b.bookingNo}`,context:b.sector??"",href:`/ticketing/${b.id}`})));
- add("TRAVELLER","Travellers",travellers.map(t=>({id:t.id,title:t.fullName,subtitle:t.customer.name,context:sensitive?t.passportNumber??"":t.relation,href:`/customers/${t.customerId}?tab=travellers`})));
+ add("TRAVELLER","Travellers",travellers.map(t=>({id:t.id,title:t.fullName,subtitle:t.customer.name,context:sensitive?t.passportNumber??"":t.relation,href:`/masters/${t.customerId}?tab=travellers&traveller=${t.id}`})));
  add("TICKET","Tickets",tickets.map(t=>({id:t.id,title:t.ticketNo,subtitle:t.passenger,context:t.booking.bookingNo,href:`/ticketing/${t.bookingId}`})));
  add("INVOICE","Invoices",invoices.map(i=>({id:i.id,title:i.invoiceNo,subtitle:i.customer.name,context:`${inrAmount((i.amount-i.amountPaid))} balance`,href:`/payments?focus=${i.id}`})));
- add("RECEIPT","Receipts",receipts.map(p=>({id:p.id,title:p.receiptNo,subtitle:p.customer.name,context:`${inrAmount(p.amount)}`,href:`/customers/${p.customerId}?tab=payments`})));
+ add("RECEIPT","Receipts",receipts.map(p=>({id:p.id,title:p.receiptNo,subtitle:p.customer.name,context:`${inrAmount(p.amount)}`,href:`/masters/${p.customerId}?tab=payments`})));
  add("SUPPLIER","Suppliers",suppliers.map(s=>({id:s.id,title:s.name,subtitle:s.city??"",context:s.type,href:`/suppliers?focus=${s.id}`})));
  add("TASK","Tasks",tasks.map(t=>({id:t.id,title:t.title,subtitle:t.owner.name,context:t.status,href:`/tasks?focus=${t.id}`})));
  add("DOCUMENT","Documents",docs.map(d=>({id:d.id,title:d.docType,subtitle:`${d.customer.name} · ${d.docNo}`,context:d.status,href:`/documents?focus=${d.id}`})));

@@ -100,7 +100,7 @@ export default function TasksClient({ tasks, focus, canEdit, canExport, canAudit
         <p className="mt-1 pl-9 text-sm text-slate-600">{t.owner}{t.mine ? " · You" : ""}</p>
         {t.details && <p className="mt-1 pl-9 text-sm leading-6 text-slate-600">{t.details}</p>}
         <div className="mt-1 flex flex-wrap gap-3 pl-9 text-sm text-brand-700">
-          {t.customer && <Link href={`/customers/${t.customer.id}`}>{t.customer.name}</Link>}
+          {t.customer && <Link href={`/masters/${t.customer.id}`}>{t.customer.name}</Link>}
           {t.visaCase && <Link href={`/visa/${t.visaCase.id}`}>{t.visaCase.caseNo}</Link>}
           {t.booking && <Link href={`/ticketing/${t.booking.id}`}>{t.booking.bookingNo}</Link>}
         </div>

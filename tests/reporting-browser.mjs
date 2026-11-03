@@ -45,7 +45,7 @@ try{
  browser=await chromium.launch({headless:true});diagnostic.mark("browser-version",{version:browser.version()});const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
  const login=await context.request.post(base+"/api/auth/login",{data:{email:"review@visual.test",password:"Review-Visual-2026!"}});assert(login.ok());
  const supplierResponse=await context.request.post(base+"/api/suppliers",{data:{name:"Aero consolidator",type:"CONSOLIDATOR"}});assert(supplierResponse.ok());const supplier=(await supplierResponse.json()).supplier;
- const dueResponse=await context.request.post(base+"/api/suppliers/dues",{data:{supplierId:supplier.id,description:"Review airline settlement",amount:18000,dueDate:new Date(Date.now()+330*60000).toISOString().slice(0,10)}});assert(dueResponse.ok());
+ const dueResponse=await context.request.post(base+"/api/suppliers/dues",{data:{requestKey:globalThis.crypto.randomUUID(),supplierId:supplier.id,description:"Review airline settlement",amount:18000,dueDate:new Date(Date.now()+330*60000).toISOString().slice(0,10)}});assert(dueResponse.ok());
  page=await context.newPage();activePage=page;page.setDefaultTimeout(15000);const errors=[];page.on("pageerror",e=>errors.push(e.message));
  observeReports(page);
  await page.goto(base+`/reports?report=statement&customerId=${fixture.customerId}`);

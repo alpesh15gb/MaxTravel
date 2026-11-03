@@ -43,12 +43,12 @@ const toneOf = (s: string): Tone => {
   return "neutral";
 };
 
-export default function Customer360View({ data, perms, initialTab, permsExtra, owners, secondaryActions }: { secondaryActions?: ReactNode; data: Data; perms: Perms; initialTab?: string; permsExtra?: Partial<Perms>; owners: { id: string; name: string }[] }) {
+export default function Customer360View({ data, perms, initialTab, permsExtra, owners, secondaryActions, embedded=false, onlyTab }: { embedded?: boolean; onlyTab?: string; secondaryActions?: ReactNode; data: Data; perms: Perms; initialTab?: string; permsExtra?: Partial<Perms>; owners: { id: string; name: string }[] }) {
   const p = { ...perms, ...(permsExtra ?? {}) };
   const [tab, setTab] = useState<string>(
-    initialTab && TABS.some(([key]) => key === initialTab && (!p.visibleTabs || p.visibleTabs.includes(key)))
+    onlyTab ?? (initialTab && TABS.some(([key]) => key === initialTab && (!p.visibleTabs || p.visibleTabs.includes(key)))
       ? initialTab
-      : "overview"
+      : "overview")
   );
   const [modal, setModal] = useState<null | "payment" | "task" | "upload" | "wa" | "traveller" | { travellerEdit: Data["travellers"][number] }>(null);
   const { show, toast } = useToast();
@@ -58,8 +58,10 @@ export default function Customer360View({ data, perms, initialTab, permsExtra, o
 
   return (
     <div className="workspace-page">
+      {!embedded && <>
       <Link href="/customers" className="mb-3 inline-flex items-center gap-2 text-xs font-medium text-slate-600 hover:text-teal-700"><Icon name="customers" size={15} />All customers</Link>
 
+      <Link href={`/masters/${c.id}`} className="btn-secondary mb-3">Open complete master</Link>
       {/* Client record header: identity on the left, actions on the right */}
       <section className="panel customer-record mb-3" aria-label="Customer record">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -113,6 +115,8 @@ export default function Customer360View({ data, perms, initialTab, permsExtra, o
       </div>
 
       {/* Underline tabs */}
+      </>}
+      {!onlyTab && <>
       <label className="mb-4 block sm:hidden"><span className="field-label">Customer section</span><select aria-label="Customer section" className="control w-full" value={tab} onChange={event => setTab(event.target.value)}>{TABS.filter(([key]) => !p.visibleTabs || p.visibleTabs.includes(key)).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
       <div aria-label="Customer sections" className="mb-4 hidden gap-0 overflow-x-auto border-b border-slate-200 tos-scroll sm:flex">
         {TABS.filter(([key]) => !p.visibleTabs || p.visibleTabs.includes(key)).map(([key, label]) => (
@@ -130,6 +134,7 @@ export default function Customer360View({ data, perms, initialTab, permsExtra, o
         ))}
       </div>
 
+      </>}
       {tab === "overview" && <Overview data={data} onSelect={setTab} />}
       {tab === "travellers" && (
         <Travellers data={data} perms={p} onAdd={() => setModal("traveller")} onEdit={(t) => setModal({ travellerEdit: t })} />
@@ -691,7 +696,7 @@ function TravellerForm({ customerId, traveller, sensitive, onClose }: { customer
     // Without sensitive:view the server refuses passport edits outright. Sending the fields anyway
     // would either be rejected or, worse, post back the masked number the list screen shows.
     const body: Record<string, unknown> = { ...form };
-    if (!sensitive) { delete body.passportNumber; delete body.passportPlace; }
+    if (!sensitive) { delete body.passportNumber; delete body.passportPlace; delete body.knownTravellerNumber; delete body.frequentFlyer; }
     try {
       const r = traveller
         ? await fetch(`/api/travellers/${traveller.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })

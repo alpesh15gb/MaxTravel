@@ -28,7 +28,7 @@ if (setup.status !== 201) throw new Error(await setup.text());
 const login = await post("/api/auth/login", { email: "owner@repro.test", password });
 const owner = login.headers.getSetCookie().map(c => c.split(";")[0]).join("; ");
 const supplier = await ok("/api/suppliers", { name: "Repro Supplier", type: "CONSOLIDATOR", city: "Mumbai", paymentDueDays: 10 }, owner);
-await ok("/api/suppliers/dues", { supplierId: supplier.supplier.id, description: "Consolidator bill", amount: 500, dueDate: "2026-09-01" }, owner);
+await ok("/api/suppliers/dues", { requestKey:globalThis.crypto.randomUUID(),supplierId: supplier.supplier.id, description: "Consolidator bill", amount: 500, dueDate: "2026-09-01" }, owner);
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ baseURL: BASE, viewport: { width: 1440, height: 900 } });
