@@ -69,10 +69,10 @@ export default function WorkspaceGuide({ path }: { path: string }) {
             </ol>
             <Link
               className="btn-secondary"
-              href="/start-work"
+              href="/trips/new"
               onClick={() => setOpen(false)}
             >
-              Find another workflow
+              Start a new trip
               <Icon name="arrow" size={16} />
             </Link>
           </div>

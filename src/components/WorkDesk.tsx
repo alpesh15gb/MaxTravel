@@ -1123,9 +1123,9 @@ function CaseFields({
         </select>
         {!customerId && (
           <p className="mt-1 text-xs text-slate-500">
-            A customer appears here once they have a booking or visa case (a Max ID). {cases.length === 0 ? "None exist yet. " : ""}
-            <Link href="/ticketing/new" className="text-blue-700 underline">Add a booking</Link> or{" "}
-            <Link href="/visa/new" className="text-blue-700 underline">add a visa case</Link>, or choose Internal work for a general task.
+            A customer appears here once they have a trip (a Max ID). {cases.length === 0 ? "None exist yet. " : ""}
+            <Link href="/trips/new" className="text-blue-700 underline">Start a trip</Link> for the customer
+            {" "}first, or choose Internal work for a general task.
           </p>
         )}
       </Field>

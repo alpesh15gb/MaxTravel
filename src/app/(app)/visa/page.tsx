@@ -76,7 +76,7 @@ export default async function VisaPage({ searchParams: pending }: { searchParams
       description="Track applicants, destination requirements, documents and stages."
       actions={<>
         {canExport && <a className="btn-secondary" href="/api/export?entity=visa"><Icon name="download" size={16} />Export</a>}
-        {canCreate && <Link href="/visa/new" className="btn-primary"><Icon name="plus" size={16} />New visa case</Link>}
+        {canCreate && <Link href="/trips/new" className="btn-primary"><Icon name="plus" size={16} />New trip</Link>}
       </>} />
     {!cases.length
       ? <EmptyState icon="visa" title="No visa cases yet" description="Add a real customer, select their applicants and choose the right destination checklist." href={canCreate ? "/visa/new" : undefined} action={canCreate ? "Start a visa case" : undefined} />

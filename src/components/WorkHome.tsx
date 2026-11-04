@@ -2,7 +2,6 @@ import CustomerMoments from "./CustomerMoments";
 import WorkRefresh from "./WorkRefresh";
 import Link from "next/link";
 import { PageHeader, EmptyState } from "./ui";
-import NewCase from "@/app/(app)/cases/NewCase";
 import { prisma } from "@/lib/db";
 import type { SessionUser } from "@/lib/session";
 import { readWork } from "@/lib/work-read";
@@ -85,11 +84,7 @@ export default async function WorkHome({ user, denied = false }: { user: Session
             {" "}
             <WorkRefresh />
             {services.length > 0 ? (
-              <NewCase
-                services={services}
-                canAddCustomer={user.permissions.includes("customer:create")}
-                triggerLabel="New Max ID"
-              />
+              <Link className="btn-primary" href="/trips/new">New trip</Link>
             ) : (
               <Link className="btn-primary" href="/work">
                 {manager ? "Open work register" : "Open my work"}
