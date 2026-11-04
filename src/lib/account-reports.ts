@@ -1,3 +1,5 @@
+import {enumLabel} from "./labels";
+import {dateLabel} from "./dates";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import { ApiError, scopeWhere } from "./guard";
@@ -21,6 +23,8 @@ const sourceHref=(type:string,id:string,customerId:string)=>type==="Booking"?`/t
 export { accountCustomerScope } from "./report-scope";
 import { accountCustomerScope } from "./report-scope";
 
+/** Journal descriptions carry raw status codes (e.g. "· PNR_CREATED"); show them as words. */
+const readableDescription=(text:string)=>text.replace(/ · ([A-Z]+(?:_[A-Z]+)*)(?= ·|$)/g,(_,code:string)=>" · "+enumLabel(code));
 export async function buildAccountReport(user:SessionUser,params:URLSearchParams,exporting=false):Promise<AccountReport> {
  const key=params.get("report")||"statement";
  if(!(ACCOUNT_REPORTS as readonly string[]).includes(key))throw new ApiError(400,"Choose a valid report.");
@@ -54,7 +58,7 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
   const bookingFilters={...(ownerId?{ownerId}:{}),...(status?{status}:{})};
   const visaFilters={...(ownerId?{ownerId}:{}),...(status?{stage:{name:status}}:{})};
   const agency=(await tx.settings.findUnique({where:{key:"agency.name"}}))?.value||"Max Travel CRM";
-  const warnings=[...(startsLate?[`This statement starts on ${day(cutover)}, the first day of recorded balances. Earlier activity is included in the opening balance.`]:[]),key==="operations"?"Operational records include all currencies; no monetary totals are presented.":"INR only. Other-currency bookings and their receipts/refunds are excluded."];
+  const warnings=[...(startsLate?[`This statement starts on ${dateLabel(day(cutover))}, the first day of recorded balances. Earlier activity is included in the opening balance.`]:[]),key==="operations"?"Operational records include all currencies; no monetary totals are presented.":"INR only. Other-currency bookings and their receipts/refunds are excluded."];
   if(user.accessMode!=="ALL")warnings.push("Only complete customer accounts wholly within your record scope are included.");
   const selectedCustomer=customerId&&!key.startsWith("supplier")?byCustomer.get(customerId):null;
   const metadata:ReportMetadata={dateBasis:reportDefinition(key)!.basis,currency:reportCurrency(key),account:selectedCustomer?`${selectedCustomer.name} · ${selectedCustomer.code}`:key.startsWith("supplier")?"All permitted suppliers":"All permitted customer accounts",scope:user.accessMode==="ALL"?"Your permitted agency records":"Complete customer accounts wholly within your record scope",filters:[]};
@@ -70,7 +74,7 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
    // Cutover sources are a brought-forward position, not invented dated sales/receipts.
    const opening=entries.filter(e=>e.opening||e.effectiveAt<period.start).reduce((s,e)=>s+Number(e.amountMinor),0);
    let balance=opening,debits=0,credits=0;
-   result.rows=entries.filter(e=>!e.opening&&e.effectiveAt>=period.start&&Number(e.amountMinor)!==0).map(e=>{const amount=Number(e.amountMinor);balance+=amount;debits+=Math.max(0,amount);credits+=Math.max(0,-amount);return{date:day(e.effectiveAt),reference:e.reference,description:e.description,debit:rupees(Math.max(0,amount)),credit:rupees(Math.max(0,-amount)),balance:rupees(balance),_href:supplier?"/suppliers":sourceHref(e.sourceType,e.sourceId,e.partyId)};});
+   result.rows=entries.filter(e=>!e.opening&&e.effectiveAt>=period.start&&Number(e.amountMinor)!==0).map(e=>{const amount=Number(e.amountMinor);balance+=amount;debits+=Math.max(0,amount);credits+=Math.max(0,-amount);return{date:day(e.effectiveAt),reference:e.reference,description:readableDescription(e.description),debit:rupees(Math.max(0,amount)),credit:rupees(Math.max(0,-amount)),balance:rupees(balance),_href:supplier?"/suppliers":sourceHref(e.sourceType,e.sourceId,e.partyId)};});
    result.title=supplier?"Supplier statement":"Customer statement";
    result.description=supplier?"Positive balance is payable to the supplier. Negative balance is supplier credit.":"Positive balance is owed by the customer. Negative balance is customer credit held by the agency.";
    result.columns=[field("date","Date"),field("reference","Reference"),field("description","Description"),field("debit",supplier?"Bill / reversal":"Charge / cash returned",true),field("credit",supplier?"Settlement / credit":"Receipt / charge credit",true),field("balance","Running balance",true)];

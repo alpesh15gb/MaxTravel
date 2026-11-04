@@ -12,7 +12,7 @@ const exportValue=(row:AccountReport["rows"][number],key:string)=>{
  const value=row[key];
  return key==="status"&&typeof value==="string"&&/^[A-Z]+(?:_[A-Z]+)*$/.test(value)?enumLabel(value):value;
 };
-const currencyMoney=(v:number,currency="INR")=>`${currency} ${v.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+const currencyMoney=(v:number,currency="INR")=>`${currency} ${(v||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 export function accountCsv(r:AccountReport){
  completeReport(r);
  const rows:unknown[][]=[[r.agency,r.title],["Basis",r.description],["Date basis",r.metadata.dateBasis],["Calendar","Asia/Kolkata (UTC+05:30); inclusive end day"],["Period",r.period.from,r.period.to],["Account",r.metadata.account],["Currency",r.metadata.currency],["Scope",r.metadata.scope],...r.metadata.filters.map(f=>[f.label,f.value]),["Generated (India time)",generatedLabel(r.generatedAt)],["Exported rows",r.rows.length],...[...r.summary].map(s=>[s.label,s.value]),[],r.columns.map(c=>c.label),...r.rows.map(row=>r.columns.map(c=>exportValue(row,c.key))),[],["Definitions"],...r.warnings.map(w=>[w])];
@@ -102,7 +102,7 @@ export async function accountPdf(r:AccountReport):Promise<Buffer>{
   return Array.from({length:count},(_,n)=>Object.fromEntries(r.columns.map((c,i)=>[c.key,c.money?(n===count-1?row[c.key]:null):parts[i][n]??""])));
  });
  for(const row of physicalRows){
-  const cells=r.columns.map(c=>c.money?(row[c.key]===null?"":Number(row[c.key]??0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})):String(row[c.key]??""));
+  const cells=r.columns.map(c=>c.money?(row[c.key]===null?"":(Number(row[c.key]??0)||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})):DATE_KEYS.has(c.key)&&typeof row[c.key]==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(String(row[c.key]))?dateLabel(String(row[c.key])):String(row[c.key]??""));
   doc.fontSize(8);const height=Math.max(24,...cells.map((s,i)=>doc.heightOfString(s,{width:widths[i]-8})+12));
   if(y+height>735){doc.fillColor(PDF_COLORS.muted).text(`Carried forward: ${money(running)}`,left,y+4,{width,align:"right"});doc.addPage();y=38;text(`${r.agency} · ${r.title} · ${r.party?.name??""}`,10);text(`Brought forward: ${money(running)}`,9);tableHead();}
   doc.fillColor(PDF_COLORS.ink).fontSize(8);cells.forEach((s,i)=>doc.text(s,xs[i]+4,y+5,{width:widths[i]-8,align:r.columns[i].money?"right":"left"}));
