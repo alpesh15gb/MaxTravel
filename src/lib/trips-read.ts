@@ -23,7 +23,10 @@ export type TripDetail = Omit<TripRow, "customer"> & {
   money: { invoicedMinor: number; receivedMinor: number; dueMinor: number } | null;
   documents: { id: string; docNo: string; docType: string; status: string }[];
 };
-export type TripQuery = { stage?: TripStage | "ACTIVE"; search?: string; mine?: boolean; customerId?: string; page?: number };
+export type TripView = "flights" | "hotels" | "visas" | "enquiries" | "online";
+export const TRIP_VIEWS: TripView[] = ["flights", "hotels", "visas", "enquiries", "online"];
+export type TripQuery = { stage?: TripStage | "ACTIVE"; search?: string; mine?: boolean; customerId?: string; view?: TripView; page?: number };
+const VIEW_KIND: Record<Exclude<TripView, "online">, TripService["kind"]> = { flights: "FLIGHT", hotels: "HOTEL", visas: "VISA", enquiries: "ENQUIRY" };
 
 const PAGE = 50, CAP = 500;
 const DEAD_BOOKING = new Set(["CANCELLED", "VOID", "REFUNDED"]);
@@ -85,12 +88,12 @@ export async function readTrips(user: SessionUser, q: TripQuery): Promise<{ rows
       serviceCaseScope(user),
       ...(q.customerId ? [{ customerId: q.customerId }] : []),
       ...(q.mine ? [{ ownerId: user.id }] : []),
-      ...(search ? [{ OR: [{ caseNo: { contains: search } }, { title: { contains: search } }, { customer: { OR: [{ name: { contains: search } }, { phone: { contains: search } }, { code: { contains: search } }] } }] }] : []),
+      ...(search ? [{ OR: [{ caseNo: { contains: search } }, { title: { contains: search } }, { customer: { OR: [{ name: { contains: search } }, { phone: { contains: search } }, { code: { contains: search } }] } }, { bookings: { some: { OR: [{ pnr: { contains: search } }, { bookingNo: { contains: search } }, { sector: { contains: search } }, { hotelName: { contains: search } }] } } }, { visaCases: { some: { OR: [{ destination: { contains: search } }, { caseNo: { contains: search } }] } } }, { leads: { some: { destination: { contains: search } } } }] }] : []),
     ],
   };
   const now = new Date();
   const loaded = await prisma.serviceCase.findMany({ where, include: include(user), orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: CAP });
-  const all = loaded.map(c => toRow(c, now));
+  const all = loaded.map(c => toRow(c, now)).filter(r => !q.view || (q.view === "online" ? r.online : r.services.some(x => x.kind === VIEW_KIND[q.view as Exclude<TripView, "online">])));
   const counts = Object.fromEntries([...TRIP_STAGES, "CANCELLED"].map(s => [s, 0])) as Record<TripStage, number>;
   for (const r of all) counts[r.stage]++;
   const filtered = !q.stage ? all : q.stage === "ACTIVE" ? all.filter(r => r.stage !== "DONE" && r.stage !== "CANCELLED") : all.filter(r => r.stage === q.stage);

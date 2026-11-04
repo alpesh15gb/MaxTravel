@@ -24,8 +24,8 @@ try {
   const trip = (x: string, ownerId: string) => db.serviceCase.create({ data: { id: `trip-${x}`, caseNo: `MAX-${x}`, customerId: `cust-${x}`, branchId: "branch-a", ownerId, service: "FLIGHT", title: `Trip ${x}` } });
   await trip("a", "staff"); await trip("b", "owner"); await trip("c", "owner");
   const travel = new Date(Date.now() + 20 * 86400000);
-  await db.booking.create({ data: { id: "bk-a", bookingNo: "BK-a", customerId: "cust-a", ownerId: "staff", branchId: "branch-a", status: "TICKETED", travelDate: travel, sellingPrice: 1000, serviceCaseId: "trip-a" } });
-  await db.salesLead.create({ data: { id: "lead-b", customerId: "cust-b", branchId: "branch-a", ownerId: "owner", title: "Goa enquiry", source: "Fixture", serviceCaseId: "trip-b" } });
+  await db.booking.create({ data: { id: "bk-a", bookingNo: "BK-a", customerId: "cust-a", ownerId: "staff", branchId: "branch-a", status: "TICKETED", pnr: "PNR77", travelDate: travel, sellingPrice: 1000, serviceCaseId: "trip-a" } });
+  await db.salesLead.create({ data: { id: "lead-b", customerId: "cust-b", branchId: "branch-a", ownerId: "owner", title: "Holiday enquiry", destination: "Goa", source: "Fixture", serviceCaseId: "trip-b" } });
   await db.booking.create({ data: { id: "bk-c", bookingNo: "BK-c", customerId: "cust-c", ownerId: "owner", branchId: "branch-a", status: "CANCELLED", travelDate: travel, serviceCaseId: "trip-c" } });
 
   const all = await readTrips(owner, {});
@@ -40,6 +40,11 @@ try {
   assert.equal((await readTrips(owner, { stage: "CANCELLED" })).rows[0].id, "trip-c");
   assert.equal((await readTrips(owner, { search: "Customer b" })).rows[0]?.id, "trip-b");
   assert.equal((await readTrips(owner, { customerId: "cust-a" })).rows.length, 1);
+  assert.deepEqual((await readTrips(owner, { view: "flights" })).rows.map(r => r.id).sort(), ["trip-a", "trip-c"]);
+  assert.deepEqual((await readTrips(owner, { view: "enquiries" })).rows.map(r => r.id), ["trip-b"]);
+  assert.equal((await readTrips(owner, { view: "visas" })).total, 0);
+  assert.equal((await readTrips(owner, { search: "PNR77" })).rows[0]?.id, "trip-a");
+  assert.equal((await readTrips(owner, { search: "Goa" })).rows[0]?.id, "trip-b");
   const mine = await readTrips(staff, {});
   assert.deepEqual(mine.rows.map(r => r.id), ["trip-a"]);
   assert.equal(mine.rows[0].balanceMinor, null);
