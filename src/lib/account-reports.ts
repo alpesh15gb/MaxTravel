@@ -43,7 +43,7 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
   const startsLate=["statement","supplier-statement"].includes(key)&&/^\d{4}-\d{2}-\d{2}$/.test(dateParams.get("from")??"")&&dateParams.get("from")!<day(cutover)&&(dateParams.get("to")??day(new Date()))>=day(cutover);
   if(startsLate)dateParams.set("from",day(cutover));
   const period=reportPeriod(dateParams);
-  if(["statement","supplier-statement","ageing","supplier-payables"].includes(key)&&period.to<day(cutover))throw new ApiError(400,`Historical balances are available from ${day(cutover)} only.`);
+  if(["statement","supplier-statement","ageing","supplier-payables"].includes(key)&&period.to<day(cutover))throw new ApiError(400,`Historical balances are available from ${dateLabel(day(cutover))} only.`);
   if(["statement","supplier-statement"].includes(key)&&period.from<day(cutover))throw new ApiError(400,`Statements begin on ${day(cutover)}. Earlier transactions are represented by the migration opening balance.`);
   const today=day(new Date());
   if(period.to>today)throw new ApiError(400,"Report end date cannot be in the future.");
@@ -79,7 +79,7 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
    result.description=supplier?"Positive balance is payable to the supplier. Negative balance is supplier credit.":"Positive balance is owed by the customer. Negative balance is customer credit held by the agency.";
    result.columns=[field("date","Date"),field("reference","Reference"),field("description","Description"),field("debit",supplier?"Bill / reversal":"Charge / cash returned",true),field("credit",supplier?"Settlement / credit":"Receipt / charge credit",true),field("balance","Running balance",true)];
    result.summary=[metric("Opening balance",opening),metric("Period debits",debits),metric("Period credits",credits),metric("Closing balance",balance)];
-   warnings.push(`Preserved history begins ${day(cutover)}. Earlier records are included only in the opening balance. Adjustments are posted when recorded; opening plus debits minus credits equals closing.`);
+   warnings.push(`Preserved history begins ${dateLabel(day(cutover))}. Earlier records are included only in the opening balance. Adjustments are posted when recorded; opening plus debits minus credits equals closing.`);
    if(!supplier){const pending=await tx.refund.aggregate({where:{customerId:partyId!,status:{notIn:["PAID","REJECTED"]},OR:[{bookingId:null},{booking:{currency:"INR"}}]},_sum:{amount:true}});result.summary.push(metric("Pending refunds now (separate)",cents(pending._sum.amount||0)));warnings.push("Pending refunds are current workflow amounts, not historical cash. Quotes/enquiries remain operational charges under existing app policy. Cancellation credits can differ from clamped outstanding balances.");}
   } else if(key==="ageing"||key==="supplier-payables") {
    const supplier=key==="supplier-payables";
@@ -141,7 +141,7 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
    }
    result.rows.sort((a,b)=>Number(b.outstanding)-Number(a.outstanding));
    result.title=supplier?"Supplier payables and ageing":"Customer outstanding and ageing";
-   result.description=`Open obligations as of ${period.to}; unallocated credits are disclosed separately, not silently offset against other debts.`;
+   result.description=`Open obligations as of ${dateLabel(period.to)}; unallocated credits are disclosed separately, not silently offset against other debts.`;
    result.columns=[field("customer",supplier?"Supplier":"Customer"),field("reference","Reference"),field("service","Service"),field("due","Due date"),field("age","Age"),field("bucket","Bucket"),field("outstanding","Outstanding",true)];
    const all=totals.reduce((s,n)=>s+n,0);
    result.summary=[metric("Total open obligations",all),...(supplier?[]:[metric("Confirmed to collect",all-totals[6])]),...totals.slice(0,6).map((n,i)=>metric(["Not due","Overdue 1–30","Overdue 31–60","Overdue 61–90","Overdue 90+","No due date"][i],n)),...(supplier?[]:[metric("Not confirmed yet",totals[6])]),metric("Credits / unapplied receipts",credit)];
