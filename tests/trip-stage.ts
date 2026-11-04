@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { tripStage, tripDates, TRIP_STAGES, TRIP_STAGE_LABEL, type TripStageInput } from "../src/lib/trip-stage";
+import { tripStage, tripDates, isDeadVisaStage, TRIP_STAGES, TRIP_STAGE_LABEL, type TripStageInput } from "../src/lib/trip-stage";
 
 // 2026-11-04 12:00 IST
 const today = new Date("2026-11-04T06:30:00Z");
@@ -31,4 +31,16 @@ const dates = tripDates({ ...base, bookings: [{ status: "TICKETED", travelDate: 
 assert.equal(dates.start?.toISOString(), day(2).toISOString());
 assert.equal(dates.end?.toISOString(), day(9).toISOString());
 assert.deepEqual(tripDates(base), { start: null, end: null });
+// A hotel stay that started 2 days ago and ends in 3 days is still travelling.
+assert.equal(stage({ bookings: [{ status: "CONFIRMED", travelDate: day(-2), travelEndDate: day(3) }] }), "TRAVELLING");
+// A return flight: outbound 4 days ago, return in 2 days → travelling, not done.
+assert.equal(stage({ bookings: [{ status: "TICKETED", travelDate: day(-4), travelEndDate: day(2) }] }), "TRAVELLING");
+assert.equal(tripDates({ ...base, bookings: [{ status: "TICKETED", travelDate: day(-4), travelEndDate: day(2) }] }).end?.toISOString(), day(2).toISOString());
+// Visa stages: a visa still at Enquiry/Assessment is pre-sale; a rejected visa is dead.
+assert.equal(stage({ visas: [{ travelDate: day(20), travelEndDate: null, stageKey: "ENQUIRY" }] }), "ENQUIRY");
+assert.equal(stage({ visas: [{ travelDate: day(20), travelEndDate: null, stageKey: "ASSESSMENT" }] }), "ENQUIRY");
+assert.equal(stage({ visas: [{ travelDate: day(20), travelEndDate: null, stageKey: "SUBMITTED" }] }), "BOOKED");
+assert.equal(stage({ bookings: [{ status: "CANCELLED", travelDate: day(3) }], visas: [{ travelDate: day(20), travelEndDate: null, stageKey: "REJECTED" }] }), "CANCELLED");
+assert.equal(stage({ visas: [{ travelDate: day(20), travelEndDate: null, stageKey: "REJECTED" }] }), "CANCELLED");
+assert.equal(isDeadVisaStage("REJECTED"), true); assert.equal(isDeadVisaStage("SUBMITTED"), false);
 console.log("Trip stage rules passed.");

@@ -51,6 +51,20 @@ try {
   assert.equal(mine.rows[0].profit, null);
   assert.deepEqual(a.profit, { marginMinor: null, unknown: 1 });
   await assert.rejects(readTrip(staff, "trip-b"), (e: { status?: number }) => e.status === 404);
+  // Stage does not depend on what a role may open: a customer-only role still sees trip A as booked, with no booking listed.
+  const hr = person("hr", "ALL", ["customer:view"]);
+  const hrA = (await readTrips(hr, {})).rows.find(r => r.id === "trip-a")!;
+  assert.equal(hrA.stage, "BOOKED"); assert.equal(hrA.services.some(x => x.kind === "FLIGHT"), false);
+  assert.equal((await readTrip(hr, "trip-a")).stage, "BOOKED");
+  assert.equal((await readTrips(hr, { stage: "BOOKED" })).counts.BOOKED, 1);
+  // Search by PNR only matches bookings the role can see.
+  assert.equal((await readTrips(hr, { search: "PNR77" })).total, 0);
+  // Not capped on a small agency.
+  assert.equal(all.capped, false);
+  // Today: every trip travelling within N days, without money lookups.
+  const soon = await readTrips(owner, { stage: "ACTIVE", travellingWithinDays: 30, skipFinance: true });
+  assert.deepEqual(soon.rows.map(r => r.id), ["trip-a"]); assert.equal(soon.rows[0].balanceMinor, null);
+  assert.equal((await readTrips(owner, { stage: "ACTIVE", travellingWithinDays: 7, skipFinance: true })).rows.length, 0);
   const detail = await readTrip(owner, "trip-b");
   assert.equal(detail.stage, "ENQUIRY"); assert.equal(detail.quotes[0].leadId, "lead-b"); assert.equal(detail.quotes[0].latestQuote, null);
   assert.equal(detail.services[0].kind, "ENQUIRY");

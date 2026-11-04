@@ -33,24 +33,24 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const user = await requirePage("dashboard:view"), sp = await searchParams;
   if (sp.action === "todo") redirect("/work?new=1");
   const can = (p: string) => user.permissions.includes(p as (typeof user.permissions)[number]);
-  const now = new Date(), todayKey = istDayKey(now), weekKey = istDayKey(new Date(now.getTime() + 7 * DAY));
+  const now = new Date(), todayKey = istDayKey(now);
   const endOfToday = new Date(Date.parse(`${todayKey}T00:00:00+05:30`) + DAY);
   const tripsRead = ["customer:view", "ticketing:view", "visa:view"].some(can);
   const [pulse, todos, todoCount, trips, online, team] = await Promise.all([
     computePulse(prisma, user),
     can("task:view") ? prisma.task.findMany({ where: { AND: [taskScope(user), { status: { in: ["OPEN", "IN_PROGRESS"] }, ownerId: user.id, unassigned: false, dueAt: { lt: endOfToday } }] }, include: { serviceCase: { select: { caseNo: true, customer: { select: { name: true } } } } }, orderBy: [{ dueAt: "asc" }, { createdAt: "asc" }], take: 8 }) : [],
     can("task:view") ? prisma.task.count({ where: { AND: [taskScope(user), { status: { in: ["OPEN", "IN_PROGRESS"] }, ownerId: user.id, unassigned: false, dueAt: { lt: endOfToday } }] } }) : 0,
-    tripsRead ? readTrips(user, { stage: "ACTIVE" }) : null,
+    tripsRead ? readTrips(user, { stage: "ACTIVE", travellingWithinDays: 7, skipFinance: true }) : null,
     can("ticketing:view") ? prisma.booking.findMany({ where: { AND: [childWorkScope(user), { createdAt: { gte: new Date(now.getTime() - 2 * DAY) }, gdsSource: { not: null } }] }, select: { id: true, bookingNo: true, sector: true, gdsSource: true, serviceCaseId: true, createdAt: true, customer: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 20 }) : [],
     can("task:view") ? teamLoad(user, now) : [],
   ]);
-  const travelling = (trips?.rows ?? []).filter((t: TripRow) => (t.stage === "TRAVELLING" || t.stage === "BOOKED") && t.start && istDayKey(t.start) <= weekKey && (!t.end || istDayKey(t.end) >= todayKey));
+  const travelling = (trips?.rows ?? []).filter((t: TripRow) => t.stage === "TRAVELLING" || t.stage === "BOOKED");
   const items = pulse.items as PulseItem[];
   const payments = items.filter(i => i.kind === "PAYMENT_OVERDUE");
   const followUps = items.filter(i => i.kind === "SALES_FOLLOW_UP" || i.kind === "SALES_ACCEPTED_QUOTE" || i.kind === "CASE_FOLLOWUP");
   const alerts = items.filter(i => ALERT_KINDS.has(i.kind));
   const onlineRows = online.filter(b => isReservedBookingSource(b.gdsSource));
-  const fresh = pulse.firstRun && !(trips?.total);
+  const fresh = pulse.firstRun && !(trips?.counts && Object.values(trips.counts).some(Boolean));
 
   return <div className="workspace-page space-y-5">
     {sp.denied && <p role="alert" className="form-error">Your role does not allow that page. Choose one of the sections in the menu.</p>}
@@ -68,10 +68,10 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       {team.length > 0 && <Card title="Team" icon="customers" seeAll="/reports/work" empty="">
         {team.map(r => <li key={r.userId}><Link href={`/work?view=all&owner=${r.userId}`} className="flex items-center justify-between gap-3 py-2.5 text-sm hover:bg-slate-50"><span className="font-medium">{r.name}</span><span className="flex gap-3 text-xs"><span>{r.open} open</span><span className={r.overdue ? "font-semibold text-rose-700" : "text-slate-500"}>{r.overdue} overdue</span><span className="text-slate-600">{r.dueToday} due today</span></span></Link></li>)}
       </Card>}
-      {tripsRead && <Card title="Travelling in the next 7 days" icon="plane" count={travelling.length} seeAll="/trips?stage=BOOKED" empty="No one is travelling this week.">
+      {tripsRead && <Card title="Travelling in the next 7 days" icon="plane" count={travelling.length} seeAll="/trips" empty="No one is travelling this week.">
         {travelling.slice(0, 8).map(t => <li key={t.id}><Link href={`/trips/${t.id}`} className="flex flex-wrap items-center justify-between gap-2 py-2.5 hover:bg-slate-50"><span className="min-w-0"><span className="block text-sm font-medium">{t.customer.name}</span><span className="block truncate text-xs text-slate-500">{t.title} · {dateLabel(t.start)}</span></span><TripStageBar stage={t.stage} compact /></Link></li>)}
       </Card>}
-      {can("payment:view") && <Card title="Payments to collect" icon="wallet" count={payments.length} seeAll="/reports?report=receivables" empty="No overdue customer payments.">
+      {can("payment:view") && <Card title="Payments to collect" icon="wallet" count={payments.length} seeAll="/reports?report=ageing" empty="No overdue customer payments.">
         {payments.slice(0, 8).map(i => <Row key={i.id} href={i.href} title={i.title} detail={i.detail} tone="warning" />)}
       </Card>}
       {can("customer:view") && <Card title="Follow up today" icon="phone" count={followUps.length} seeAll="/sales" empty="No follow-ups due.">

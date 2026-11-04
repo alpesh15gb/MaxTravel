@@ -47,6 +47,7 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
       <Link href={href({ view: undefined, page: undefined })} className={!view ? "font-semibold text-slate-900" : "text-blue-700 underline"}>All services</Link>
       {TRIP_VIEWS.map(v => <Link key={v} href={href({ view: v, page: undefined })} className={view === v ? "font-semibold text-slate-900" : "text-blue-700 underline"}>{VIEW_LABEL[v]}</Link>)}
     </div>
+    {data.capped && <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">Showing the 500 most recently updated trips. Search by customer, phone, Max ID or PNR to find older ones.</p>}
     {data.rows.length ? <TripsList rows={data.rows} /> : (q || view || sp.stage || mine || customerId)
       ? <EmptyState title="No trips match" description="Try another search, stage or service." href="/trips" action="Clear filters" />
       : <EmptyState title="No trips yet" description="Start one for a customer. Every enquiry, booking and visa lives inside a trip with its own Max ID." href="/trips/new" action="New trip" />}

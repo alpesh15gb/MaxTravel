@@ -7,7 +7,7 @@ const ANCHOR: Record<string, string> = { money: "#money", work: "#todos", docume
 export default async function CasePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
   const { id } = await params, sp = await searchParams;
   const q = new URLSearchParams();
-  for (const k of ["view", "q", "owner", "service", "page"]) if (sp[k]) q.set(k, sp[k]!);
+  for (const k of ["view", "q", "owner", "service", "page", "task"]) if (sp[k]) q.set(k, sp[k]!);
   if (sp.tab === "history" || sp.history) q.set("history", sp.history ?? "1");
   const s = q.toString();
   redirect(`/trips/${encodeURIComponent(id)}${s ? `?${s}` : ""}${ANCHOR[sp.tab ?? ""] ?? ""}`);

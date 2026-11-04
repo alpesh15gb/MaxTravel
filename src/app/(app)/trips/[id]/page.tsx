@@ -21,7 +21,7 @@ export default async function TripPage({ params, searchParams }: { params: Promi
   const ownerOptions = owners.filter(o => roleCanOwnCase(o.role.key)).map(({ id, name }) => ({ id, name }));
   if (!ownerOptions.some(o => o.id === base.ownerId)) ownerOptions.push({ id: base.ownerId, name: trip.owner });
   const workQuery = new URLSearchParams({ case: base.id, view: "all" });
-  for (const [k, v] of Object.entries(sp)) if (v && ["view", "q", "owner", "service", "page"].includes(k)) workQuery.set(k, v);
+  for (const [k, v] of Object.entries(sp)) if (v && ["view", "q", "owner", "service", "page", "task"].includes(k)) workQuery.set(k, v);
   const work = user.permissions.includes("task:view") ? await readWork(user, workQuery) : null;
   return <TripView
     user={user} trip={trip} work={work}
