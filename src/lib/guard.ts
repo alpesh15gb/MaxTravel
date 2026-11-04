@@ -32,7 +32,7 @@ export async function requirePage(permission?: Permission | Permission[]): Promi
   if(permission && process.env.CRM_REQUIRE_MFA==="true" && !user.mfaEnabled)redirect("/account-security");
   if (permission) {
     const list = Array.isArray(permission) ? permission : [permission];
-    if (!canAny(user.permissions, list)) redirect("/dashboard?denied=" + encodeURIComponent(String(list[0])));
+    if (!canAny(user.permissions, list)) redirect("/today?denied=" + encodeURIComponent(String(list[0])));
   }
  return user;
 }
