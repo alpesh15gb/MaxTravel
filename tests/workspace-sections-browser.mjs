@@ -16,7 +16,7 @@ const report={checks:[],screens:[],errors:[],passed:false};
 const save=()=>{writeFileSync(path.join(out,"report.json"),JSON.stringify(report,null,2));writeFileSync(path.join(out,"server.log"),logs);};
 async function shot(name){await page.evaluate(()=>document.fonts.ready);const geometry=await page.evaluate(()=>({width:document.documentElement.scrollWidth,viewport:innerWidth}));assert(geometry.width<=geometry.viewport+1,`${name} must fit viewport`);await page.screenshot({path:path.join(out,name+".png"),fullPage:true,animations:"disabled"});report.screens.push(name);save();}
 async function login(context,email){const r=await context.request.post(base+"/api/auth/login",{data:{email,password:"Review-Visual-2026!"}});assert(r.ok(),"Fixture login must succeed");}
-const sections=[["/dashboard","Agency overview"],["/masters","Masters"],["/work","Team work"],["/suppliers","Suppliers & payables"],["/reports","Reports & insights"],["/workspace/administration","Settings"]];
+const sections=[["/today","Today"],["/trips","Trips"],["/masters","Customers"],["/work","Team work"],["/suppliers","Suppliers & payables"],["/reports","Reports"],["/workspace/administration","Settings"]];
 try{
   for(let i=0;i<180&&!logs.includes("VISUAL REVIEW READY");i++){if(child.exitCode!==null)throw Error(logs);await new Promise(r=>setTimeout(r,500));}
   assert(logs.includes("VISUAL REVIEW READY"),logs);
@@ -31,20 +31,20 @@ try{
     for(const [route,title]of sections){
       await page.goto(base+route,{waitUntil:"networkidle"});
       const main=page.getByRole("main");await main.getByRole("heading",{level:1,name:title,exact:true}).waitFor();
-      if(["/dashboard","/workspace/finance","/workspace/administration"].includes(route))await main.getByRole("button",{name:"Refresh workspace",exact:true}).waitFor();
+      if(["/workspace/finance","/workspace/administration"].includes(route))await main.getByRole("button",{name:"Refresh workspace",exact:true}).waitFor();
       assert.equal(await main.locator("h1").count(),1);
       assert.equal(await main.locator("a.btn-primary:visible,button.btn-primary:visible").count(),1,"One primary action per screen: "+route);
       if(width===390)await page.getByRole("button",{name:"Open navigation",exact:true}).click();
       const nav=page.getByRole("navigation",{name:"Main navigation",exact:true});
       assert.equal(await page.getByRole("link",{name:/WhatsApp/i}).count(),0,"Removed channel has no remaining navigation or action");
-      assert.deepEqual(await nav.getByRole("link").allTextContents(),["Masters","Bookings","Tasks & follow-ups","Suppliers","Reporting"]);
+      assert.deepEqual(await nav.getByRole("link").allTextContents(),["Today","Trips","Customers","Suppliers","Reports"]);
       if(width===390){await page.keyboard.press("Escape");await page.getByRole("button",{name:"Open navigation",exact:true}).waitFor({state:"visible"});}
       await shot(`${width}-${route.split("/").filter(Boolean).join("-")}`);
     }
   }
   report.checks.push("Five primary destinations, legacy routes, single primary action, desktop/phone fit, keyboard drawer closure");
   await page.setViewportSize({width:1440,height:1000});
-  await page.goto(base+"/dashboard",{waitUntil:"networkidle"});
+  await page.goto(base+"/today",{waitUntil:"networkidle"});
   const api=await(await context.request.get(base+"/api/pulse?section=today")).json();
   assert.equal(api.stats.length,3);
   const total=await db.serviceCase.count({where:{closedAt:null,status:{notIn:["COMPLETED","CANCELLED"]}}});
@@ -62,16 +62,17 @@ try{
   assert.equal((await context.request.get(base+"/api/pulse?section=invalid")).status(),400);
   report.checks.push("Exact scoped case count and India-day future follow-up boundary");
 
-  // Main entry point creates a real fixture case ID and opens the same journey.
-  await page.getByRole("button",{name:"New Max ID",exact:true}).click();
-  const dialog=page.getByRole("dialog",{name:"Register client request",exact:true});
-  await dialog.getByRole("combobox",{name:"Customer *",exact:true}).selectOption(c.id);
-  await dialog.getByLabel("Request title *",{exact:true}).fill("Dashboard section registration");
+  // Today's New trip → existing customer → what they need → a permanent Max ID linked to the booking form.
+  await page.getByRole("main").getByRole("link",{name:"New trip",exact:true}).click();await page.waitForURL(base+"/trips/new");
+  await page.getByLabel("Search customers").fill(c.code);
+  await page.getByRole("main").getByRole("button").filter({hasText:c.code}).first().click();
+  await page.getByRole("radio",{name:/^Flight/}).click();
+  await page.getByLabel("Trip name (optional)").fill("Today section registration");
   const created=page.waitForResponse(r=>r.url()===base+"/api/cases"&&r.request().method()==="POST");
-  await dialog.getByRole("button",{name:"Create Max ID",exact:true}).click();
-  const createdData=await(await created).json();assert(createdData.caseId);await page.waitForURL(base+"/cases/"+createdData.caseId);
+  await page.getByRole("button",{name:"Start trip",exact:true}).click();
+  const createdData=await(await created).json();assert(createdData.caseId);await page.waitForURL(`${base}/ticketing/new?case=${createdData.caseId}&product=FLIGHT`);
   assert.equal((await db.serviceCase.findUniqueOrThrow({where:{id:createdData.caseId}})).customerId,c.id);
-  report.checks.push("Dashboard New case → existing customer → permanent case ID → journey");
+  report.checks.push("Today New trip → existing customer → permanent Max ID → booking form for that trip");
 
   const role=await db.role.findUniqueOrThrow({where:{key:"TICKETING_EXECUTIVE"}});
   const staff=await db.user.create({data:{name:"Section Staff",employeeCode:"SECTIONS-STAFF",email:"sections-staff@visual.test",phone:"",passwordHash:owner.passwordHash,roleId:role.id,branchId:c.branchId}});
@@ -83,15 +84,16 @@ try{
   assert.equal((await staffContext.request.get(base+"/api/pulse?section=administration")).status(),403);
   const personalReports=await staffContext.request.get(base+"/api/pulse?section=reports");assert.equal(personalReports.status(),200);assert((await personalReports.json()).links.every(l=>l.href==="/reports/work"));
   assert.equal((await staffContext.request.post(base+"/api/payments",{data:{customerId:mine.id,amount:1}})).status(),403);
-  const staffPage=await staffContext.newPage();await staffPage.goto(base+"/dashboard",{waitUntil:"networkidle"});await staffPage.getByRole("heading",{name:"My day",exact:true}).waitFor();
-  await staffPage.getByRole("button",{name:"New Max ID",exact:true}).click();const staffDialog=staffPage.getByRole("dialog",{name:"Register client request",exact:true});
-  await staffDialog.getByRole("combobox",{name:"Customer *",exact:true}).selectOption(mine.id);
-  assert.equal(await staffDialog.getByRole("link",{name:"Add a new customer in another tab"}).count(),0);
-  assert.deepEqual(await staffDialog.getByRole("combobox",{name:"Requested service",exact:true}).locator("option").evaluateAll(options=>options.map(o=>o.value)),["FLIGHT","HOTEL","STAY","BUS","TRAIN","INSURANCE"]);
-  await staffDialog.getByLabel("Request title *",{exact:true}).fill("Assigned staff ticket request");
-  const staffCreated=staffPage.waitForResponse(r=>r.url()===base+"/api/cases"&&r.request().method()==="POST");await staffDialog.getByRole("button",{name:"Create Max ID",exact:true}).click();assert((await staffCreated).ok());
+  const staffPage=await staffContext.newPage();await staffPage.goto(base+"/today",{waitUntil:"networkidle"});await staffPage.getByRole("heading",{name:"Today",exact:true}).waitFor();
+  await staffPage.goto(base+"/trips/new",{waitUntil:"networkidle"});
+  await staffPage.getByLabel("Search customers").fill(mine.code);
+  assert.equal(await staffPage.getByRole("main").getByRole("button").filter({hasText:c.code}).count(),0,"Assigned staff cannot pick other customers");
+  await staffPage.getByRole("main").getByRole("button").filter({hasText:mine.code}).first().click();
+  assert.deepEqual((await staffPage.getByRole("radio").allTextContents()).map(t=>t.replace(/(Book|Bus|Start|Not).*/,"").trim()),["Flight","Hotel","Other"]);
+  await staffPage.getByRole("radio",{name:/^Flight/}).click();await staffPage.getByLabel("Trip name (optional)").fill("Assigned staff ticket request");
+  const staffCreated=staffPage.waitForResponse(r=>r.url()===base+"/api/cases"&&r.request().method()==="POST");await staffPage.getByRole("button",{name:"Start trip",exact:true}).click();assert((await staffCreated).ok());
   const staffPulse=await(await staffContext.request.get(base+"/api/pulse?section=today")).json();assert.equal(staffPulse.stats.find(s=>s.label==="Active Max IDs").value,"1");
-  await staffPage.goto(base+"/workspace/administration");await staffPage.waitForURL("**/dashboard?denied=**");
+  await staffPage.goto(base+"/workspace/administration");await staffPage.waitForURL("**/today?denied=**");
   await staffContext.close();report.checks.push("Staff assignment isolation, permission-filtered sections/services, server-side denied finance/admin writes, and staff case continuity");
 
   const readerRole=await db.role.findUniqueOrThrow({where:{key:"READ_ONLY"}});

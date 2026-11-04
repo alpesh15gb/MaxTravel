@@ -56,7 +56,7 @@ async function run() {
   await status("Unauthenticated payment rejected", "/api/payments", {}, "", 401);
   const emptyPulse = await (await get("/api/pulse", owner.cookie)).json();
   check("Fresh pulse has truthful zero metrics", () => { assert(emptyPulse.firstRun); assert.equal(emptyPulse.items.length, 0); assert(emptyPulse.kpis.every(k => /^(0|₹0)$/.test(k.value))); });
-  const routes = ["/dashboard", "/customers", "/visa", "/visa/new", "/ticketing", "/ticketing/new", "/documents", "/payments", "/refunds", "/suppliers", "/tasks", "/employees", "/checklists", "/settings", "/audit", "/notifications"];
+  const routes = ["/today", "/customers", "/visa", "/visa/new", "/ticketing", "/ticketing/new", "/documents", "/payments", "/refunds", "/suppliers", "/tasks", "/employees", "/checklists", "/settings", "/audit", "/notifications"];
   for (const route of routes) { const r = await get(route, owner.cookie); const html = await r.text(); check(`Empty-state route ${route}`, () => { assert.equal(r.status, 200); assert(!html.includes('"digest"'), "Server route error"); assert(!html.includes("Skyline")); }); }
   const alice = await ok("/api/customers", { name: "Alice Regression", phone: "+919000000002", email: "alice@example.test", city: "Pune" }, owner.cookie);
   const bob = await ok("/api/customers", { name: "Bob Regression", phone: "+919000000003", city: "Pune" }, owner.cookie);
@@ -252,7 +252,7 @@ async function run() {
     assert(bookingPage.includes("Not entered"));
   });
   // --- The dashboard date chip must be formatted on the server only ----------------------
-  const dashHtml = await (await get("/dashboard", owner.cookie)).text();
+  const dashHtml = await (await get("/today", owner.cookie)).text();
   check("Dashboard day chip is server-computed, so React hydration cannot disagree", () => {
     assert(/[A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]+/.test(dashHtml), "server-rendered day chip");
   });

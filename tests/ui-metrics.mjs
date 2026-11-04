@@ -133,7 +133,7 @@ async function startWorkspace() {
 
 // ---------------------------------------------------------------- what the reader sees
 const ROUTES = [
-  ["dashboard", "/dashboard"],
+  ["dashboard", "/today"],
   ["workspace-customers","/workspace/customers"],["workspace-operations","/workspace/operations"],["workspace-finance","/workspace/finance"],["customer-email","/email"],["workspace-administration","/workspace/administration"],
   ["customers", "/customers"],
   ["customer-detail", "/customers/{customerId}"],
@@ -219,7 +219,7 @@ async function signIn(page, base) {
     await page.getByLabel("Work email", { exact: true }).fill("review@visual.test");
     await page.getByLabel("Password", { exact: true }).fill("Review-Visual-2026!");
     await page.getByRole("button", { name: "Sign in to workspace", exact: true }).click();
-    await page.waitForURL("**/dashboard", { waitUntil: "domcontentloaded" });
+    await page.waitForURL("**/today", { waitUntil: "domcontentloaded" });
   } catch (error) {
     fs.mkdirSync(shotDir, { recursive: true });
     await page.screenshot({ path: path.join(shotDir, "login-failure.png"), fullPage: false });

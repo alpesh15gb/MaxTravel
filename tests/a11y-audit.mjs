@@ -30,7 +30,7 @@ const coverage = { rules, routes: 0, routeVisits: 0, focusWalks: 0, phoneWalks: 
 const routes = [
   ["masters", "/masters"], ["master-profile", `/masters/${fixture.customerId}`],
   ["workspace-customers","/workspace/customers"],["workspace-operations","/workspace/operations"],["workspace-finance","/workspace/finance"],["customer-email","/email"],["workspace-administration","/workspace/administration"],
-  ["client-cases", "/cases"],["case-journey", `/cases/${fixture.serviceCaseId}`],["dashboard", "/dashboard"], ["start-work", "/work"], ["sales", "/sales"], ["online-bookings", "/online-bookings"], ["customers", "/customers"],
+  ["client-cases", "/trips"],["case-journey", `/trips/${fixture.serviceCaseId}`],["dashboard", "/today"], ["start-work", "/work"], ["sales", "/sales"], ["online-bookings", "/online-bookings"], ["customers", "/customers"],
   ["customer-detail", `/customers/${fixture.customerId}`], ["new-customer", "/customers?action=new"],
   ["visa", "/visa"], ["visa-detail", `/visa/${fixture.visaCaseId}`], ["new-visa", "/visa/new"],
   ["ticketing", "/ticketing"], ["booking-detail", `/ticketing/${fixture.bookingId}`], ["new-booking", "/ticketing/new"],
@@ -313,7 +313,7 @@ try {
       page.getByRole("button", { name: "Sign in to workspace", exact: true }).click(),
     ]);
     if (!signedIn.ok()) throw new Error(`Login rejected with HTTP ${signedIn.status()}: ${(await signedIn.json().catch(() => ({}))).error ?? "No error body"}`);
-    await page.waitForURL("**/dashboard", { waitUntil: "domcontentloaded" });
+    await page.waitForURL("**/today", { waitUntil: "domcontentloaded" });
   } catch (error) {
     // Preserve failure evidence without credentials, cookies or response bodies.
     const state = await page.evaluate(() => ({ pathname: location.pathname, alerts: [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent), fields: [...document.querySelectorAll('input')].map(input => ({ type: input.type, disabled: input.disabled, empty: !input.value })) })).catch(() => ({ unavailable: true }));

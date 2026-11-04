@@ -41,7 +41,7 @@ export default async function ReportCards({ user, period, from, to }: { user: Se
   ];
   const periods: [Period, string][] = [["today", "Today"], ["week", "This week"], ["month", "This month"], ["custom", "Custom"]];
   return <div className="workspace-page space-y-5">
-    <PageHeader title="Reports" description={`${range.from === range.to ? range.from : `${range.from} to ${range.to}`} · India time`} actions={<Link className="btn-secondary" href={`/reports?${q("ageing")}`}>More reports</Link>} />
+    <PageHeader title="Reports" description={`${range.from === range.to ? range.from : `${range.from} to ${range.to}`} · India time`} actions={<Link className="btn-primary" href={`/reports?${q("ageing")}`}>More reports</Link>} />
     <form className="flex flex-wrap items-end gap-2" action="/reports">
       <nav aria-label="Period" className="flex flex-wrap gap-2">{periods.filter(([p]) => p !== "custom").map(([p, label]) => <Link key={p} href={`/reports?period=${p}`} aria-current={period === p ? "page" : undefined} className={`rounded-full border px-3 py-1.5 text-sm ${period === p ? "border-teal-700 bg-teal-700 text-white" : "border-slate-200 bg-white"}`}>{label}</Link>)}</nav>
       <input type="hidden" name="period" value="custom" />
@@ -54,7 +54,7 @@ export default async function ReportCards({ user, period, from, to }: { user: Se
         <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-700"><Icon name={c.icon} size={16} className="text-teal-700" />{c.title}</h2>
         <p className={`text-2xl font-bold tracking-tight ${c.tone ?? ""}`}>{c.value}</p>
         <p className="flex-1 text-sm text-slate-600">{c.note}</p>
-        <div className="flex gap-2"><Link className="btn-primary" href={c.open}>Open</Link>{excel && c.excel && <a className="btn-secondary" href={c.excel}>Excel</a>}</div>
+        <div className="flex gap-2"><Link className="btn-secondary" href={c.open}>Open</Link>{excel && c.excel && <a className="btn-secondary" href={c.excel}>Excel</a>}</div>
       </section>)}
     </div>
   </div>;

@@ -121,20 +121,17 @@ try {
   await login(context, owner.email);
   page = await context.newPage();
   page.on("pageerror", (e) => report.errors.push(e.message));
-  await page.goto(base + "/cases", { waitUntil: "networkidle" });
-  await page
-    .getByRole("main")
-    .getByRole("button", { name: "New Max ID", exact: true })
-    .click();
+  // Every piece of work starts with New trip: pick the customer, then what they need.
+  const tripCustomer = await db.customer.findUniqueOrThrow({ where: { id: fixture.customerId } });
+  await page.goto(base + "/trips/new", { waitUntil: "networkidle" });
+  await page.getByLabel("Search customers").fill(tripCustomer.code);
+  await page.getByRole("main").getByRole("button").filter({ hasText: tripCustomer.code }).first().click();
+  await page.getByRole("radio", { name: /^Visa/ }).click();
+  await page.getByLabel("Trip name (optional)").fill("Family visa · workflow acceptance");
+  await page.getByRole("button", { name: "Start trip", exact: true }).click();
+  await page.waitForURL(/\/visa\/new\?case=/);
   let d = page.getByRole("dialog");
-  await d.getByLabel("Customer *").selectOption(fixture.customerId);
-  await d.getByLabel("Requested service").selectOption("VISA");
-  await d
-    .getByLabel("Request title *")
-    .fill("Family visa · workflow acceptance");
-  await d.getByRole("button", { name: "Create Max ID", exact: true }).click();
-  await page.waitForURL(/\/cases\/[^/?]+$/);
-  const caseId = new URL(page.url()).pathname.split("/")[2],
+  const caseId = new URL(page.url()).searchParams.get("case"),
     journey = await db.serviceCase.findUniqueOrThrow({ where: { id: caseId } }),
     work = await db.serviceWork.findUniqueOrThrow({
       where: { caseId_service: { caseId, service: "VISA" } },
@@ -145,12 +142,12 @@ try {
   report.checks.push(
     "First-contact registration assigns a permanent case ID and a planning owner",
   );
-  await page.goto(`${base}/cases/${caseId}?tab=work`, {
+  await page.goto(`${base}/trips/${caseId}`, {
     waitUntil: "networkidle",
   });
   await page
     .getByRole("main")
-    .getByRole("button", { name: "Add work", exact: true })
+    .getByRole("button", { name: "Add to-do", exact: true })
     .click();
   d = page.getByRole("dialog");
   await d.getByLabel("Service work *").selectOption(work.id);
@@ -233,9 +230,9 @@ try {
   const uploadLink=await staffContext.request.post(base+"/api/upload-links",{data:{customerId:fixture.customerId,visaCaseId:source.id,expiresInDays:1}});assert.equal(uploadLink.status(),200,"Delegated staff can request documents for this application");const privateLink=await uploadLink.json();assert((await staffContext.request.post(base+"/api/upload-links/revoke",{data:{linkId:privateLink.linkId}})).ok());
   const sp = await staffContext.newPage();
   sp.on("pageerror", (e) => report.errors.push(e.message));
-  await sp.goto(base + "/dashboard", { waitUntil: "networkidle" });
+  await sp.goto(base + "/today", { waitUntil: "networkidle" });
   await sp
-    .getByRole("heading", { name: "My day", level: 1, exact: true })
+    .getByRole("heading", { name: "Today", level: 1, exact: true })
     .waitFor();
   await sp.goto(`${base}/work?task=${task.id}`, { waitUntil: "networkidle" });
   await action(sp, "Start work", "Requirements review started.");
@@ -375,8 +372,8 @@ try {
   for (const width of [1440,1024,768,390]) {
     await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
     for (const [route, title] of [
-      ["/dashboard", "Agency overview"],
-      ["/cases", "Max IDs"],
+      ["/today", "Today"],
+      ["/trips", "Trips"],
       ["/work", "Team work"],
       ["/reports/work", "Work & team reports"],
       ["/work/settings", "Work templates & rules"],
