@@ -9,6 +9,6 @@ export default function TripStageBar({ stage, compact = false }: { stage: TripSt
     <span className="text-xs font-semibold text-slate-700">{TRIP_STAGE_LABEL[stage]}</span>
   </span>;
   return <ol className="!m-0 flex !list-none gap-1 !p-0" aria-label="Trip stage">
-    {TRIP_STAGES.map((s, i) => <li key={s} aria-current={i === at ? "step" : undefined} className={`min-w-0 flex-1 truncate rounded-md px-1 py-2 text-center text-[11px] font-semibold sm:text-sm ${i < at ? "bg-teal-100 text-teal-900" : i === at ? "bg-teal-700 text-white" : "bg-slate-100 text-slate-500"}`}>{TRIP_STAGE_LABEL[s]}</li>)}
+    {TRIP_STAGES.map((s, i) => <li key={s} aria-current={i === at ? "step" : undefined} className={`min-w-0 flex-1 truncate rounded-md px-1 py-2 text-center text-micro font-semibold tracking-normal sm:text-sm ${i < at ? "bg-teal-100 text-teal-900" : i === at ? "bg-teal-700 text-white" : "bg-slate-100 text-slate-500"}`}>{TRIP_STAGE_LABEL[s]}</li>)}
   </ol>;
 }

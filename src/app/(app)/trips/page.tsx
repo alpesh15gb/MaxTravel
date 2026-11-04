@@ -43,9 +43,9 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
       <button className="btn-secondary">Search</button>
     </form>
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
-      <span className="text-slate-500">Show:</span>
-      <Link href={href({ view: undefined, page: undefined })} className={!view ? "font-semibold text-slate-900" : "text-blue-700 underline"}>All services</Link>
-      {TRIP_VIEWS.map(v => <Link key={v} href={href({ view: v, page: undefined })} className={view === v ? "font-semibold text-slate-900" : "text-blue-700 underline"}>{VIEW_LABEL[v]}</Link>)}
+      <span className="inline-flex min-h-8 items-center text-slate-500">Show:</span>
+      <Link href={href({ view: undefined, page: undefined })} className={`inline-flex min-h-8 items-center ${!view ? "font-semibold text-slate-900" : "text-blue-700 underline"}`}>All services</Link>
+      {TRIP_VIEWS.map(v => <Link key={v} href={href({ view: v, page: undefined })} className={`inline-flex min-h-8 items-center ${view === v ? "font-semibold text-slate-900" : "text-blue-700 underline"}`}>{VIEW_LABEL[v]}</Link>)}
     </div>
     {data.capped && <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">Showing the 500 most recently updated trips. Search by customer, phone, Max ID or PNR to find older ones.</p>}
     {data.rows.length ? <TripsList rows={data.rows} /> : (q || view || sp.stage || mine || customerId)

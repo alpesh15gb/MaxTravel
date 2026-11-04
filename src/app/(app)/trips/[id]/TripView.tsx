@@ -84,7 +84,7 @@ export default function TripView({ user, trip, work, record, imported, owners, h
       <h2 id="services-title" className="text-lg font-semibold">Services</h2>
       <ul className="mt-3 divide-y divide-slate-100">
         {trip.services.map(s => <li key={s.href} className="flex flex-wrap items-center justify-between gap-2 py-3">
-          <Link href={s.href} className={`flex min-w-0 items-center gap-2 text-sm ${s.dead ? "text-slate-400 line-through" : "font-medium text-blue-700 underline"}`}><Icon name={SERVICE_ICON[s.kind]} size={16} className="shrink-0" /><span className="sr-only">{SERVICE_LABEL[s.kind]}: </span><span className="break-words">{s.label}</span></Link>
+          <Link href={s.href} className={`flex min-h-11 min-w-0 items-center gap-2 text-sm ${s.dead ? "text-slate-400 line-through" : "font-medium text-blue-700 underline"}`}><Icon name={SERVICE_ICON[s.kind]} size={16} className="shrink-0" /><span className="sr-only">{SERVICE_LABEL[s.kind]}: </span><span className="break-words">{s.label}</span></Link>
           <Status tone={s.dead ? "danger" : "neutral"}>{s.status}</Status>
         </li>)}
       </ul>
@@ -114,7 +114,7 @@ export default function TripView({ user, trip, work, record, imported, owners, h
       <ol className="mt-3 divide-y divide-slate-100">
         {history.rows.map(e => <li key={e.id} className="py-3 text-sm">
           <p className="whitespace-pre-wrap break-words">{e.what}</p>
-          <p className="mt-1 text-xs text-slate-500">{dateTimeLabel(e.at)} · {e.who}{e.href && <> · <Link className="text-blue-700 underline" href={e.href}>Open</Link></>}</p>
+          <p className="mt-1 text-xs text-slate-500">{dateTimeLabel(e.at)} · {e.who}{e.href && <> · <Link className="inline-flex min-h-8 items-center px-1 text-blue-700 underline" href={e.href}>Open</Link></>}</p>
         </li>)}
       </ol>
       <nav className="mt-2 flex gap-3" aria-label="History pages">

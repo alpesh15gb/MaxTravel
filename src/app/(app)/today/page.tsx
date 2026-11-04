@@ -21,7 +21,7 @@ function Card({ title, icon, count, seeAll, empty, children }: { title: string; 
   return <section className="panel flex flex-col p-5" aria-label={title}>
     <div className="mb-3 flex items-center justify-between gap-2">
       <h2 className="flex items-center gap-2 text-base font-semibold"><Icon name={icon} size={18} className="text-teal-700" />{title}{count ? <span className="rounded-full bg-slate-100 px-2 text-xs font-semibold text-slate-700">{count}</span> : null}</h2>
-      {seeAll && <Link className="text-sm text-blue-700 underline" href={seeAll}>See all</Link>}
+      {seeAll && <Link className="inline-flex min-h-8 items-center px-1 text-sm text-blue-700 underline" href={seeAll}>See all</Link>}
     </div>
     {children.length ? <ul className="divide-y divide-slate-100">{children}</ul> : <p className="text-sm text-slate-500">{empty}</p>}
   </section>;
