@@ -138,7 +138,7 @@ export default function WorkDesk({
     router.refresh();
   }
   const views = [
-    ...(embedded && !data.permissions.team ? [["all", "Case work"]] : []),
+    ...(embedded && !data.permissions.team ? [["all", "This trip"]] : []),
     ...(data.permissions.team
       ? [
           ["all", "Active work"],
@@ -152,7 +152,7 @@ export default function WorkDesk({
     ["waiting", "Waiting"],
     ["done", "Done"],
     ["records", "All states"],
-    ...(data.permissions.assign ? [["legacy", "Needs case link"]] : []),
+    ...(data.permissions.assign ? [["legacy", "Needs a trip link"]] : []),
   ];
   const caseRecord = data.cases.find((c) => c.id === caseId);
   return (
@@ -174,8 +174,8 @@ export default function WorkDesk({
       ) : (
         <div className="work-toolbar">
           <div>
-            <h2>Case work</h2>
-            <p>One coordinator, clear steps and individual responsibility.</p>
+            <h2>To-dos</h2>
+            <p>Each step has one person responsible and a due time.</p>
           </div>
           {data.permissions.create && !data.caseClosed && (
             <button className="btn-primary" onClick={() => setCreate(true)}>

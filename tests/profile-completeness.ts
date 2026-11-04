@@ -23,6 +23,9 @@ assert.deepEqual(profileCompleteness({ ...full, identities: [{ ...full.identitie
 assert.equal(profileCompleteness({ ...full, details: { ...full.details, phone: "", email: "a@b.in" } }, docs).filled, 10);
 assert.deepEqual(profileCompleteness({ ...full, details: { ...full.details, phone: "", email: "" } }, docs).missing, ["Phone or email"]);
 assert.deepEqual(profileCompleteness({ ...full, dateOfBirth: "", gender: "" }, docs).missing, ["Date of birth", "Gender"]);
+// The customer themself (relation SELF) uses the customer's phone/email when their own is blank.
+assert.deepEqual(profileCompleteness({ ...full, relation: "SELF", details: { ...full.details, phone: "", email: "" } }, docs, { phone: "+919800000000", email: "" }).missing, []);
+assert.deepEqual(profileCompleteness({ ...full, relation: "SPOUSE", details: { ...full.details, phone: "", email: "" } }, docs, { phone: "+919800000000", email: "" }).missing, ["Phone or email"]);
 
 const today = "2026-11-04";
 assert.equal(passportWarning("2026-10-01", today), "EXPIRED");

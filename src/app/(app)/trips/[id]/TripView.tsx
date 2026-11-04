@@ -38,7 +38,7 @@ export default function TripView({ user, trip, work, record, imported, owners, h
     can("ticketing:create") && { href: `/ticketing/new?case=${id}&product=FLIGHT`, label: "Flight", icon: "plane" as const },
     can("ticketing:create") && { href: `/ticketing/new?case=${id}&product=HOTEL`, label: "Hotel", icon: "board" as const },
     can("visa:create") && { href: `/visa/new?case=${id}`, label: "Visa", icon: "visa" as const },
-    can("ticketing:create") && { href: `/ticketing/new?case=${id}&product=BUS`, label: "Other (bus, train, insurance)", icon: "list" as const },
+    can("ticketing:create") && { href: `/ticketing/new?case=${id}&product=BUS`, label: "Other", icon: "list" as const },
     can("payment:record") && { href: paymentHref, label: "Payment", icon: "wallet" as const },
     can("task:create") && { href: "#todos", label: "To-do", icon: "tasks" as const },
   ].filter((x): x is { href: string; label: string; icon: "compass" } => Boolean(x));
@@ -90,7 +90,7 @@ export default function TripView({ user, trip, work, record, imported, owners, h
     </section>}
 
     {trip.money && <section id="money" className="space-y-3" aria-label="Money">
-      <CaseProfit user={user} id={id} />
+      <details className="panel p-5"><summary className="cursor-pointer font-semibold">Profit for each booking and visa</summary><div className="mt-3"><CaseProfit user={user} id={id} /></div></details>
       <div className="flex flex-wrap gap-2"><Link className="btn-secondary" href={`/reports?report=statement&customerId=${trip.customer.id}`}>Customer statement</Link><Link className="btn-secondary" href={`/payments?customer=${trip.customer.id}`}>Invoices & receipts</Link></div>
     </section>}
 

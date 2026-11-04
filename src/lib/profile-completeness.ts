@@ -1,6 +1,6 @@
 /** "Travel-ready" profile check shown on each traveller card. Pure: works on the master data sent to the page. */
 export type CompletenessTraveller = {
-  id: string; fullName: string; dateOfBirth: string; gender: string; nationality: string;
+  id: string; fullName: string; dateOfBirth: string; gender: string; nationality: string; relation?: string;
   details: Record<string, unknown>;
   legacyPassport: { expiryDate: string } | null;
   identities: { kind: string; primaryPassport: boolean; expiryDate: string; fileDocumentId: string | null }[];
@@ -14,7 +14,8 @@ export function passportExpiry(t: CompletenessTraveller): string {
   return passport?.expiryDate || t.legacyPassport?.expiryDate || "";
 }
 
-export function profileCompleteness(t: CompletenessTraveller, documents: CompletenessDocument[]): { filled: number; total: number; missing: string[] } {
+export function profileCompleteness(t: CompletenessTraveller, documents: CompletenessDocument[], customerContact?: { phone: string | null; email: string | null }): { filled: number; total: number; missing: string[] } {
+  const self = t.relation === "SELF" && customerContact;
   const passport = Boolean(t.legacyPassport) || t.identities.some(d => d.kind === "PASSPORT" || d.primaryPassport);
   const uploaded = documents.some(d => d.travellerId === t.id && d.uploadedAt) || t.identities.some(d => d.fileDocumentId);
   const checks: [string, boolean][] = [
@@ -24,7 +25,7 @@ export function profileCompleteness(t: CompletenessTraveller, documents: Complet
     ["Nationality", has(t.nationality)],
     ["Passport number", passport],
     ["Passport expiry", has(passportExpiry(t))],
-    ["Phone or email", has(t.details.phone) || has(t.details.email)],
+    ["Phone or email", has(t.details.phone) || has(t.details.email) || Boolean(self && (has(customerContact.phone) || has(customerContact.email)))],
     ["Emergency contact name", has(t.details.emergencyName)],
     ["Emergency contact phone", has(t.details.emergencyPhone)],
     ["Identity document", uploaded],
