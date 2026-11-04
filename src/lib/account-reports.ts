@@ -35,6 +35,9 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
   const cutover=new Date(cutoverSetting.value);
   const dateParams=new URLSearchParams(params);
   if(["statement","supplier-statement"].includes(key)&&!dateParams.get("from"))dateParams.set("from",day(cutover)>day(new Date()).slice(0,7)+"-01"?day(cutover):day(new Date()).slice(0,7)+"-01");
+  // Links from other screens may ask for an earlier start; begin on the first recorded day instead of failing.
+  const startsLate=["statement","supplier-statement"].includes(key)&&/^\d{4}-\d{2}-\d{2}$/.test(dateParams.get("from")??"")&&dateParams.get("from")!<day(cutover)&&(dateParams.get("to")??day(new Date()))>=day(cutover);
+  if(startsLate)dateParams.set("from",day(cutover));
   const period=reportPeriod(dateParams);
   if(["statement","supplier-statement","ageing","supplier-payables"].includes(key)&&period.to<day(cutover))throw new ApiError(400,`Historical balances are available from ${day(cutover)} only.`);
   if(["statement","supplier-statement"].includes(key)&&period.from<day(cutover))throw new ApiError(400,`Statements begin on ${day(cutover)}. Earlier transactions are represented by the migration opening balance.`);
@@ -51,7 +54,7 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
   const bookingFilters={...(ownerId?{ownerId}:{}),...(status?{status}:{})};
   const visaFilters={...(ownerId?{ownerId}:{}),...(status?{stage:{name:status}}:{})};
   const agency=(await tx.settings.findUnique({where:{key:"agency.name"}}))?.value||"Max Travel CRM";
-  const warnings=[key==="operations"?"Operational records include all currencies; no monetary totals are presented.":"INR only. Other-currency bookings and their receipts/refunds are excluded."];
+  const warnings=[...(startsLate?[`This statement starts on ${day(cutover)}, the first day of recorded balances. Earlier activity is included in the opening balance.`]:[]),key==="operations"?"Operational records include all currencies; no monetary totals are presented.":"INR only. Other-currency bookings and their receipts/refunds are excluded."];
   if(user.accessMode!=="ALL")warnings.push("Only complete customer accounts wholly within your record scope are included.");
   const selectedCustomer=customerId&&!key.startsWith("supplier")?byCustomer.get(customerId):null;
   const metadata:ReportMetadata={dateBasis:reportDefinition(key)!.basis,currency:reportCurrency(key),account:selectedCustomer?`${selectedCustomer.name} · ${selectedCustomer.code}`:key.startsWith("supplier")?"All permitted suppliers":"All permitted customer accounts",scope:user.accessMode==="ALL"?"Your permitted agency records":"Complete customer accounts wholly within your record scope",filters:[]};
@@ -105,7 +108,7 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
    // Editability reflects current source ownership, not historical journal state.
    // Platform terms and now-credited/linked invoices must never be offered as local edits.
    const sources=[...balances.values()];
-   const editableTerms=new Set<string>();
+   const editableTerms=new Set<string>(),unconfirmed=new Set<string>();
    if(!supplier){
     const [localBookings,currentCases,localInvoices]=await Promise.all([
      tx.booking.findMany({where:{id:{in:sources.filter(b=>b.type==="Booking").map(b=>b.id)},OR:[{gdsSource:null},{gdsSource:{not:"TRIPJACK_API"}}]},select:{id:true}}),
@@ -113,24 +116,32 @@ export async function buildAccountReport(user:SessionUser,params:URLSearchParams
      tx.invoice.findMany({where:{id:{in:sources.filter(b=>b.type==="Invoice").map(b=>b.id)},bookingId:null,visaCaseId:null,status:{not:"CREDITED"}},select:{id:true}}),
     ]);
     for(const b of localBookings)editableTerms.add(`Booking:${b.id}`);
+    // A charge on an enquiry or unaccepted quote stays in the balance (statements must reconcile) but is not yet money to collect.
+    const [enquiryBookings,enquiryVisas]=await Promise.all([
+     tx.booking.findMany({where:{id:{in:sources.filter(b=>b.type==="Booking").map(b=>b.id)},status:{in:["ENQUIRY","QUOTE_SENT"]}},select:{id:true}}),
+     tx.visaCase.findMany({where:{id:{in:sources.filter(b=>b.type==="VisaCase").map(b=>b.id)},stage:{key:{in:["ENQUIRY","ASSESSMENT"]}}},select:{id:true}}),
+    ]);
+    for(const b of enquiryBookings)unconfirmed.add(`Booking:${b.id}`);
+    for(const v of enquiryVisas)unconfirmed.add(`VisaCase:${v.id}`);
     for(const c of currentCases)editableTerms.add(`VisaCase:${c.id}`);
     for(const i of localInvoices)editableTerms.add(`Invoice:${i.id}`);
    }
-   const totals=[0,0,0,0,0,0];let credit=-Math.min(0,unallocated);
+   const totals=[0,0,0,0,0,0,0];let credit=-Math.min(0,unallocated);
    for(const b of balances.values()){
     if(!["Booking","VisaCase","Invoice","SupplierDue"].includes(b.type))continue;
     if(b.amount<0){credit-=b.amount;continue;}if(!b.amount)continue;
     const days=b.due?Math.max(0,Math.floor((new Date(`${period.to}T00:00:00+05:30`).getTime()-new Date(`${day(b.due)}T00:00:00+05:30`).getTime())/86400000)):null;
-    const bucket=days===null?5:days===0?0:days<=30?1:days<=60?2:days<=90?3:4;
+    const bucket=unconfirmed.has(`${b.type}:${b.id}`)?6:days===null?5:days===0?0:days<=30?1:days<=60?2:days<=90?3:4;
     totals[bucket]+=b.amount;
-    result.rows.push({customer:supplier?names.get(b.partyId)||"Supplier":byCustomer.get(b.partyId)?.name||"Customer",reference:b.reference,service:({Booking:"Booking",VisaCase:"Visa case",Invoice:"Invoice",SupplierDue:"Supplier payable"} as Record<string,string>)[b.type]||b.type,due:b.due?day(b.due):"Not set",age:days===null?"Add payment terms":days===0?"Not overdue":`${days} days overdue`,bucket:["Not due","1–30","31–60","61–90","90+","No payment terms"][bucket],outstanding:rupees(b.amount),_type:b.type,_id:b.id,_termsEditable:editableTerms.has(`${b.type}:${b.id}`)?1:0,_href:supplier?"/suppliers":sourceHref(b.type,b.id,b.partyId),_customerHref:supplier?"/suppliers":`/reports?report=statement&customerId=${b.partyId}`});
+    result.rows.push({customer:supplier?names.get(b.partyId)||"Supplier":byCustomer.get(b.partyId)?.name||"Customer",reference:b.reference,service:({Booking:"Booking",VisaCase:"Visa case",Invoice:"Invoice",SupplierDue:"Supplier payable"} as Record<string,string>)[b.type]||b.type,due:b.due?day(b.due):"Not set",age:bucket===6?"Enquiry or quote":days===null?"Add payment terms":days===0?"Not overdue":`${days} days overdue`,bucket:["Not due","1–30","31–60","61–90","90+","No payment terms","Not confirmed yet"][bucket],outstanding:rupees(b.amount),_type:b.type,_id:b.id,_termsEditable:editableTerms.has(`${b.type}:${b.id}`)?1:0,_href:supplier?"/suppliers":sourceHref(b.type,b.id,b.partyId),_customerHref:supplier?"/suppliers":`/reports?report=statement&customerId=${b.partyId}`});
    }
    result.rows.sort((a,b)=>Number(b.outstanding)-Number(a.outstanding));
    result.title=supplier?"Supplier payables and ageing":"Customer outstanding and ageing";
    result.description=`Open obligations as of ${period.to}; unallocated credits are disclosed separately, not silently offset against other debts.`;
    result.columns=[field("customer",supplier?"Supplier":"Customer"),field("reference","Reference"),field("service","Service"),field("due","Due date"),field("age","Age"),field("bucket","Bucket"),field("outstanding","Outstanding",true)];
-   result.summary=[metric("Total open obligations",totals.reduce((s,n)=>s+n,0)),...totals.map((n,i)=>metric(["Not due","Overdue 1–30","Overdue 31–60","Overdue 61–90","Overdue 90+","No due date"][i],n)),metric("Credits / unapplied receipts",credit)];
-   warnings.push("Set explicit payment terms on bookings and visa cases to include them in overdue buckets. Items without payment terms are shown under No payment terms. Platform-managed booking terms cannot be edited here. Linked invoice dates do not automatically apply to the entire work charge.");
+   const all=totals.reduce((s,n)=>s+n,0);
+   result.summary=[metric("Total open obligations",all),...(supplier?[]:[metric("Confirmed to collect",all-totals[6])]),...totals.slice(0,6).map((n,i)=>metric(["Not due","Overdue 1–30","Overdue 31–60","Overdue 61–90","Overdue 90+","No due date"][i],n)),...(supplier?[]:[metric("Not confirmed yet",totals[6])]),metric("Credits / unapplied receipts",credit)];
+   warnings.push("Set explicit payment terms on bookings and visa cases to include them in overdue buckets. Items without payment terms are shown under No payment terms. Enquiries and unaccepted quotes (and visas still at enquiry or assessment) are listed as Not confirmed yet: they stay in the balance so statements reconcile, but are not counted in Confirmed to collect. Platform-managed booking terms cannot be edited here. Linked invoice dates do not automatically apply to the entire work charge.");
   } else if(key==="receipts") {
    const [payments,refunds]=await Promise.all([tx.payment.findMany({where:{customerId:{in:selectedIds},receivedOn:range,OR:[{bookingId:null},{booking:{currency:"INR"}}]},include:{booking:true,visaCase:true,invoice:true},orderBy:{receivedOn:"asc"}}),tx.refund.findMany({where:{customerId:{in:selectedIds},status:"PAID",paidOn:range,OR:[{bookingId:null},{booking:{currency:"INR"}}]},orderBy:{paidOn:"asc"}})]);
    result.title="Receipt and refund register";result.description="Recorded customer cash movements; this app does not transfer funds. Supplier payments and overheads are not included.";
