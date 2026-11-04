@@ -18,6 +18,6 @@ console.log("Workspace entry guards, screen coverage and report location criteri
 
 import {availableSections,sectionForPath} from "../src/lib/workspace-sections";
 import {ROLE_PERMISSIONS} from "../src/lib/permissions";
-assert.deepEqual(availableSections(ROLE_PERMISSIONS.OWNER).map(s=>s.title),["Masters","Bookings","Tasks & follow-ups","Suppliers","Reporting"]);
+assert.deepEqual(availableSections(ROLE_PERMISSIONS.OWNER).map(s=>s.title),["Today","Trips","Customers","Suppliers","Reports"]);
 for(const section of availableSections(ROLE_PERMISSIONS.VISA_EXECUTIVE))assert(section.links.some(l=>l.href===section.href),"Every staff landing destination is readable");
-assert.equal(sectionForPath("/customers/test")?.title,"Masters");assert.equal(sectionForPath("/whatsapp"),undefined);assert.equal(screenGuide("/whatsapp"),undefined);assert(!availableSections(ROLE_PERMISSIONS.OWNER).some(section=>section.links.some(link=>/whatsapp|incoming-documents/.test(link.href))),"Retired messaging routes are absent from navigation");assert.equal(sectionForPath("/visa")?.title,"Bookings");
+assert.equal(sectionForPath("/customers/test")?.title,"Customers");assert.equal(sectionForPath("/whatsapp"),undefined);assert.equal(screenGuide("/whatsapp"),undefined);assert(!availableSections(ROLE_PERMISSIONS.OWNER).some(section=>section.links.some(link=>/whatsapp|incoming-documents/.test(link.href))),"Retired messaging routes are absent from navigation");assert.equal(sectionForPath("/visa")?.title,"Trips");

@@ -12,14 +12,8 @@ import Modal from "./Modal";
 import DensityControl from "./DensityControl";
 import Brand from "./Brand";
 import WorkspaceGuide from "./WorkspaceGuide";
-import { availableSections, sectionForPath } from "@/lib/workspace-sections";
+import { availableSections, sectionForPath, QUICK_ACTIONS } from "@/lib/workspace-sections";
 export interface ShellUser { name: string; roleName: string; branchName: string | null; employeeCode: string; permissions: string[]; }
-const QUICK: { href: string; label: string; icon: IconName; perm: string }[] = [
-  { href:"/masters?action=new",label:"New customer",icon:"customers",perm:"customer:create" },
-  { href:"/ticketing/new",label:"New booking",icon:"plane",perm:"ticketing:create" },
-  { href:"/visa/new",label:"New visa case",icon:"visa",perm:"visa:create" },
-  { href:"/work?new=1",label:"New task",icon:"tasks",perm:"task:create" },
-];
 function initials(name: string) { return name.split(" ").filter(Boolean).map(n => n[0]).slice(0, 2).join("").toUpperCase(); }
 function useDismiss(ref: React.RefObject<HTMLDivElement | null>, open: boolean, close: () => void) {
   useEffect(() => {
@@ -76,20 +70,20 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
     };
   }, [mobile]);
   async function logout() { draftMemory.clear(); try { const r = await fetch("/api/auth/logout", { method: "POST" }); if (!r.ok) throw new Error(); packageDraftMemory.clear(); router.push("/login"); router.refresh(); } catch { setError("Could not sign out. Please try again."); } }
-  const quick = QUICK.filter(q => user.permissions.includes(q.perm));
+  const quick = QUICK_ACTIONS.filter(q => user.permissions.includes(q.perm));
   return <div className="operations-studio flex min-h-screen flex-col">
     <a href="#workspace-content" className="skip-link">Skip to workspace</a>
     {mobile && <button aria-label="Close navigation" className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm lg:hidden" onClick={() => setMobile(false)} />}
     <header className="app-header no-print gap-2 sm:gap-3">
       <button ref={menuTriggerRef} className="icon-button lg:hidden" aria-controls="workspace-navigation" aria-label="Open navigation" aria-expanded={mobile} onClick={() => setMobile(true)}><Icon name="menu" /></button>
-      <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5 pr-2 lg:hidden">
+      <Link href="/today" className="flex shrink-0 items-center gap-2.5 pr-2 lg:hidden">
         <Brand compact />
       </Link>
       <div className="workspace-context hidden xl:flex"><span>{user.branchName ?? "All branches"}</span><Icon name="arrow" size={13}/><strong>{user.roleName}</strong></div>
       <div className="min-w-0 flex-1 justify-center sm:px-2 flex">{user.permissions.includes("search:use") && <UniversalSearch />}</div>
       <div className="ml-auto flex items-center gap-2">
         {quick.length > 0 && <div ref={quickRef} className="relative hidden sm:block">
-          <button className="btn-quick rounded-lg" aria-haspopup="menu" aria-expanded={quickOpen} onClick={() => setQuickOpen(o => !o)}><Icon name="sparkles" size={16} />Quick actions<Icon name="chevronDown" size={14} /></button>
+          <button className="btn-quick rounded-lg" aria-haspopup="menu" aria-expanded={quickOpen} onClick={() => setQuickOpen(o => !o)}><Icon name="plus" size={16} />New<Icon name="chevronDown" size={14} /></button>
           {quickOpen && <div role="menu" className="menu-panel">{quick.map(q => <Link key={q.href} role="menuitem" href={q.href} onClick={closeQuick} className="menu-item"><Icon name={q.icon} size={16} className="text-teal-600" />{q.label}</Link>)}</div>}
         </div>}
         {user.permissions.includes("chat:use")&&<StaffChatBadge/>}
@@ -115,7 +109,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
     </header>
     <div className="workspace-shell-body flex min-h-0 flex-1">
       <aside ref={drawerRef} id="workspace-navigation" role={mobile ? "dialog" : undefined} aria-modal={mobile ? true : undefined} aria-label="Workspace navigation" data-drawer={mobile ? "open" : "closed"} className={`app-sidebar no-print ${mobile ? "translate-x-0 top-0" : "-translate-x-full"}`}>
-        <div className="studio-brand-row"><Link href="/dashboard" aria-label="Max Travel Today" onClick={() => setMobile(false)}><Brand compact /></Link><button className="icon-button lg:hidden" aria-label="Close navigation" onClick={() => setMobile(false)}><Icon name="close" /></button></div>
+        <div className="studio-brand-row"><Link href="/today" aria-label="Max Travel Today" onClick={() => setMobile(false)}><Brand compact /></Link><button className="icon-button lg:hidden" aria-label="Close navigation" onClick={() => setMobile(false)}><Icon name="close" /></button></div>
         <div className="studio-workspace-label"><span className="studio-agency-monogram" aria-hidden="true">{initials(agencyName)}</span><span><strong title={agencyName}>{agencyName}</strong><small>Agency operations</small></span></div>
         <nav aria-label="Main navigation" className="tos-scroll flex-1 overflow-y-auto px-3 pb-5 pt-1">
           {sections.map(section => <Link key={section.id} href={section.href} onClick={()=>setMobile(false)} aria-current={activeSection?.id===section.id?"page":undefined} className={`nav-link ${activeSection?.id===section.id?"active":""}`}><Icon name={section.icon} size={18}/><span>{section.title}</span>{activeSection?.id===section.id&&<span className="studio-active-dot" aria-hidden="true"/>}</Link>)}

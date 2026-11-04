@@ -1,7 +1,7 @@
 import type { IconName } from "@/components/Icon";
 import type { Permission } from "./permissions";
 
-export type SectionId = "today" | "customers" | "operations" | "finance" | "reports" | "administration";
+export type SectionId = "today" | "trips" | "customers" | "suppliers" | "reports" | "operations" | "finance" | "administration";
 export type WorkspaceLink = { href: string; label: string; description: string; icon: IconName; permission: Permission };
 export type WorkspaceSection = { id: SectionId; title: string; description: string; icon: IconName; href: string; links: WorkspaceLink[] };
 const LEGACY_SECTIONS: WorkspaceSection[] = [
@@ -45,30 +45,61 @@ const LEGACY_SECTIONS: WorkspaceSection[] = [
   ] },
 ];
 
-const legacy=(id:SectionId)=>LEGACY_SECTIONS.find(s=>s.id===id)!;
+const link=(href:string,label:string,description:string,icon:IconName,permission:Permission):WorkspaceLink=>({href,label,description,icon,permission});
 export const WORKSPACE_SECTIONS:WorkspaceSection[]=[
- {...legacy("customers"),title:"Masters",href:"/masters",description:"Customer details, travellers, documents and staff activity.",links:[{href:"/masters",label:"Customers",description:"Find or add a customer, their travellers and documents.",icon:"customers",permission:"customer:view"},{href:"/email",label:"Customer email",description:"Queued updates, failures and delivery review.",icon:"message",permission:"email:send"},...legacy("operations").links.filter(l=>l.href==="/documents")]},
- {...legacy("operations"),title:"Bookings",href:"/ticketing",description:"Enquiry, quote, booking, visa and payment for each customer, in order.",links:(()=>{const all=[...legacy("operations").links,...legacy("customers").links,...legacy("finance").links],names:Record<string,string>={"/sales":"Enquiries & quotes","/ticketing":"Travel bookings","/visa":"Visa","/online-bookings":"Online","/payments":"Payments & invoices","/refunds":"Refunds","/advances":"Advances","/cases":"Max IDs"};return Object.keys(names).map(h=>all.find(l=>l.href===h)).filter((l):l is WorkspaceLink=>!!l).map(l=>({...l,label:names[l.href]}));})()},
- {...legacy("today"),title:"Tasks & follow-ups",href:"/work",description:"Everything to do today: assigned work, follow-ups and alerts.",links:[{href:"/work",label:"Tasks & follow-ups",description:"One queue: assign, do and follow up work.",icon:"tasks",permission:"task:view"},{href:"/dashboard",label:"Today",description:"What needs a decision today.",icon:"dashboard",permission:"dashboard:view"},{...legacy("operations").links.find(l=>l.href==="/work/service-alerts")!,label:"Alerts"}]},
- {...legacy("finance"),title:"Suppliers",href:"/suppliers",description:"Supplier accounts, due dates and settlements.",links:legacy("finance").links.filter(l=>l.href==="/suppliers")},
- {...legacy("reports"),title:"Reporting",href:"/reports/work",description:"Operational and financial reports and exports."},
+ {id:"today",title:"Today",href:"/today",icon:"dashboard",description:"What needs doing now: your to-dos, travel this week, money to collect and follow-ups.",links:[
+  link("/today","Today","What needs doing now.","dashboard","dashboard:view"),
+  link("/work","To-dos","Assign, do and follow up to-dos.","tasks","task:view"),
+  link("/work/service-alerts","Alerts","Holds, appointments and handoffs that need attention.","bell","dashboard:view"),
+  link("/notifications","Notifications","Updates to your work.","bell","dashboard:view"),
+ ]},
+ {id:"trips",title:"Trips",href:"/trips",icon:"compass",description:"Every customer job under one Max ID: enquiry, quote, bookings, visa and payment.",links:[
+  link("/trips","All trips","Every trip under its Max ID.","compass","customer:view"),
+  link("/sales","Enquiries","Enquiries and quotes.","compass","customer:view"),
+  link("/ticketing","Flights & hotels","Flight, hotel and other bookings.","plane","ticketing:view"),
+  link("/visa","Visas","Visa applications.","visa","visa:view"),
+  link("/online-bookings","Online","Bookings from the booking site.","plane","ticketing:view"),
+  link("/payments","Payments","Invoices and receipts.","wallet","payment:view"),
+  link("/refunds","Refunds","Refund approvals and payouts.","refund","refund:view"),
+ ]},
+ {id:"customers",title:"Customers",href:"/masters",icon:"customers",description:"Customer details, travellers and their documents.",links:[
+  link("/masters","Customers","Find or add a customer, their travellers and documents.","customers","customer:view"),
+  link("/email","Customer email","Queued updates, failures and delivery review.","message","email:send"),
+ ]},
+ {id:"suppliers",title:"Suppliers",href:"/suppliers",icon:"suppliers",description:"Supplier accounts, payables and settlements.",links:[
+  link("/suppliers","Suppliers","Supplier bills, settlements and balances.","suppliers","supplier:view"),
+ ]},
+ {id:"reports",title:"Reports",href:"/reports",icon:"audit",description:"Profit, collections, payables and team reports.",links:[
+  link("/reports","Reports","Profit, sales, collections and payables.","audit","payment:view"),
+  link("/reports/work","Team reports","Staff workload and unfinished to-dos.","tasks","task:view"),
+ ]},
 ];
+export const QUICK_ACTIONS:{href:string;label:string;icon:IconName;perm:Permission}[]=[
+ {href:"/trips/new",label:"New trip",icon:"compass",perm:"customer:view"},
+ {href:"/masters?action=new",label:"New customer",icon:"customers",perm:"customer:create"},
+ {href:"/today?action=todo",label:"New to-do",icon:"tasks",perm:"task:create"},
+];
+const PATHS:[SectionId,string[]][]=[
+ ["today",["/today","/dashboard","/work","/tasks","/notifications","/team-chat"]],
+ ["trips",["/trips","/cases","/ticketing","/visa","/visa-requirements","/sales","/online-bookings","/payments","/refunds","/advances","/documents","/start-work"]],
+ ["customers",["/masters","/customers","/customer-tools","/email"]],
+ ["suppliers",["/suppliers"]],
+ ["reports",["/reports"]],
+];
+const ADMIN=["/settings","/employees","/audit","/imports","/checklists","/work/settings","/travel-packages","/workspace"];
+const under=(path:string,root:string)=>path===root||path.startsWith(root+"/");
 
 export function availableSections(permissions: readonly string[]) {
   return WORKSPACE_SECTIONS.map(section => ({ ...section, links: section.links.filter(link => permissions.includes(link.permission)) })).filter(section => section.links.length > 0).map(section=>({...section,href:section.links.some(link=>link.href===section.href)?section.href:section.links[0].href}));
 }
 export const findSection = (id: string) => WORKSPACE_SECTIONS.find(section => section.id === id) ?? LEGACY_SECTIONS.find(section=>section.id===id);
 export function sectionForPath(path: string) {
-  if(path==="/team-chat"||path==="/notifications"||path==="/tasks")return findSection("today");
-  if(path==="/customers"||path.startsWith("/customers/"))return findSection("customers");
-  if(path.startsWith("/settings")||path.startsWith("/employees")||path.startsWith("/audit")||path.startsWith("/imports")||path.startsWith("/checklists")||path.startsWith("/work/settings")) return findSection("administration");
-  return WORKSPACE_SECTIONS.find(section => path === section.href || section.links.some(link => path === link.href || path.startsWith(link.href + "/"))) ??
-    (path.startsWith("/visa-requirements") ? findSection("operations") : undefined);
+  if(ADMIN.some(root=>under(path,root)))return undefined;
+  const hit=PATHS.find(([,roots])=>roots.some(root=>under(path,root)));
+  return hit?WORKSPACE_SECTIONS.find(section=>section.id===hit[0]):undefined;
 }
 export function sectionForKind(kind: string): SectionId {
-  if (/SALES|CASE_FOLLOW/.test(kind)) return "operations";
-  if (/SUPPLIER/.test(kind)) return "finance";
-  if (/PAYMENT|REFUND|INVOICE|CAPPED_DUES/.test(kind)) return "operations";
+  if (/SUPPLIER/.test(kind)) return "suppliers";
   if (/TASK/.test(kind)) return "today";
-  return "operations";
+  return "trips";
 }

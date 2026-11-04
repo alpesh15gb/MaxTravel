@@ -30,14 +30,14 @@ export function overviewFor(pulse: Awaited<ReturnType<typeof computePulse>>, sec
     ...(user.permissions.includes("visa:create") ? ["VISA"] : []),
     ...(user.permissions.includes("ticketing:create") ? ["FLIGHT", "HOTEL","STAY","BUS","TRAIN","INSURANCE"] : []),
   ] : [];
-  const actionSections: Record<string, SectionId> = {case:"customers",customer:"customers",enquiry:"customers",followup:"today",booking:"operations",hotel:"operations",visa:"operations",online:"operations",documents:"customers",payment:"finance",invoice:"finance",advance:"finance",supplier:"finance",refund:"finance",report:"reports"};
+  const actionSections: Record<string, SectionId> = {case:"trips",customer:"customers",enquiry:"trips",followup:"today",booking:"trips",hotel:"trips",visa:"trips",online:"trips",documents:"customers",payment:"trips",invoice:"trips",advance:"trips",supplier:"suppliers",refund:"trips",report:"reports"};
   const actions = availableWorkActions(user.permissions).filter(action => action.id !== "case" && actionSections[action.id] === sectionId);
   return {
     section:{id:section.id,title:section.title,description:section.description,href:section.href},
     name:pulse.name,mode:["OWNER","SUPER_ADMIN","BRANCH_MANAGER"].includes(user.role)?"agency":"personal",
     scope:user.accessMode==="ASSIGNED"?"Assigned to you":user.accessMode==="BRANCH"?"Your branch":"Your accessible records",
     stats,links,sections:sections.map(({id,title,description,icon,href})=>({id,title,description,icon,href})),
-    items,followups:sectionId==="today"?followups:[],actions,caseServices:sectionId==="today"||sectionId==="customers"?caseServices:[],
+    items,followups:sectionId==="today"?followups:[],actions,caseServices:sectionId==="today"||sectionId==="trips"?caseServices:[],
     generatedAt:pulse.generatedAt,firstRun:pulse.firstRun,canAddCustomer:user.permissions.includes("customer:create"),
   };
 }
