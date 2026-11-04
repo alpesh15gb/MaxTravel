@@ -121,7 +121,7 @@ export default function WorkDesk({
     q.delete("task");
     if (value) q.set(name, value);
     else q.delete(name);
-    router.push(`${embedded ? `/cases/${caseId}` : "/work"}?${q}`, {
+    router.push(`${embedded ? `/trips/${caseId}` : "/work"}?${q}`, {
       scroll: false,
     });
   }
@@ -129,7 +129,7 @@ export default function WorkDesk({
     const q = new URLSearchParams(key);
     if (id) q.set("task", id);
     else q.delete("task");
-    router.push(`${embedded ? `/cases/${caseId}` : "/work"}?${q}`, {
+    router.push(`${embedded ? `/trips/${caseId}` : "/work"}?${q}`, {
       scroll: false,
     });
   }
@@ -166,7 +166,7 @@ export default function WorkDesk({
             data.permissions.create && (
               <button className="btn-primary" onClick={() => setCreate(true)}>
                 <Icon name="plus" size={17} />
-                Add work
+                Add to-do
               </button>
             )
           }
@@ -179,7 +179,7 @@ export default function WorkDesk({
           </div>
           {data.permissions.create && !data.caseClosed && (
             <button className="btn-primary" onClick={() => setCreate(true)}>
-              Add work
+              Add to-do
             </button>
           )}
         </div>
@@ -394,7 +394,7 @@ export default function WorkDesk({
             ))}
         </div>
       ) : (
-        <div className="work-register" aria-label="Work register">
+        <div className="work-register" aria-label="To-dos">
           <div className="work-register-head" aria-hidden="true">
             <span>Case / action</span>
             <span>Assignee</span>
@@ -422,7 +422,7 @@ export default function WorkDesk({
                 <div>
                   <span className="work-kicker">
                     {t.case ? (
-                      <Link href={`/cases/${t.case.id}`}>{t.case.caseNo}</Link>
+                      <Link href={`/trips/${t.case.id}`}>{t.case.caseNo}</Link>
                     ) : t.customer ? (
                       "Needs case link"
                     ) : (
@@ -799,7 +799,7 @@ function WorkItem({
           </section>
         )}
         <div className="work-context-links">
-          {t.case && <Link href={`/cases/${t.case.id}`}>Open case</Link>}
+          {t.case && <Link href={`/trips/${t.case.id}`}>Open case</Link>}
           {t.bookingId && (
             <Link href={`/ticketing/${t.bookingId}`}>Open linked booking</Link>
           )}
@@ -1207,7 +1207,7 @@ function CreateWorkDialog({
   return (
     <WorkModal
       busy={w.busy || w.uncertain}
-      title="Add work"
+      title="Add to-do"
       onClose={() => {
         if (!w.busy && !w.uncertain) close();
       }}

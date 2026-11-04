@@ -55,7 +55,7 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
   ]);
   const items:PulseItem[]=[...sales];
   const open=(label:string,href:string):PulseAction=>({label,href});
-  for(const journey of journeys){const href=`/cases/${journey.id}`;items.push({id:`case:${journey.id}`,kind:"CASE_FOLLOWUP",severity:"HIGH",title:`${journey.caseNo} · follow-up due`,detail:`${journey.customer.name} · ${journey.title} · ${journey.owner.name}`,href,at:journey.nextFollowUpAt?.toISOString(),actions:[open("Review case",href)]});}
+  for(const journey of journeys){const href=`/trips/${journey.id}`;items.push({id:`case:${journey.id}`,kind:"CASE_FOLLOWUP",severity:"HIGH",title:`${journey.caseNo} · follow-up due`,detail:`${journey.customer.name} · ${journey.title} · ${journey.owner.name}`,href,at:journey.nextFollowUpAt?.toISOString(),actions:[open("Review case",href)]});}
   for(const b of bookings){
     if(isWithdrawnBooking(b.status)) {
       const balance=balanceOf(bookingCharge(b),netReceived(b.payments.reduce((s,p)=>s+p.amount,0),b.refunds));
@@ -106,7 +106,7 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
   // A capped list says so rather than quietly looking complete, and each note links to the page that
   // holds the whole list, so a manager never reads a partial list as the whole picture.
   const cappedPages:Record<string,{what:string;href:string}>={documents:{what:"documents awaiting action",href:"/documents"},passports:{what:"passport checks",href:"/documents"},tasks:{what:"tasks",href:"/tasks"},refunds:{what:"refunds",href:"/refunds"},dues:{what:"supplier payments",href:"/suppliers"}};
-  for(const kind of [...new Set(truncated)]){const page=kind==="case follow-ups"?{what:"case follow-ups",href:"/cases"}:cappedPages[kind];if(!page)continue;items.push({id:`capped:${kind}`,kind:`LIST_CAPPED_${kind.toUpperCase().replace(/[^A-Z0-9]+/g,"_")}`,severity:"MEDIUM",title:`List capped at ${ITEM_LIMIT} · ${page.what}`,detail:`Showing the ${ITEM_LIMIT} most overdue ${page.what}. Open the full list to work through the rest.`,href:page.href,actions:[open("Open full list",page.href)]});}
+  for(const kind of [...new Set(truncated)]){const page=kind==="case follow-ups"?{what:"case follow-ups",href:"/trips"}:cappedPages[kind];if(!page)continue;items.push({id:`capped:${kind}`,kind:`LIST_CAPPED_${kind.toUpperCase().replace(/[^A-Z0-9]+/g,"_")}`,severity:"MEDIUM",title:`List capped at ${ITEM_LIMIT} · ${page.what}`,detail:`Showing the ${ITEM_LIMIT} most overdue ${page.what}. Open the full list to work through the rest.`,href:page.href,actions:[open("Open full list",page.href)]});}
   items.sort((a,b)=>["URGENT","HIGH","MEDIUM"].indexOf(a.severity)-["URGENT","HIGH","MEDIUM"].indexOf(b.severity));
   const counts={urgent:items.filter(i=>i.severity==="URGENT").length,high:items.filter(i=>i.severity==="HIGH").length,medium:items.filter(i=>i.severity==="MEDIUM").length};
   // Money owed is computed in one shared place (lib/receivables) so the dashboard, the money page

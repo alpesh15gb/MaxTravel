@@ -22,7 +22,7 @@ export default function LoginForm({ agencyName, created }: { agencyName: string;
       // A gateway or proxy can answer with an HTML error page instead of our JSON. Say that the
       // workspace is unavailable rather than blaming the password we never actually checked.
       if (!res.ok) { setError(data.error ?? (res.status >= 500 ? "Your workspace is temporarily unavailable. Try again in a moment." : "Unable to sign in.")); return; }
-      router.push("/dashboard"); router.refresh();
+      router.push("/today"); router.refresh();
     } catch { setError("Could not connect to your workspace. Check your connection and try again."); }
     finally { setBusy(false); }
   }

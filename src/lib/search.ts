@@ -25,7 +25,7 @@ export async function universalSearch(prisma:PrismaClient,query:string,user:Sess
  can("document:view")?prisma.document.findMany({where:{customer:{is:customer},OR:[{docNo:contains},{docType:contains},{customer:{name:contains}},{traveller:{fullName:contains}}]},include:{customer:true},take:6}):[],
  ]);
  const groups:SearchResponse["groups"]=[];const add=(key:SearchGroupKey,label:string,hits:Omit<SearchHit,"group">[])=>{if(hits.length)groups.push({key,label,hits:hits.map(h=>({...h,group:key}))});};
- add("CASE","Client cases",journeys.map(c=>({id:c.id,title:c.caseNo,subtitle:`${c.customer.name} · ${c.title}`,context:`${c.status} · ${c.owner.name}`,href:`/cases/${c.id}`})));
+ add("CASE","Client cases",journeys.map(c=>({id:c.id,title:c.caseNo,subtitle:`${c.customer.name} · ${c.title}`,context:`${c.status} · ${c.owner.name}`,href:`/trips/${c.id}`})));
  add("CUSTOMER","Customers",customers.map(c=>({id:c.id,title:c.name,subtitle:`${c.code} · ${c.phone}`,context:c.city,href:`/masters/${c.id}`})));
  add("EMPLOYEE","Team",employees.map(e=>({id:e.id,title:e.name,subtitle:e.employeeCode,context:e.role.name,href:`/employees/${e.id}`})));
  add("VISA_CASE","Visa cases",cases.map(v=>({id:v.id,title:v.caseNo,subtitle:`${v.customer.name} · ${v.destination}`,context:v.stage.name,href:`/visa/${v.id}`})));

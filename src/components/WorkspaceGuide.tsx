@@ -15,7 +15,7 @@ export default function WorkspaceGuide({ path }: { path: string }) {
     <>
       <div className="workspace-orientation no-print">
         <nav aria-label="Breadcrumb">
-          <Link href="/dashboard">Workspace</Link>
+          <Link href="/today">Workspace</Link>
           <span aria-hidden="true">/</span>
           {section && section.id !== "today" && path !== section.href && (
             <>

@@ -30,7 +30,7 @@ export default function NotificationsClient({ notifications }: { notifications: 
   return (
     <div className="workspace-page">
       <PageHeader title="Your notifications" description={unread ? `${unread} new · document receipts and operational updates addressed to you.` : "Document receipts and operational updates addressed to you."}
-        actions={<><Link className="btn-primary" href="/dashboard">Open agency pulse</Link>{unread>0&&<button className="btn-secondary" disabled={busy} onClick={markAllRead}>{busy?"Saving…":"Mark all read"}</button>}</>} />
+        actions={<><Link className="btn-primary" href="/today">Open agency pulse</Link>{unread>0&&<button className="btn-secondary" disabled={busy} onClick={markAllRead}>{busy?"Saving…":"Mark all read"}</button>}</>} />
       {error && <div role="alert" className="form-error mb-4">{error}</div>}
       {notifications.length === 0
         ? <EmptyState icon="bell" title="You’re all caught up" description="Notifications will appear when your real operational records need a follow-up." />

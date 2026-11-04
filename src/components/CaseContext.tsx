@@ -33,12 +33,12 @@ export default function CaseContext() {
   return (
     <div className="work-case-context">
       <div>
-        <Link href={`/cases/${row.id}`}>{row.caseNo}</Link>
+        <Link href={`/trips/${row.id}`}>{row.caseNo}</Link>
         <span>
           {row.title} · Coordinator: {row.owner}
         </span>
       </div>
-      <Link href={`/cases/${row.id}?tab=work`}>Case work →</Link>
+      <Link href={`/trips/${row.id}?tab=work`}>Case work →</Link>
     </div>
   );
 }

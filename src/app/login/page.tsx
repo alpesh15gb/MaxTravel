@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage({ searchParams: pending }: { searchParams: Promise<{ created?: string }> }) {
   const searchParams = await pending;
   if (!(await prisma.user.count())) redirect("/setup");
-  if (await getServerSession()) redirect("/dashboard");
+  if (await getServerSession()) redirect("/today");
   const agency = await prisma.settings.findUnique({ where: { key: "agency.name" } });
   return <AuthLayout><LoginForm agencyName={agency?.value ?? "Your agency"} created={searchParams.created === "1"} /></AuthLayout>;
 }

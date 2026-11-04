@@ -13,13 +13,13 @@ export function overviewFor(pulse: Awaited<ReturnType<typeof computePulse>>, sec
   const followups = pulse.items.filter(item => /^(CASE_FOLLOWUP|TASK_(?:OVERDUE|DUE_TODAY)|SALES_FOLLOW_UP|LIST_CAPPED_(?:TASKS|CASE_FOLLOW|SALES))/.test(item.kind));
   const stats: WorkspaceStat[] = [];
   const add = (label: string, value: number | null, href: string, icon: IconName, note: string) => { if (value !== null) stats.push({ label, value: String(value), href, icon, note }); };
-  if (sectionId === "today" || sectionId === "customers") add("Active Max IDs", pulse.workspaceStats.activeCases, "/cases", "compass", "Open client journeys in your access scope");
+  if (sectionId === "today" || sectionId === "customers") add("Active Max IDs", pulse.workspaceStats.activeCases, "/trips", "compass", "Open client journeys in your access scope");
   if (sectionId === "today") {
-    add("Due follow-ups", pulse.workspaceStats.dueFollowups, "/dashboard?view=followups", "tasks", "Due today in India, including overdue work");
-    if(pulse.workspaceStats.activeCases!==null||pulse.workspaceStats.dueFollowups!==null) add("Urgent priorities", items.filter(i => i.severity === "URGENT").length, "/dashboard?view=all&priority=URGENT", "clock", "In the current attention queue");
+    add("Due follow-ups", pulse.workspaceStats.dueFollowups, "/today", "tasks", "Due today in India, including overdue work");
+    if(pulse.workspaceStats.activeCases!==null||pulse.workspaceStats.dueFollowups!==null) add("Urgent priorities", items.filter(i => i.severity === "URGENT").length, "/work/service-alerts", "clock", "In the current attention queue");
   } else if (sectionId === "customers") {
     add("Customers", pulse.workspaceStats.customers, "/customers", "customers", "Records you are permitted to view");
-    add("Max ID follow-ups shown", items.filter(i => i.kind === "CASE_FOLLOWUP").length, "/cases", "tasks", "Due and overdue Max IDs in this queue");
+    add("Max ID follow-ups shown", items.filter(i => i.kind === "CASE_FOLLOWUP").length, "/trips", "tasks", "Due and overdue Max IDs in this queue");
     add("Sales actions shown", items.filter(i => /SALES/.test(i.kind)).length, "/sales", "compass", "Enquiries and quotation decisions to review");
   } else if (sectionId === "operations" || sectionId === "finance") {
     const allowed = sectionId === "operations" ? ["/visa", "/ticketing"] : ["/payments"];

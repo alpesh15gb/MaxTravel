@@ -12,7 +12,7 @@ export default async function NewBookingPage({ searchParams }: { searchParams: P
   const user = await requirePage("ticketing:create");
   const input=await searchParams;const journey=await caseEntryContext(prisma,user,input.case);const customer=journey?.customerId??input.customer,product=input.product??(journey?.service==="VISA"?"FLIGHT":journey?.service);
 
-  if(journey&&isClosedCase(journey))redirect(`/cases/${journey.id}`);
+  if(journey&&isClosedCase(journey))redirect(`/trips/${journey.id}`);
   const where: Record<string, unknown> = {};
   if (user.accessMode === "BRANCH") where.branchId = user.branchId;
   if (user.accessMode === "ASSIGNED") where.OR = [{ assignedToId: user.id }, { id: user.id }];

@@ -8,7 +8,7 @@ import TripsList from "./TripsList";
 export const dynamic = "force-dynamic";
 
 const VIEW_LABEL: Record<TripView, string> = { flights: "Flights", hotels: "Hotels", visas: "Visas", enquiries: "Enquiries", online: "Online" };
-type SP = { stage?: string; q?: string; mine?: string; view?: string; page?: string };
+type SP = { stage?: string; q?: string; mine?: string; view?: string; page?: string; customer?: string };
 
 export default async function TripsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requirePage([...CASE_READ]), sp = await searchParams;
@@ -16,11 +16,12 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
   const view = TRIP_VIEWS.includes(sp.view as TripView) ? (sp.view as TripView) : undefined;
   const page = Math.min(1000, Math.max(1, Math.trunc(Number(sp.page)) || 1));
   const q = sp.q?.trim().slice(0, 120) || undefined, mine = sp.mine === "1";
-  const data = await readTrips(user, { stage, view, search: q, mine, page });
+  const customerId = sp.customer?.slice(0, 200) || undefined;
+  const data = await readTrips(user, { stage, view, search: q, mine, page, customerId });
   const active = data.counts.ENQUIRY + data.counts.QUOTED + data.counts.BOOKED + data.counts.TRAVELLING;
   const all = active + data.counts.DONE + data.counts.CANCELLED;
   const href = (o: Partial<SP>) => {
-    const p = new URLSearchParams(), m: Partial<SP> = { stage: sp.stage, q, mine: mine ? "1" : undefined, view, ...o };
+    const p = new URLSearchParams(), m: Partial<SP> = { stage: sp.stage, q, mine: mine ? "1" : undefined, view, customer: customerId, ...o };
     for (const [k, v] of Object.entries(m)) if (v) p.set(k, v);
     const s = p.toString();
     return `/trips${s ? `?${s}` : ""}`;
@@ -36,6 +37,7 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
     <form className="flex flex-wrap items-center gap-2" action="/trips">
       {sp.stage && <input type="hidden" name="stage" value={sp.stage} />}
       {view && <input type="hidden" name="view" value={view} />}
+      {customerId && <input type="hidden" name="customer" value={customerId} />}
       <input name="q" defaultValue={q} placeholder="Customer, phone, Max ID, PNR or destination" aria-label="Search trips" className="min-w-0 flex-1 basis-60" />
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="mine" value="1" defaultChecked={mine} />Mine only</label>
       <button className="btn-secondary">Search</button>
@@ -45,7 +47,7 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
       <Link href={href({ view: undefined, page: undefined })} className={!view ? "font-semibold text-slate-900" : "text-blue-700 underline"}>All services</Link>
       {TRIP_VIEWS.map(v => <Link key={v} href={href({ view: v, page: undefined })} className={view === v ? "font-semibold text-slate-900" : "text-blue-700 underline"}>{VIEW_LABEL[v]}</Link>)}
     </div>
-    {data.rows.length ? <TripsList rows={data.rows} /> : (q || view || sp.stage || mine)
+    {data.rows.length ? <TripsList rows={data.rows} /> : (q || view || sp.stage || mine || customerId)
       ? <EmptyState title="No trips match" description="Try another search, stage or service." href="/trips" action="Clear filters" />
       : <EmptyState title="No trips yet" description="Start one for a customer. Every enquiry, booking and visa lives inside a trip with its own Max ID." href="/trips/new" action="New trip" />}
     {pages > 1 && <nav aria-label="Pages" className="flex items-center justify-between text-sm">
