@@ -48,6 +48,8 @@ try {
   const mine = await readTrips(staff, {});
   assert.deepEqual(mine.rows.map(r => r.id), ["trip-a"]);
   assert.equal(mine.rows[0].balanceMinor, null);
+  assert.equal(mine.rows[0].profit, null);
+  assert.deepEqual(a.profit, { marginMinor: null, unknown: 1 });
   await assert.rejects(readTrip(staff, "trip-b"), (e: { status?: number }) => e.status === 404);
   const detail = await readTrip(owner, "trip-b");
   assert.equal(detail.stage, "ENQUIRY"); assert.equal(detail.quotes[0].leadId, "lead-b"); assert.equal(detail.quotes[0].latestQuote, null);

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import CaseProfit from "@/components/CaseProfit";
+import ProfitBanner from "@/components/ProfitBanner";
 import WorkDesk from "@/components/WorkDesk";
 import TripStageBar from "@/components/TripStageBar";
 import Icon from "@/components/Icon";
@@ -16,13 +17,13 @@ import type { TripDetail } from "@/lib/trips-read";
 import type { SessionUser } from "@/lib/session";
 import type { readWork } from "@/lib/work-read";
 
-type HistoryRow = { id: string; at: string; who: string; summary: string; href: string | null };
+type HistoryRow = { id: string; at: string; who: string; what: string; href?: string };
 type Props = {
   user: SessionUser; trip: TripDetail; work: Awaited<ReturnType<typeof readWork>> | null;
   record: { id: string; version: string; status: string; ownerId: string; followUp: string | null };
   imported: { at: string; reference: string | null; source: string | null; stage: string | null } | null;
   owners: { id: string; name: string }[];
-  history: { open: boolean; page: number; total: number; rows: HistoryRow[] };
+  history: { open: boolean; page: number; more: boolean; rows: HistoryRow[] };
 };
 
 export default function TripView({ user, trip, work, record, imported, owners, history }: Props) {
@@ -63,6 +64,7 @@ export default function TripView({ user, trip, work, record, imported, owners, h
         </div>
       </div>
       <TripStageBar stage={trip.stage} />
+      {trip.money && <ProfitBanner user={user} id={id} />}
       {record.followUp && <p className="text-sm text-slate-700"><Icon name="calendar" size={14} className="mr-1 inline" />Follow up: {dateTimeLabel(record.followUp)}</p>}
     </header>
 
@@ -88,11 +90,6 @@ export default function TripView({ user, trip, work, record, imported, owners, h
     </section>}
 
     {trip.money && <section id="money" className="space-y-3" aria-label="Money">
-      <div className="panel grid grid-cols-3 gap-3 p-5 text-sm">
-        <div><p className="text-slate-500">Total charge</p><p className="text-lg font-semibold">{inrAmount(trip.money.invoicedMinor / 100)}</p></div>
-        <div><p className="text-slate-500">Received</p><p className="text-lg font-semibold">{inrAmount(trip.money.receivedMinor / 100)}</p></div>
-        <div><p className="text-slate-500">{trip.money.dueMinor < 0 ? "Customer credit" : "Still due"}</p><p className={`text-lg font-semibold ${trip.money.dueMinor > 0 ? "text-amber-800" : ""}`}>{inrAmount(Math.abs(trip.money.dueMinor) / 100)}</p></div>
-      </div>
       <CaseProfit user={user} id={id} />
       <div className="flex flex-wrap gap-2"><Link className="btn-secondary" href={`/reports?report=statement&customerId=${trip.customer.id}`}>Customer statement</Link><Link className="btn-secondary" href={`/payments?customer=${trip.customer.id}`}>Invoices & receipts</Link></div>
     </section>}
@@ -111,16 +108,16 @@ export default function TripView({ user, trip, work, record, imported, owners, h
     {canEditCase(user) && <CaseEditor key={record.version} record={record} owners={owners} canAssign={canAssignCase(user)} />}
 
     <details id="history" className="panel p-5" open={history.open}>
-      <summary className="cursor-pointer text-lg font-semibold">History <span className="text-sm font-normal text-slate-500">({history.total} {history.total === 1 ? "entry" : "entries"})</span></summary>
+      <summary className="cursor-pointer text-lg font-semibold">History <span className="text-sm font-normal text-slate-500">· who changed what, and when</span></summary>
       <ol className="mt-3 divide-y divide-slate-100">
         {history.rows.map(e => <li key={e.id} className="py-3 text-sm">
-          <p className="whitespace-pre-wrap break-words">{e.summary}</p>
+          <p className="whitespace-pre-wrap break-words">{e.what}</p>
           <p className="mt-1 text-xs text-slate-500">{dateTimeLabel(e.at)} · {e.who}{e.href && <> · <Link className="text-blue-700 underline" href={e.href}>Open</Link></>}</p>
         </li>)}
       </ol>
       <nav className="mt-2 flex gap-3" aria-label="History pages">
         {history.page > 1 && <Link className="btn-secondary" href={historyHref(history.page - 1)}>Newer</Link>}
-        {history.page * 50 < history.total && <Link className="btn-secondary" href={historyHref(history.page + 1)}>Older</Link>}
+        {history.more && <Link className="btn-secondary" href={historyHref(history.page + 1)}>Older</Link>}
       </nav>
     </details>
   </div>;

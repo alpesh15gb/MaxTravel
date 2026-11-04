@@ -14,6 +14,8 @@ export type TripRow = {
   customer: { id: string; name: string; code: string };
   owner: string; stage: TripStage; start: string | null; end: string | null;
   services: TripService[]; online: boolean; balanceMinor: number | null;
+  /** Expected gross profit (INR, or the first currency) for staff who can see money; marginMinor is null while any cost is unconfirmed. */
+  profit: { marginMinor: number | null; unknown: number } | null;
   nextTodo: { title: string; dueAt: string | null; overdue: boolean } | null;
 };
 export type TripDetail = Omit<TripRow, "customer"> & {
@@ -47,7 +49,7 @@ function include(user: SessionUser) {
 }
 type Loaded = Prisma.ServiceCaseGetPayload<{ include: ReturnType<typeof include> }>;
 
-function toRow(c: Loaded, now: Date): Omit<TripRow, "balanceMinor"> {
+function toRow(c: Loaded, now: Date): Omit<TripRow, "balanceMinor" | "profit"> {
   const stageInput = {
     caseStatus: c.status, today: now,
     bookings: c.bookings.map(b => ({ status: b.status, travelDate: b.travelDate ?? b.hotelCheckIn })),
@@ -75,10 +77,11 @@ function toRow(c: Loaded, now: Date): Omit<TripRow, "balanceMinor"> {
   };
 }
 
-async function balance(user: SessionUser, id: string): Promise<number | null> {
-  if (!user.permissions.includes("payment:view")) return null;
+async function finance(user: SessionUser, id: string): Promise<Pick<TripRow, "balanceMinor" | "profit">> {
+  if (!user.permissions.includes("payment:view")) return { balanceMinor: null, profit: null };
   const { groups } = await caseFinance(prisma, user, id);
-  return groups.find(g => g.currency === "INR")?.balance ?? groups[0]?.balance ?? 0;
+  const g = groups.find(x => x.currency === "INR") ?? groups[0];
+  return { balanceMinor: g?.balance ?? 0, profit: g ? { marginMinor: g.margin, unknown: g.unknown } : null };
 }
 
 export async function readTrips(user: SessionUser, q: TripQuery): Promise<{ rows: TripRow[]; total: number; counts: Record<TripStage, number> }> {
@@ -99,7 +102,7 @@ export async function readTrips(user: SessionUser, q: TripQuery): Promise<{ rows
   const filtered = !q.stage ? all : q.stage === "ACTIVE" ? all.filter(r => r.stage !== "DONE" && r.stage !== "CANCELLED") : all.filter(r => r.stage === q.stage);
   const page = Math.max(1, Math.floor(q.page ?? 1));
   const slice = filtered.slice((page - 1) * PAGE, page * PAGE);
-  const rows = await Promise.all(slice.map(async r => ({ ...r, balanceMinor: await balance(user, r.id) })));
+  const rows = await Promise.all(slice.map(async r => ({ ...r, ...(await finance(user, r.id)) })));
   return { rows, total: filtered.length, counts };
 }
 
@@ -107,18 +110,19 @@ export async function readTrip(user: SessionUser, id: string): Promise<TripDetai
   const base = await caseFor(prisma, user, id);
   const c = await prisma.serviceCase.findUniqueOrThrow({ where: { id: base.id }, include: include(user) });
   const row = toRow(c, new Date());
-  let money: TripDetail["money"] = null, balanceMinor: number | null = null;
+  let money: TripDetail["money"] = null, balanceMinor: number | null = null, profit: TripRow["profit"] = null;
   if (user.permissions.includes("payment:view")) {
     const { groups } = await caseFinance(prisma, user, base.id);
     const g = groups.find(x => x.currency === "INR") ?? groups[0];
     money = { invoicedMinor: g?.sale ?? 0, receivedMinor: g?.received ?? 0, dueMinor: g?.balance ?? 0 };
     balanceMinor = money.dueMinor;
+    profit = g ? { marginMinor: g.margin, unknown: g.unknown } : null;
   }
   const documents = user.permissions.includes("document:view") && c.visaCases.length
     ? await prisma.document.findMany({ where: { visaCaseId: { in: c.visaCases.map(v => v.id) } }, select: { id: true, docNo: true, docType: true, status: true }, orderBy: { createdAt: "desc" }, take: 100 })
     : [];
   return {
-    ...row, balanceMinor, money, documents,
+    ...row, balanceMinor, profit, money, documents,
     customer: { ...c.customer },
     branchId: c.branchId, ownerId: c.ownerId, caseStatus: c.status, canEdit: canEditCase(user),
     quotes: c.leads.map(l => ({ leadId: l.id, title: l.title, stage: l.stage, latestQuote: l.quotes[0] ? { id: l.quotes[0].id, state: l.quotes[0].state, totalMinor: l.quotes[0].totalMinor } : null })),

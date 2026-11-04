@@ -4,6 +4,7 @@ import { requirePage, ApiError } from "@/lib/guard";
 import { CASE_READ, caseFor, canAssignCase, roleCanOwnCase } from "@/lib/service-cases";
 import { readTrip } from "@/lib/trips-read";
 import { readWork } from "@/lib/work-read";
+import { tripHistory } from "@/lib/trip-history";
 import TripView from "./TripView";
 export const dynamic = "force-dynamic";
 
@@ -12,15 +13,11 @@ export default async function TripPage({ params, searchParams }: { params: Promi
   let base;
   try { base = await caseFor(prisma, user, id); } catch (e) { if (e instanceof ApiError && e.status === 404) notFound(); throw e; }
   const historyPage = Math.max(1, Math.min(10000, Math.trunc(Number(sp.history)) || 1));
-  const eventWhere = { caseId: base.id, OR: [{ permission: null }, { permission: { in: [...user.permissions] } }] };
-  const [trip, events, eventCount, owners] = await Promise.all([
+  const [trip, history, owners] = await Promise.all([
     readTrip(user, base.id),
-    prisma.serviceCaseEvent.findMany({ where: eventWhere, orderBy: [{ at: "desc" }, { id: "desc" }], skip: (historyPage - 1) * 50, take: 50 }),
-    prisma.serviceCaseEvent.count({ where: eventWhere }),
+    tripHistory(user, base.id, historyPage),
     canAssignCase(user) ? prisma.user.findMany({ where: { active: true, ...(user.accessMode === "ALL" ? {} : { branchId: base.branchId }) }, select: { id: true, name: true, role: { select: { key: true } } }, orderBy: { name: "asc" } }) : [],
   ]);
-  const people = await prisma.user.findMany({ where: { id: { in: [...new Set(events.flatMap(e => (e.actorId ? [e.actorId] : [])))] } }, select: { id: true, name: true } });
-  const names = new Map(people.map(p => [p.id, p.name]));
   const ownerOptions = owners.filter(o => roleCanOwnCase(o.role.key)).map(({ id, name }) => ({ id, name }));
   if (!ownerOptions.some(o => o.id === base.ownerId)) ownerOptions.push({ id: base.ownerId, name: trip.owner });
   const workQuery = new URLSearchParams({ case: base.id, view: "all" });
@@ -31,6 +28,6 @@ export default async function TripPage({ params, searchParams }: { params: Promi
     record={{ id: base.id, version: base.updatedAt.toISOString(), status: base.status, ownerId: base.ownerId, followUp: base.nextFollowUpAt?.toISOString() ?? null }}
     imported={base.importedAt ? { at: base.importedAt.toISOString(), reference: base.legacyReference, source: base.importSource, stage: base.legacyStage } : null}
     owners={ownerOptions}
-    history={{ open: Boolean(sp.history), page: historyPage, total: eventCount, rows: events.map(e => ({ id: e.id, at: e.at.toISOString(), who: e.actorId ? (names.get(e.actorId) ?? "Former staff member") : "System", summary: e.summary, href: e.href })) }}
+    history={{ open: Boolean(sp.history), page: historyPage, more: history.more, rows: history.rows.map(e => ({ ...e, at: e.at.toISOString() })) }}
   />;
 }
