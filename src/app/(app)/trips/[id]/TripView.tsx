@@ -4,10 +4,11 @@ import CaseProfit from "@/components/CaseProfit";
 import ProfitBanner from "@/components/ProfitBanner";
 import WorkDesk from "@/components/WorkDesk";
 import TripStageBar from "@/components/TripStageBar";
-import Icon from "@/components/Icon";
+import Icon, { type IconName } from "@/components/Icon";
 import { Status } from "@/components/ui";
 import CaseEditor from "@/app/(app)/cases/[id]/CaseEditor";
 import { SERVICE_ICON, SERVICE_LABEL } from "../TripsList";
+import AddServiceButton from "./AddServiceButton";
 import { isClosedCase } from "@/lib/case-constants";
 import { canEditCase, canAssignCase } from "@/lib/service-cases";
 import { dateLabel, dateTimeLabel } from "@/lib/dates";
@@ -33,15 +34,16 @@ export default function TripView({ user, trip, work, record, imported, owners, h
   const liveBookings = trip.services.filter(s => !s.dead && s.kind !== "VISA" && s.kind !== "ENQUIRY");
   const liveVisas = trip.services.filter(s => !s.dead && s.kind === "VISA");
   const paymentHref = `/payments?action=record&customer=${trip.customer.id}` + (liveBookings.length === 1 && !liveVisas.length ? `&booking=${liveBookings[0].href.split("/").pop()}` : liveVisas.length === 1 && !liveBookings.length ? `&visaCase=${liveVisas[0].href.split("/").pop()}` : "");
-  const add = closed ? [] : [
-    can("customer:create") && can("customer:edit") && { href: `/sales?action=new&case=${id}`, label: "Quote", icon: "compass" as const },
+  type AddItem = { href: string; label: string; icon: IconName; service?: "VISA" | "QUOTE" };
+  const add: AddItem[] = closed ? [] : ([
+    can("customer:create") && can("customer:edit") && can("ticketing:create") && { service: "QUOTE" as const, href: "", label: "Quote", icon: "compass" as const },
     can("ticketing:create") && { href: `/ticketing/new?case=${id}&product=FLIGHT`, label: "Flight", icon: "plane" as const },
     can("ticketing:create") && { href: `/ticketing/new?case=${id}&product=HOTEL`, label: "Hotel", icon: "board" as const },
-    can("visa:create") && { href: `/visa/new?case=${id}`, label: "Visa", icon: "visa" as const },
+    can("visa:create") && canEditCase(user) && { service: "VISA" as const, href: "", label: "Visa", icon: "visa" as const },
     can("ticketing:create") && { href: `/ticketing/new?case=${id}&product=BUS`, label: "Other", icon: "list" as const },
     can("payment:record") && { href: paymentHref, label: "Payment", icon: "wallet" as const },
     can("task:create") && { href: "#todos", label: "To-do", icon: "tasks" as const },
-  ].filter((x): x is { href: string; label: string; icon: "compass" } => Boolean(x));
+  ] as (AddItem | false)[]).filter((x): x is AddItem => Boolean(x));
   const empty = trip.services.length === 0;
   const historyHref = (n: number) => `/trips/${id}?history=${n}#history`;
 
@@ -74,7 +76,7 @@ export default function TripView({ user, trip, work, record, imported, owners, h
       <h2 id="add-title" className="text-lg font-semibold">{empty ? `What does ${trip.customer.name} need?` : "Add to this trip"}</h2>
       {empty && <p className="mt-1 text-sm text-slate-600">Pick a service. It will be saved under Max ID {trip.caseNo}.</p>}
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-        {add.map(a => <Link key={a.label} href={a.href} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-800 hover:border-teal-600 hover:bg-teal-50"><Icon name={a.icon} size={16} className="shrink-0 text-teal-700" />{a.label}</Link>)}
+        {add.map(a => a.service ? <AddServiceButton key={a.label} tripId={id} service={a.service} label={a.label} icon={a.icon} /> : <Link key={a.label} href={a.href} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-800 hover:border-teal-600 hover:bg-teal-50"><Icon name={a.icon} size={16} className="shrink-0 text-teal-700" />{a.label}</Link>)}
       </div>
     </section>}
 
