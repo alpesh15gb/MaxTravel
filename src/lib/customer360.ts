@@ -101,7 +101,7 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
       primary: t.primary,
     })),
     visaCases: c.visaCases.map((v) => ({
-      id: v.id, caseNo: v.caseNo, destination: v.destination, visaType: v.visaType,
+      id: v.id, caseNo: v.caseNo, caseId: v.serviceCaseId, destination: v.destination, visaType: v.visaType,
       visaCategory: v.visaCategory, stage: v.stage.name, stageKey: v.stage.key,
       travelDate: v.travelDate?.toISOString() ?? null, appointmentDate: v.appointmentDate?.toISOString() ?? null,
       decisionDate: v.decisionDate?.toISOString() ?? null,
@@ -109,7 +109,7 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
       travellers: v.travellers.map((ct) => ct.traveller.fullName).join(", "),
     })),
     bookings: c.bookings.map((b) => ({
-      id: b.id, bookingNo: b.bookingNo, product:b.product, hotelName:b.hotelName, hotelCheckIn:b.hotelCheckIn?.toISOString()??null, hotelCheckOut:b.hotelCheckOut?.toISOString()??null, externallyManaged:b.gdsSource==="TRIPJACK_API", pnr: b.pnr, airline: b.airline, sector: b.sector,
+      id: b.id, bookingNo: b.bookingNo, caseId: b.serviceCaseId, product:b.product, hotelName:b.hotelName, hotelCheckIn:b.hotelCheckIn?.toISOString()??null, hotelCheckOut:b.hotelCheckOut?.toISOString()??null, externallyManaged:b.gdsSource==="TRIPJACK_API", pnr: b.pnr, airline: b.airline, sector: b.sector,
       status: b.status, travelDate: b.travelDate?.toISOString() ?? null,
       ticketingDeadline: b.ticketingDeadline?.toISOString() ?? null,
       sellingPrice: b.sellingPrice,

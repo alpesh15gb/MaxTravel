@@ -3,7 +3,7 @@ import {requirePage,ApiError,canTouchRecord} from "@/lib/guard";
 import {prisma} from "@/lib/db";
 import {readMaster} from "@/lib/customer-master";
 import {loadCustomer360} from "@/lib/customer360";
-import {serviceCaseScope} from "@/lib/service-cases";
+import {readTrips} from "@/lib/trips-read";
 import CustomerMasterWorkspace from "@/components/CustomerMasterWorkspace";
 export const dynamic="force-dynamic";
 export default async function MasterPage({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{tab?:string;traveller?:string}>}){
@@ -11,8 +11,8 @@ export default async function MasterPage({params,searchParams}:{params:Promise<{
  const alias=await prisma.customer.findUnique({where:{id}});if(alias?.mergedIntoId&&canTouchRecord(user,alias))redirect("/masters/"+alias.mergedIntoId);
  let data;try{data=await readMaster(prisma,user,id,true);}catch(e){if(e instanceof ApiError&&e.status===404)notFound();throw e;}
  const legacy=await loadCustomer360(id,user);if(!legacy)notFound();
- const maxIds=await prisma.serviceCase.findMany({where:{AND:[serviceCaseScope(user),{customerId:id}]},select:{id:true,caseNo:true,title:true,status:true},orderBy:{createdAt:"desc"},take:100});
+ const trips=(await readTrips(user,{customerId:id})).rows;
  const can=(p:string)=>user.permissions.some(x=>x===p);
- const q=await searchParams;const aliases:Record<string,string>={payments:"accounts",refunds:"accounts",tickets:"journeys",trips:"journeys",cases:"journeys",visa:"journeys"};const desired=aliases[q.tab??""]??q.tab??"profile";const allowed=["profile","journeys","notes","activity",...(data.permissions.viewTravellers?["travellers"]:[]),...(data.permissions.viewDocuments?["documents"]:[]),...(can("payment:view")?["accounts"]:[])];const initialTab=allowed.includes(desired)?desired:"profile";
- return <CustomerMasterWorkspace initialTab={initialTab} initialTravellerId={q.traveller??""} key={id+":"+initialTab+":"+(q.traveller??"")} initial={data} legacy={legacy} maxIds={maxIds} perms={{sensitive:can("sensitive:view"),record:can("payment:record"),createVisa:can("visa:create"),createTicket:can("ticketing:create"),createTask:can("task:create"),requestDocs:can("document:upload"),finance:can("payment:view"),invoice:can("invoice:create"),editCustomer:can("customer:edit"),visibleTabs:[...(can("document:view")?["documents"]:[]),...(can("visa:view")?["visa"]:[]),...(can("ticketing:view")?["tickets","trips"]:[]),...(can("payment:view")?["payments"]:[]),...(can("refund:view")?["refunds"]:[])]}}/>;
+ const q=await searchParams;const aliases:Record<string,string>={payments:"accounts",refunds:"accounts",money:"accounts",tickets:"trips",journeys:"trips",cases:"trips",visa:"trips",details:"profile",documents:"travellers",notes:"activity"};const desired=aliases[q.tab??""]??q.tab??"trips";const allowed=["trips","profile","activity",...(data.permissions.viewTravellers||data.permissions.viewDocuments?["travellers"]:[]),...(can("payment:view")?["accounts"]:[])];const initialTab=allowed.includes(desired)?desired:"trips";
+ return <CustomerMasterWorkspace initialTab={initialTab} initialTravellerId={q.traveller??""} key={id+":"+initialTab+":"+(q.traveller??"")} initial={data} legacy={legacy} trips={trips} perms={{sensitive:can("sensitive:view"),record:can("payment:record"),createVisa:can("visa:create"),createTicket:can("ticketing:create"),createTask:can("task:create"),requestDocs:can("document:upload"),finance:can("payment:view"),invoice:can("invoice:create"),editCustomer:can("customer:edit"),visibleTabs:[...(can("document:view")?["documents"]:[]),...(can("visa:view")?["visa"]:[]),...(can("ticketing:view")?["tickets","trips"]:[]),...(can("payment:view")?["payments"]:[]),...(can("refund:view")?["refunds"]:[])]}}/>;
 }
