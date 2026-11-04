@@ -28,8 +28,8 @@ type Guide = { match: RegExp; area: string; title: string; parent?: { label: str
 export const SCREEN_GUIDES: readonly Guide[] = [
   {match:/^\/email$/,area:"Masters",title:"Customer email",steps:["Review queued, rejected or uncertain delivery","Open the linked customer or work record","Record any retry or delivery review"]},
   {match:/^\/team-chat$/,area:"Tasks & follow-ups",title:"Internal messages",steps:["Choose a colleague or Max ID discussion","Send a work update","Review replies and unread messages"]},
-  {match:/^\/masters\/[^/]+/,area:"Masters",title:"Customer master",parent:{label:"Masters",href:"/masters"},steps:["Review customer and individual traveller details","Manage memberships and identity documents for the correct traveller","Upload files and check staff activity"]},
-  {match:/^\/masters$/,area:"Masters",title:"Customer masters",steps:["Search before adding a customer","Open the customer master","Maintain travellers, memberships and documents"]},
+  {match:/^\/masters\/[^/]+/,area:"Masters",title:"Customer",parent:{label:"Masters",href:"/masters"},steps:["Review customer and individual traveller details","Manage memberships and identity documents for the correct traveller","Upload files and check staff activity"]},
+  {match:/^\/masters$/,area:"Masters",title:"Customers",steps:["Search before adding a customer","Open the customer master","Maintain travellers, memberships and documents"]},
   {match:/^\/start-work$/,area:"Daily work",title:"Start work",steps:["Choose the transaction or service","Open its guided flow","Return to the case to track the next action"]},
   {match:/^\/work\/settings$/,area:"Agency administration",title:"Work settings",parent:{label:"Settings",href:"/settings"},steps:["Edit future service templates and working hours","Review the impact preview","Save the version without changing existing tasks"]},
   {match:/^\/reports\/work$/,area:"Reporting",title:"Work & team reports",steps:["Choose the dates, service and assignee","Compare current backlog with dated outcomes","Drill into work or export the complete permitted dataset"]},

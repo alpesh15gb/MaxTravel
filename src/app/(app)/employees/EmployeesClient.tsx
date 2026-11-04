@@ -159,7 +159,7 @@ export default function EmployeesClient({ employees, roles, branches, defaultBra
       {action && !modal && <div className="panel mb-5 p-4"><StaffRecovery action={action} checkCurrent={checkCurrent} focusOnChange />{action.phase === "review" && <button type="button" className="btn-secondary mt-3" onClick={() => finishReview()}>Done reviewing</button>}</div>}
       <div className="panel mb-5 flex flex-wrap items-center gap-3 p-3">
         <p className="px-2 text-sm text-slate-500">
-          {rows.length} staff members
+          {rows.length} {rows.length === 1 ? "staff member" : "staff members"}
           {showHr ? " · HR fields visible to your role" : " · salary/bank hidden for your role"}
         </p>
         <SearchInput label="Filter team" placeholder="Name, email, code or role…" value={q} onChange={setQ} className="ml-auto" />
