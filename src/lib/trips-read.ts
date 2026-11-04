@@ -1,0 +1,123 @@
+import type { Prisma } from "@prisma/client";
+import { prisma } from "./db";
+import type { SessionUser } from "./session";
+import { serviceCaseScope, caseFor, childWorkScope, canEditCase } from "./service-cases";
+import { caseFinance } from "./case-finance";
+import { taskScope } from "./work-engine";
+import { enumLabel } from "./labels";
+import { isReservedBookingSource } from "./booking-policy";
+import { tripStage, tripDates, TRIP_STAGES, type TripStage } from "./trip-stage";
+
+export type TripService = { kind: "FLIGHT" | "HOTEL" | "VISA" | "OTHER" | "ENQUIRY"; label: string; status: string; href: string; dead: boolean };
+export type TripRow = {
+  id: string; caseNo: string; title: string;
+  customer: { id: string; name: string; code: string };
+  owner: string; stage: TripStage; start: string | null; end: string | null;
+  services: TripService[]; online: boolean; balanceMinor: number | null;
+  nextTodo: { title: string; dueAt: string | null; overdue: boolean } | null;
+};
+export type TripDetail = Omit<TripRow, "customer"> & {
+  customer: { id: string; name: string; code: string; phone: string; email: string | null };
+  branchId: string; ownerId: string; caseStatus: string; canEdit: boolean;
+  quotes: { leadId: string; title: string; stage: string; latestQuote: { id: string; state: string; totalMinor: number } | null }[];
+  money: { invoicedMinor: number; receivedMinor: number; dueMinor: number } | null;
+  documents: { id: string; docNo: string; docType: string; status: string }[];
+};
+export type TripQuery = { stage?: TripStage | "ACTIVE"; search?: string; mine?: boolean; customerId?: string; page?: number };
+
+const PAGE = 50, CAP = 500;
+const DEAD_BOOKING = new Set(["CANCELLED", "VOID", "REFUNDED"]);
+const DEAD_VISA = new Set(["CANCELLED", "WITHDRAWN"]);
+const OPEN_TASK = { status: { notIn: ["DONE", "CANCELLED"] } };
+
+function include(user: SessionUser) {
+  const can = (p: string) => user.permissions.includes(p as SessionUser["permissions"][number]);
+  const child = childWorkScope(user);
+  return {
+    customer: { select: { id: true, name: true, code: true, phone: true, email: true } },
+    owner: { select: { name: true } },
+    bookings: { where: can("ticketing:view") ? child : { id: "__none__" }, select: { id: true, bookingNo: true, status: true, product: true, sector: true, hotelName: true, serviceDescription: true, travelDate: true, hotelCheckIn: true, gdsSource: true }, orderBy: { createdAt: "asc" as const } },
+    visaCases: { where: can("visa:view") ? child : { id: "__none__" }, select: { id: true, caseNo: true, destination: true, visaType: true, travelDate: true, travelEndDate: true, stage: { select: { key: true, name: true } } }, orderBy: { createdAt: "asc" as const } },
+    leads: { where: can("customer:view") ? child : { id: "__none__" }, select: { id: true, title: true, stage: true, travelDate: true, destination: true, quotes: { select: { id: true, state: true, totalMinor: true, version: true }, orderBy: { version: "desc" as const } } }, orderBy: { createdAt: "asc" as const } },
+    tasks: { where: can("task:view") ? { AND: [OPEN_TASK, taskScope(user)] } : { id: "__none__" }, select: { title: true, dueAt: true }, orderBy: [{ dueAt: { sort: "asc" as const, nulls: "last" as const } }, { createdAt: "asc" as const }], take: 1 },
+  } satisfies Prisma.ServiceCaseInclude;
+}
+type Loaded = Prisma.ServiceCaseGetPayload<{ include: ReturnType<typeof include> }>;
+
+function toRow(c: Loaded, now: Date): Omit<TripRow, "balanceMinor"> {
+  const stageInput = {
+    caseStatus: c.status, today: now,
+    bookings: c.bookings.map(b => ({ status: b.status, travelDate: b.travelDate ?? b.hotelCheckIn })),
+    visas: c.visaCases.map(v => ({ travelDate: v.travelDate, travelEndDate: v.travelEndDate })),
+    leads: c.leads.map(l => ({ stage: l.stage, travelDate: l.travelDate, quoteStates: l.quotes.map(q => q.state) })),
+  };
+  const { start, end } = tripDates(stageInput);
+  const services: TripService[] = [
+    ...c.bookings.map(b => ({
+      kind: (b.product === "FLIGHT" || b.product === "HOTEL" ? b.product : "OTHER") as TripService["kind"],
+      label: [b.bookingNo, b.product === "HOTEL" ? b.hotelName : b.product === "FLIGHT" ? b.sector : b.serviceDescription].filter(Boolean).join(" · "),
+      status: enumLabel(b.status), href: `/ticketing/${b.id}`, dead: DEAD_BOOKING.has(b.status),
+    })),
+    ...c.visaCases.map(v => ({ kind: "VISA" as const, label: `${v.caseNo} · ${v.destination} ${v.visaType}`.trim(), status: v.stage.name, href: `/visa/${v.id}`, dead: DEAD_VISA.has(v.stage.key) })),
+    ...c.leads.map(l => ({ kind: "ENQUIRY" as const, label: l.title, status: enumLabel(l.stage), href: `/sales?lead=${l.id}`, dead: l.stage === "LOST" })),
+  ];
+  const t = c.tasks[0];
+  return {
+    id: c.id, caseNo: c.caseNo, title: c.title,
+    customer: { id: c.customer.id, name: c.customer.name, code: c.customer.code },
+    owner: c.owner.name, stage: tripStage(stageInput),
+    start: start?.toISOString() ?? null, end: end?.toISOString() ?? null, services,
+    online: c.bookings.some(b => isReservedBookingSource(b.gdsSource)),
+    nextTodo: t ? { title: t.title, dueAt: t.dueAt?.toISOString() ?? null, overdue: Boolean(t.dueAt && t.dueAt < now) } : null,
+  };
+}
+
+async function balance(user: SessionUser, id: string): Promise<number | null> {
+  if (!user.permissions.includes("payment:view")) return null;
+  const { groups } = await caseFinance(prisma, user, id);
+  return groups.find(g => g.currency === "INR")?.balance ?? groups[0]?.balance ?? 0;
+}
+
+export async function readTrips(user: SessionUser, q: TripQuery): Promise<{ rows: TripRow[]; total: number; counts: Record<TripStage, number> }> {
+  const search = q.search?.trim();
+  const where: Prisma.ServiceCaseWhereInput = {
+    AND: [
+      serviceCaseScope(user),
+      ...(q.customerId ? [{ customerId: q.customerId }] : []),
+      ...(q.mine ? [{ ownerId: user.id }] : []),
+      ...(search ? [{ OR: [{ caseNo: { contains: search } }, { title: { contains: search } }, { customer: { OR: [{ name: { contains: search } }, { phone: { contains: search } }, { code: { contains: search } }] } }] }] : []),
+    ],
+  };
+  const now = new Date();
+  const loaded = await prisma.serviceCase.findMany({ where, include: include(user), orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: CAP });
+  const all = loaded.map(c => toRow(c, now));
+  const counts = Object.fromEntries([...TRIP_STAGES, "CANCELLED"].map(s => [s, 0])) as Record<TripStage, number>;
+  for (const r of all) counts[r.stage]++;
+  const filtered = !q.stage ? all : q.stage === "ACTIVE" ? all.filter(r => r.stage !== "DONE" && r.stage !== "CANCELLED") : all.filter(r => r.stage === q.stage);
+  const page = Math.max(1, Math.floor(q.page ?? 1));
+  const slice = filtered.slice((page - 1) * PAGE, page * PAGE);
+  const rows = await Promise.all(slice.map(async r => ({ ...r, balanceMinor: await balance(user, r.id) })));
+  return { rows, total: filtered.length, counts };
+}
+
+export async function readTrip(user: SessionUser, id: string): Promise<TripDetail> {
+  const base = await caseFor(prisma, user, id);
+  const c = await prisma.serviceCase.findUniqueOrThrow({ where: { id: base.id }, include: include(user) });
+  const row = toRow(c, new Date());
+  let money: TripDetail["money"] = null, balanceMinor: number | null = null;
+  if (user.permissions.includes("payment:view")) {
+    const { groups } = await caseFinance(prisma, user, base.id);
+    const g = groups.find(x => x.currency === "INR") ?? groups[0];
+    money = { invoicedMinor: g?.sale ?? 0, receivedMinor: g?.received ?? 0, dueMinor: g?.balance ?? 0 };
+    balanceMinor = money.dueMinor;
+  }
+  const documents = user.permissions.includes("document:view") && c.visaCases.length
+    ? await prisma.document.findMany({ where: { visaCaseId: { in: c.visaCases.map(v => v.id) } }, select: { id: true, docNo: true, docType: true, status: true }, orderBy: { createdAt: "desc" }, take: 100 })
+    : [];
+  return {
+    ...row, balanceMinor, money, documents,
+    customer: { ...c.customer },
+    branchId: c.branchId, ownerId: c.ownerId, caseStatus: c.status, canEdit: canEditCase(user),
+    quotes: c.leads.map(l => ({ leadId: l.id, title: l.title, stage: l.stage, latestQuote: l.quotes[0] ? { id: l.quotes[0].id, state: l.quotes[0].state, totalMinor: l.quotes[0].totalMinor } : null })),
+  };
+}
