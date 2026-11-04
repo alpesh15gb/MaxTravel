@@ -21,6 +21,21 @@
 - **Online bookings** from the booking site are trips too (they already create a `ServiceCase`); they get an "Online" badge and appear in Trips and Today.
 - **Lists are filters, not destinations:** Flights, Hotels, Visas, Enquiries, Payments, Online, Refunds become filter chips/links inside Trips (`/trips?view=flights` etc.) pointing to the existing list pages, not separate menu areas.
 
+## Owner's 8 needs (2026-11-04) and where each is covered
+
+The engine already stores almost all of this; the problem is that it is hidden or scattered. Each need gets a clear, findable screen:
+
+| # | Owner's need | What exists today | Task |
+|---|---|---|---|
+| 1 | Complete client master + document images kept forever | ~60 traveller/customer fields (`src/lib/master-fields.ts`), encrypted passport/Aadhaar, private document storage; files are never deleted except failed uploads; backups include uploads | Task 10 |
+| 2 | Admin resolves / transfers tasks to staff, follow-ups | To-do owner change, reviewer, delegate permission (`src/lib/work-engine.ts`), `nextFollowUpAt` on Max ID | Task 11 |
+| 3 | Supplier | Suppliers, payment terms, dues, settlements | Task 3 (menu) + Task 13 (payables report) |
+| 4 | Profit / loss per Max ID, green / red | `caseFinance` + `CaseProfit` already colours green/red, but sits low on the page | Task 12 |
+| 5 | Proper audit log per case | `ServiceCaseEvent` per Max ID + `AuditLog` for child records | Task 12 |
+| 6 | Proper reporting | Report centre with many reports | Task 13 |
+| 7 | Not confusing | — | Tasks 3–9 (Trip-centred screens) |
+| 8 | Simple yet robust | Same tested engine, no schema change | Global constraints |
+
 ## Global Constraints
 
 - No Prisma schema or migration changes. No change to any existing API route's request/response contract (new read-only routes allowed).
@@ -182,9 +197,69 @@ Tabs become `Trips · Travellers & documents · Money · Activity` (map old tab 
 - [ ] **Step 2:** `npm test` (known pre-existing failure: `tests/smoke.mjs` first-run assertion — unchanged), `npx tsc --noEmit -p .` clean.
 - [ ] **Step 3:** Commit `chore: trip wording and links everywhere`.
 
-### Task 10: End-to-end demo run and phone pass
+### Task 10: Complete traveller profile and document vault (need 1)
 
-- [ ] **Step 1:** Fresh demo; as owner: add customer → New trip (Flight) → finish booking → add hotel and visa from the trip → record payment → add to-do → check Today, Trips counts, Reports totals unchanged vs. same data before revamp.
+**Files:**
+- Create: `src/lib/profile-completeness.ts`, `tests/profile-completeness.ts` (add to `npm test`)
+- Modify: `src/components/CustomerMasterWorkspace.tsx` (Travellers & documents tab only)
+
+**Interfaces:**
+- Produces: `profileCompleteness(traveller: {fullName, dateOfBirth, gender, nationality, passportNumber|hasPassport, passportExpiry, phone, email, profile: Record<string,unknown>}): {filled: number, total: number, missing: string[]}` — counts the "travel-ready" set: full name, date of birth, gender, nationality, passport number, passport expiry, phone or email, emergency name, emergency phone, and one identity document uploaded. `missing` holds human labels in that order.
+
+Each traveller is one card: name + relation, **"Profile 7/10 – missing: Passport expiry, Emergency contact"** bar, **Edit full profile** (one long form, grouped by the existing `master-fields.ts` section titles, all sections open, save via the existing master mutation API), and a **Documents** strip: image thumbnails (images) / PDF icon, type, expiry, verified badge; **Upload document** button with `accept="image/*,application/pdf"` and `capture="environment"` on phones, posting to the existing master upload route. Passport expiring within 6 months of today shows an amber "Expires soon" chip; expired shows red. Text under the strip: "Documents are stored privately and kept permanently. They are never deleted automatically."
+
+- [ ] **Step 1:** Test: all ten present → `{filled:10,total:10,missing:[]}`; no passport + no emergency → missing `["Passport number","Passport expiry","Emergency contact name","Emergency contact phone","Identity document"]`; run → FAIL.
+- [ ] **Step 2:** Implement; run → pass.
+- [ ] **Step 3:** Build UI; verify in demo: upload a JPG passport from a 375px viewport, thumbnail appears, staff without `canViewSensitiveDocs` sees masked number, file survives server restart.
+- [ ] **Step 4:** Commit `feat: traveller profile completeness and document vault`.
+
+### Task 11: Transfer to-dos and team follow-ups (need 2)
+
+**Files:**
+- Modify: `src/components/WorkDesk.tsx`, `src/app/(app)/today/TodayClient.tsx`
+- Create: `src/lib/team-load.ts` (read-only), `tests/team-load.mts`
+
+**Interfaces:**
+- Consumes: existing `POST /api/tasks/[id]` with `ownerId` + `note` (already supported), `canAssignWork(user)`.
+- Produces: `teamLoad(user): Promise<{userId, name, open: number, overdue: number, dueToday: number}[]>` — only for users with `case:assign`; scoped by `scopeWhere`.
+
+Every to-do row gets a **Transfer** button (shown only when `canAssignWork`): pick staff + a required reason ("Why are you transferring this?"), saved as the change note so it appears in history. Today page gets a **Team** card for admins: one row per staff member (open / overdue in red / due today); clicking filters the to-do list to that person. Trips with `nextFollowUpAt` ≤ today show under "Follow up today" on Today, with **Done** and **Snooze to…** using the existing case edit route.
+
+- [ ] **Step 1:** Test `teamLoad`: two staff, one overdue task each in different branches; BRANCH admin sees only their branch; ASSIGNED user gets `[]`. Run → FAIL.
+- [ ] **Step 2:** Implement; run → pass.
+- [ ] **Step 3:** Verify in demo: owner transfers a to-do to staff with a reason → staff sees it on Today; history shows "Transferred from Owner to Staff: <reason>".
+- [ ] **Step 4:** Commit `feat: transfer to-dos and team follow-up view`.
+
+### Task 12: Profit/loss banner and full trip history (needs 4 and 5)
+
+**Files:**
+- Modify: `src/app/(app)/trips/[id]/TripView.tsx`, `src/app/(app)/trips/TripsList.tsx`
+- Create: `src/lib/trip-history.ts`, `tests/trip-history.mts`
+
+**Interfaces:**
+- Consumes: `caseFinance(prisma,user,id)` (unchanged).
+- Produces: `tripHistory(user, caseId, page): Promise<{rows:{at: Date, who: string, what: string, href?: string}[], more: boolean}>` — merges `ServiceCaseEvent` for the Max ID with `AuditLog` rows whose `entity`/`entityId` belong to the trip's bookings, visa cases, invoices, payments, tasks and documents; newest first, 50 per page; same visibility as the trip.
+
+Directly under the stage bar, for users with `payment:view`: a full-width banner per currency — green background **"Profit ₹12,400"**, red background **"Loss ₹3,200"**, grey **"Cost needed for 2 items"** when any cost is unconfirmed — with Sale / Cost / Received / Customer due beneath. Trips list shows a coloured Profit column for the same users. The History section becomes a readable timeline: date + time (IST), who, what changed, link; old/new values from the audit detail when present.
+
+- [ ] **Step 1:** Test `tripHistory`: a trip with one booking edit and one payment → both rows, newest first, staff with ASSIGNED access on another trip gets 404. Run → FAIL.
+- [ ] **Step 2:** Implement; run → pass.
+- [ ] **Step 3:** Verify in demo: sale 10,000 / cost 8,000 → green ₹2,000; raise cost to 11,000 → red ₹1,000 loss; history shows both edits with the user's name.
+- [ ] **Step 4:** Commit `feat: profit/loss banner and trip history timeline`.
+
+### Task 13: Simple report centre (needs 3 and 6)
+
+**Files:**
+- Modify: `src/app/(app)/reports/page.tsx`, `src/app/(app)/reports/ReportCentreClient.tsx`
+
+Landing page shows six large cards, each with one headline number for the chosen period (This month default; Today / This week / This month / Custom) and an **Open** + **Excel** button, using the existing report sources: **Profit by trip** (green/red per Max ID, total at top), **Payments to collect**, **Supplier payables** (by supplier, overdue first), **Sales by staff**, **Staff to-dos** (open/overdue per person), **Travel this month**. All other existing reports stay under "More reports".
+
+- [ ] **Step 1:** Verify in demo: totals on cards equal the existing detailed reports for the same period; Excel downloads open.
+- [ ] **Step 2:** Commit `feat: simple report centre`.
+
+### Task 14: End-to-end demo run and phone pass
+
+- [ ] **Step 1:** Fresh demo; as owner: add customer with full profile + passport photo → New trip (Flight) → finish booking → add hotel and visa from the trip → record payment and supplier cost → see green/red banner → add to-do and transfer it to staff → check Today, Trips counts, Reports totals unchanged vs. same data before revamp.
 - [ ] **Step 2:** As staff (ASSIGNED): sees only own trips; denied pages land on Today with the banner.
 - [ ] **Step 3:** 375px pass over Today, Trips, Trip, New trip, Customer: no horizontal scroll (`document.documentElement.scrollWidth <= innerWidth`).
 - [ ] **Step 4:** Fix findings, commit `fix: trip revamp demo findings`, then show the owner the demo before merging `trip-revamp` into `main`.
