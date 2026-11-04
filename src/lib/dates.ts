@@ -58,3 +58,9 @@ export function dateTimeLabel(value: DateInput) {
   if (time === null) return "—";
   return `${dateLabel(time)}, ${clockLabel(time)}`;
 }
+
+/** India calendar day as "YYYY-MM-DD" (sortable), for comparing dates by IST day. */
+export function istDayKey(value: Date | string | number): string {
+  const p = istParts(new Date(value).getTime());
+  return `${p.year}-${pad2(p.month + 1)}-${pad2(p.day)}`;
+}
