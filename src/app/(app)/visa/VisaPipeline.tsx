@@ -62,7 +62,7 @@ function deadlineFor(c: PipelineCase): { text: string; tone: Tone } | null {
   if (days < 0) return { text: `Travel date passed · ${c.travelLabel}`, tone: "danger" };
   if (days === 0) return { text: `Travels today · ${c.travelLabel}`, tone: "warning" };
   if (days <= 7) return { text: `Travels in ${days} day${days === 1 ? "" : "s"} · ${c.travelLabel}`, tone: "warning" };
-  if (days <= 14) return { text: `Travels in ${days} days · ${c.travelLabel}`, tone: "info" };
+  if (days <= 14) return { text: `Travels in ${days} ${days===1?"day":"days"} · ${c.travelLabel}`, tone: "info" };
   return { text: `Travel ${c.travelLabel}`, tone: "neutral" };
 }
 

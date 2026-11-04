@@ -188,7 +188,7 @@ export default function WorkReportClient({ report }: { report: WorkReport }) {
           Work due in the selected period
         </h2>
         <p className="work-report-note">
-          {report.summary.due} tasks by their current due dates. Cancelled work
+          {report.summary.due} {report.summary.due===1?"task":"tasks"} by their current due dates. Cancelled work
           is separate from completed work.
         </p>
         <div className="flex gap-4 flex-wrap">

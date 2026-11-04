@@ -159,12 +159,15 @@ function NewCustomer({ onClose, recordBase,recoveryContext }: { onClose: () => v
   const [busy, setBusy] = useState(false);
   const [uncertain,setUncertain]=useState(false),pending=useRef<Record<string,unknown>|null>(null),flight=useRef(false);
   const [error, setError] = useState("");
+  const [duplicate, setDuplicate] = useState<{ id: string; name: string; code: string } | null>(null);
+  const allowDuplicate = useRef(false);
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); if(flight.current)return;flight.current=true;setBusy(true); setError("");
+    e.preventDefault(); if(flight.current)return;flight.current=true;setBusy(true); setError("");setDuplicate(null);
     try {
-      if(!pending.current)pending.current={...form,createPrimaryTraveller:form.type==="INDIVIDUAL",requestKey:crypto.randomUUID()};
+      if(!pending.current)pending.current={...form,createPrimaryTraveller:form.type==="INDIVIDUAL",requestKey:crypto.randomUUID(),...(allowDuplicate.current?{allowDuplicate:true}:{})};
       const r = await fetch("/api/customers", { method: "POST", headers: { "Content-Type": "application/json",...(recoveryContext?{"x-sales-recovery-context":recoveryContext}:{}) }, body: JSON.stringify(pending.current) });
       const d = await r.json();
+      if (r.status===409&&d.code==="DUPLICATE_PHONE"&&d.existing) { pending.current=null;setDuplicate(d.existing);setError(d.error); return; }
       if (!r.ok) { if(r.status>=500||r.status===408||r.status===429)throw Error("Unconfirmed save");pending.current=null;setUncertain(false);setError(d.error ?? "Could not create customer."); return; }
       pending.current=null;setUncertain(false);
       location.assign(`${recordBase}/${d.id}`);
@@ -185,6 +188,7 @@ function NewCustomer({ onClose, recordBase,recoveryContext }: { onClose: () => v
       {form.type!=="INDIVIDUAL"&&<div className="form-grid"><Field label="Company / agency name *"><input required maxLength={200} value={form.companyName} onChange={e=>setForm({...form,companyName:e.target.value})}/></Field><Field label="GSTIN (optional)"><input maxLength={15} value={form.gstNumber} onChange={e=>setForm({...form,gstNumber:e.target.value.toUpperCase()})}/></Field></div>}
       </fieldset>
       {error && <div role="alert" className="form-error">{error}</div>}
+      {duplicate && <div className="flex flex-wrap gap-2"><a className="btn-secondary" href={`${recordBase}/${duplicate.id}`}>Open {duplicate.name}</a><button type="button" className="btn-secondary" onClick={() => { allowDuplicate.current = true; setDuplicate(null); setError(""); (document.getElementById("new-customer-title")?.closest("form") as HTMLFormElement | null)?.requestSubmit(); }}>Create anyway (different person)</button></div>}
       <div className="flex justify-end gap-2 pt-2"><button type="button" className="btn-secondary" disabled={busy||uncertain} onClick={onClose}>Cancel</button><button className="btn-primary" disabled={busy}>{busy ? "Creating…" : uncertain?"Retry same save":"Create customer"}<Icon name="arrow" size={16} /></button></div>
     </form>
   </Modal>;
