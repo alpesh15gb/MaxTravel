@@ -1,3 +1,4 @@
+import { transferSummary } from "./work-transfer";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Prisma, Task } from "@prisma/client";
@@ -906,12 +907,17 @@ export async function changeWork(
   const updated = await tx.task.update({ where: { id: task.id }, data: patch });
   if (updated.requiresReview && updated.ownerId === updated.reviewerId)
     throw new ApiError(400, "Assignee and reviewer must be different people.");
+  let summary = input.note || "Work details updated.";
+  if (["ASSIGN", "EDIT"].includes(input.action) && (updated.ownerId !== task.ownerId || updated.unassigned !== task.unassigned)) {
+    const names = new Map((await tx.user.findMany({ where: { id: { in: [task.ownerId, updated.ownerId] } }, select: { id: true, name: true } })).map(p => [p.id, p.name]));
+    summary = transferSummary(task.unassigned ? "unassigned" : (names.get(task.ownerId) ?? "former staff"), updated.unassigned ? null : (names.get(updated.ownerId) ?? "staff"), input.note || "No reason given");
+  }
   await recordWorkEvent(
     tx,
     u,
     updated,
     input.action,
-    input.note || "Work details updated.",
+    summary,
     state,
   );
   if (

@@ -6,6 +6,7 @@ import { computePulse, type PulseItem } from "@/lib/pulse";
 import { taskScope } from "@/lib/work-engine";
 import { childWorkScope } from "@/lib/service-cases";
 import { readTrips, type TripRow } from "@/lib/trips-read";
+import { teamLoad } from "@/lib/team-load";
 import { isReservedBookingSource } from "@/lib/booking-policy";
 import { dayChipLabel, dateLabel, dateTimeLabel, istDayKey } from "@/lib/dates";
 import { PageHeader } from "@/components/ui";
@@ -35,12 +36,13 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const now = new Date(), todayKey = istDayKey(now), weekKey = istDayKey(new Date(now.getTime() + 7 * DAY));
   const endOfToday = new Date(Date.parse(`${todayKey}T00:00:00+05:30`) + DAY);
   const tripsRead = ["customer:view", "ticketing:view", "visa:view"].some(can);
-  const [pulse, todos, todoCount, trips, online] = await Promise.all([
+  const [pulse, todos, todoCount, trips, online, team] = await Promise.all([
     computePulse(prisma, user),
     can("task:view") ? prisma.task.findMany({ where: { AND: [taskScope(user), { status: { in: ["OPEN", "IN_PROGRESS"] }, ownerId: user.id, unassigned: false, dueAt: { lt: endOfToday } }] }, include: { serviceCase: { select: { caseNo: true, customer: { select: { name: true } } } } }, orderBy: [{ dueAt: "asc" }, { createdAt: "asc" }], take: 8 }) : [],
     can("task:view") ? prisma.task.count({ where: { AND: [taskScope(user), { status: { in: ["OPEN", "IN_PROGRESS"] }, ownerId: user.id, unassigned: false, dueAt: { lt: endOfToday } }] } }) : 0,
     tripsRead ? readTrips(user, { stage: "ACTIVE" }) : null,
     can("ticketing:view") ? prisma.booking.findMany({ where: { AND: [childWorkScope(user), { createdAt: { gte: new Date(now.getTime() - 2 * DAY) }, gdsSource: { not: null } }] }, select: { id: true, bookingNo: true, sector: true, gdsSource: true, serviceCaseId: true, createdAt: true, customer: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 20 }) : [],
+    can("task:view") ? teamLoad(user, now) : [],
   ]);
   const travelling = (trips?.rows ?? []).filter((t: TripRow) => (t.stage === "TRAVELLING" || t.stage === "BOOKED") && t.start && istDayKey(t.start) <= weekKey && (!t.end || istDayKey(t.end) >= todayKey));
   const items = pulse.items as PulseItem[];
@@ -62,6 +64,9 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
     <div className="grid gap-4 lg:grid-cols-2">
       {can("task:view") && <Card title="My to-dos" icon="tasks" count={todoCount} seeAll="/work?view=mine" empty="Nothing due today. Well done.">
         {todos.map(t => <Row key={t.id} href={`/work?task=${t.id}`} title={t.title} tone={t.dueAt && t.dueAt < now ? "danger" : undefined} detail={[t.dueAt ? (t.dueAt < now ? `Overdue since ${dateTimeLabel(t.dueAt)}` : `Due ${dateTimeLabel(t.dueAt)}`) : "", t.serviceCase ? `${t.serviceCase.customer.name} · Max ID ${t.serviceCase.caseNo}` : ""].filter(Boolean).join(" · ")} />)}
+      </Card>}
+      {team.length > 0 && <Card title="Team" icon="customers" seeAll="/reports/work" empty="">
+        {team.map(r => <li key={r.userId}><Link href={`/work?view=all&owner=${r.userId}`} className="flex items-center justify-between gap-3 py-2.5 text-sm hover:bg-slate-50"><span className="font-medium">{r.name}</span><span className="flex gap-3 text-xs"><span>{r.open} open</span><span className={r.overdue ? "font-semibold text-rose-700" : "text-slate-500"}>{r.overdue} overdue</span><span className="text-slate-600">{r.dueToday} due today</span></span></Link></li>)}
       </Card>}
       {tripsRead && <Card title="Travelling in the next 7 days" icon="plane" count={travelling.length} seeAll="/trips?stage=BOOKED" empty="No one is travelling this week.">
         {travelling.slice(0, 8).map(t => <li key={t.id}><Link href={`/trips/${t.id}`} className="flex flex-wrap items-center justify-between gap-2 py-2.5 hover:bg-slate-50"><span className="min-w-0"><span className="block text-sm font-medium">{t.customer.name}</span><span className="block truncate text-xs text-slate-500">{t.title} · {dateLabel(t.start)}</span></span><TripStageBar stage={t.stage} compact /></Link></li>)}

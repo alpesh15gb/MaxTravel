@@ -692,7 +692,7 @@ function WorkItem({
   if (data.permissions.assign) {
     if (!closed)
       actions.push(
-        { key: "ASSIGN", label: "Assign / reassign" },
+        { key: "ASSIGN", label: "Transfer to someone else" },
         { key: "CANCEL", label: "Cancel work" },
         { key: "WAIVE", label: "Waive required step" },
       );
@@ -704,6 +704,7 @@ function WorkItem({
   }
   const selectedAction = actions.find((a) => a.key === action),
     needsNote = [
+      "ASSIGN",
       "COMPLETE",
       "SUBMIT",
       "WAIT",
@@ -948,7 +949,7 @@ function WorkItem({
                 </>
               )}
               <Field
-                label={needsNote ? "Result / reason *" : "Note / reason"}
+                label={action === "ASSIGN" ? "Why are you transferring this? *" : needsNote ? "Result / reason *" : "Note / reason"}
                 hint="Explain deadline changes, blockers and review decisions. Business outcomes must be recorded in their source screens."
               >
                 <textarea
