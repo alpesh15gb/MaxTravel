@@ -1,6 +1,9 @@
 import { requireSession, jsonError, ApiError } from "@/lib/guard";
 import { workReport } from "@/lib/work-reports";
 import { csvDocument } from "@/lib/csv-export";
+import { dateLabel, dateTimeLabel } from "@/lib/dates";
+
+const ist = (v: string | Date | null | undefined) => (v ? dateTimeLabel(v) : "");
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
@@ -18,46 +21,46 @@ export async function GET(req: Request) {
                 "Task",
                 "Assignee",
                 "State",
-                "Due UTC",
+                "Due (India time)",
                 "Waiting on",
-                "Next check UTC",
+                "Next check (India time)",
               ],
               ...r.backlog.map((t) => [
                 t.caseNo,
                 t.title,
                 t.assignee,
                 t.state,
-                t.dueAt,
+                ist(t.dueAt),
                 t.waitingReason,
-                t.nextCheckAt,
+                ist(t.nextCheckAt),
               ]),
             ]
           : [
               [
-                "At UTC",
+                "When (India time)",
                 "Max ID",
                 "Task",
                 "Event",
                 "Assignee at event",
                 "Actor",
-                "Original due UTC",
-                "Revised due UTC",
+                "Original due (India time)",
+                "Revised due (India time)",
                 "Outcome",
               ],
               ...r.events.map((e) => [
-                e.at,
+                ist(e.at),
                 e.caseNo,
                 e.title,
                 e.kind,
                 e.assignee,
                 e.actor,
-                e.originalDueAt,
-                e.dueAt,
+                ist(e.originalDueAt),
+                ist(e.dueAt),
                 e.detail,
               ]),
             ];
       return new Response(
-        csvDocument([[r.scope, r.from, r.to], [r.basis], [], ...rows]),
+        csvDocument([["Work report", r.scope, `${dateLabel(r.from)} to ${dateLabel(new Date(new Date(r.to).getTime() - 1))}`], [r.basis], [], ...rows]),
         {
           headers: {
             "Content-Type": "text/csv; charset=utf-8",

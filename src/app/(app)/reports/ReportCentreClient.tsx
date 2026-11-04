@@ -5,6 +5,8 @@ import Modal from "@/components/Modal";
 import ReportsClient from "./ReportsClient";
 import { PageHeader, EmptyState, Field } from "@/components/ui";
 import { inrAmount } from "@/lib/money";
+import { dateLabel, dateTimeLabel } from "@/lib/dates";
+import { enumLabel } from "@/lib/labels";
 import type { AccountReport, ReportRow } from "@/lib/account-reports";
 import { REPORT_CATALOGUE, REPORT_GROUPS, REPORT_DATE_PRESETS, indiaDay, isBalanceReport, isStatementReport, isWorkReport, reportCurrency, reportDatePreset, reportDefinition, reportFilterQuery } from "@/lib/report-workspace";
 import { readReportJson } from "@/lib/report-read";
@@ -45,6 +47,14 @@ export default function ReportCentreClient({ canExport, canSupplier, canRefund, 
  const cutoff = options?.cutover ? indiaDay(new Date(options.cutover)) : undefined;
  const draftQuery = reportFilterQuery({ report: selected, from, to, customerId, supplierId, ownerId, status });
  const unapplied = Boolean(data && applied && draftQuery !== applied);
+ // Arriving with a report already chosen (from a card, a trip or a saved link) opens it straight away.
+ const autoRan = useRef(false);
+ useEffect(() => {
+  if (autoRan.current || !options || !initialReport || initialReport === "overview" || !from || !to) return;
+  if ((selected === "statement" && !customerId) || (selected === "supplier-statement" && !supplierId)) return;
+  autoRan.current = true; void load(1, draftQuery);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [options, from, to, draftQuery]);
  const matches = available.filter(r => `${r.label} ${r.hint} ${r.group}`.toLowerCase().includes(search.trim().toLowerCase()));
  const overviewMatches = "Business overview sales cash outstanding workload".toLowerCase().includes(search.trim().toLowerCase());
  function choose(key: string) {
@@ -101,7 +111,7 @@ export default function ReportCentreClient({ canExport, canSupplier, canRefund, 
      <div className="flex flex-wrap justify-between items-start gap-3"><div><h2 className="text-lg font-semibold">{data.party?.name || data.title}</h2><p className="text-sm text-slate-600 mt-1">{data.description}</p></div>{canExport && <div className="flex flex-wrap gap-2">{["csv", "xlsx", "pdf"].map(format => <a key={format} className="btn-secondary" href={`/api/reports/accounts?${applied}&format=${format}`}>Download {format.toUpperCase()}</a>)}</div>}</div>
      <p className="report-applied-line">{balance?`As of ${data.period.to}`:`${data.period.from} – ${data.period.to}`} · {data.metadata.account} · {data.metadata.currency} · {data.metadata.scope}</p>
      <details className="report-criteria"><summary>Applied criteria & date basis</summary><dl className="report-applied mt-4"><div><dt>Applied dates</dt><dd>{balance ? `As of ${data.period.to}` : `${data.period.from}–${data.period.to}`} · India calendar</dd></div><div><dt>Date basis</dt><dd>{data.metadata.dateBasis}</dd></div><div><dt>Accounts</dt><dd>{data.metadata.account}</dd></div><div><dt>Currency & scope</dt><dd>{data.metadata.currency} · {data.metadata.scope}</dd></div>{data.metadata.filters.filter(f => !["Customer", "Supplier"].includes(f.label)).map(f => <div key={f.label}><dt>{f.label}</dt><dd>{f.displayValue || f.value}</dd></div>)}</dl></details>
-     <p className="text-xs text-slate-600 mt-4">Generated {new Date(data.generatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST · {data.totalRows} movements / records. Downloads rerun these applied filters against the latest records and include every matching row.</p>
+     <p className="text-xs text-slate-600 mt-4">Generated {dateTimeLabel(data.generatedAt)} IST · {data.totalRows} movements / records. Downloads rerun these applied filters against the latest records and include every matching row.</p>
      {chosen?.cutoff && cutoff && <p className="text-sm mt-3"><strong>Balance coverage:</strong> preserved from {cutoff}; older activity is included in the opening position, not reconstructed transaction history.</p>}
      {selected === "ageing" && <p className="text-sm mt-3"><strong>Historical coverage:</strong> past dates require verifiable receipt allocation history. If unavailable, use today&apos;s balance or a customer statement; an unsupported historical total must not be guessed.</p>}
      {selected === "sales" && <p className="text-sm mt-3"><strong>Margin coverage:</strong> known-cost confirmed bookings only. Uncosted bookings and visa service costs are excluded; this is not net profit.</p>}
@@ -126,7 +136,8 @@ export default function ReportCentreClient({ canExport, canSupplier, canRefund, 
 function ReportCell({ row, column }: { row: ReportRow; column: AccountReport["columns"][number] }) {
  if (row[column.key] === null) return <>Not recorded</>;
  if (column.money) return <>{inrAmount(Number(row[column.key]))}</>;
- const value = String(row[column.key] ?? "—");
+ const raw = row[column.key];
+ const value = typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? dateLabel(raw) : column.key === "status" && typeof raw === "string" && /^[A-Z]+(?:_[A-Z]+)*$/.test(raw) ? enumLabel(raw) : String(raw ?? "—");
  const href = column.key === "reference" ? row._href : column.key === "customer" ? row._customerHref : null;
  return href ? <Link className="text-blue-700 underline" href={String(href)}>{value}</Link> : <>{value}</>;
 }

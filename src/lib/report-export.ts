@@ -2,6 +2,10 @@ import type { AccountReport } from "./account-reports";
 import path from "node:path";
 import { enumLabel } from "./labels";
 import { csvDocument } from "./csv-export";
+import { dateLabel, dateTimeLabel } from "./dates";
+
+/** Report generation time in India time, e.g. "05 Nov 2026, 1:09 am IST". */
+export const generatedLabel=(iso:string)=>`${dateTimeLabel(iso)} IST`;
 
 const PDF_COLORS:Record<"ink"|"muted"|"surface"|"line",[number,number,number]>={ink:[24,45,59],muted:[83,100,116],surface:[237,243,245],line:[220,229,232]};
 const exportValue=(row:AccountReport["rows"][number],key:string)=>{
@@ -11,7 +15,7 @@ const exportValue=(row:AccountReport["rows"][number],key:string)=>{
 const currencyMoney=(v:number,currency="INR")=>`${currency} ${v.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 export function accountCsv(r:AccountReport){
  completeReport(r);
- const rows:unknown[][]=[[r.agency,r.title],["Basis",r.description],["Date basis",r.metadata.dateBasis],["Calendar","Asia/Kolkata (UTC+05:30); inclusive end day"],["Period",r.period.from,r.period.to],["Account",r.metadata.account],["Currency",r.metadata.currency],["Scope",r.metadata.scope],...r.metadata.filters.map(f=>[f.label,f.value]),["Generated (UTC)",r.generatedAt],["Exported rows",r.rows.length],...[...r.summary].map(s=>[s.label,s.value]),[],r.columns.map(c=>c.label),...r.rows.map(row=>r.columns.map(c=>exportValue(row,c.key))),[],["Definitions"],...r.warnings.map(w=>[w])];
+ const rows:unknown[][]=[[r.agency,r.title],["Basis",r.description],["Date basis",r.metadata.dateBasis],["Calendar","Asia/Kolkata (UTC+05:30); inclusive end day"],["Period",r.period.from,r.period.to],["Account",r.metadata.account],["Currency",r.metadata.currency],["Scope",r.metadata.scope],...r.metadata.filters.map(f=>[f.label,f.value]),["Generated (India time)",generatedLabel(r.generatedAt)],["Exported rows",r.rows.length],...[...r.summary].map(s=>[s.label,s.value]),[],r.columns.map(c=>c.label),...r.rows.map(row=>r.columns.map(c=>exportValue(row,c.key))),[],["Definitions"],...r.warnings.map(w=>[w])];
  return csvDocument(rows);
 }
 const DEFAULT_EXCEL_MONEY = '"INR "#,##0.00;[Red]-"INR "#,##0.00';
@@ -34,7 +38,7 @@ export async function accountWorkbook(r:AccountReport){
  book.created=new Date(r.generatedAt);book.modified=new Date(r.generatedAt);
  const summary=book.addWorksheet("Report details",{views:[{state:"normal",showGridLines:false}]});
  summary.columns=[{width:42},{width:95}];
- summary.addRows([[r.agency,r.title],["Basis",r.description],["Date basis",r.metadata.dateBasis],["Calendar","Asia/Kolkata (UTC+05:30); inclusive end day"],["From",excelDay(r.period.from)??r.period.from],["Through",excelDay(r.period.to)??r.period.to],["Account",r.metadata.account],["Currency",r.metadata.currency],["Scope",r.metadata.scope],...r.metadata.filters.map(f=>[f.label,f.value]),["Generated (UTC)",new Date(r.generatedAt)],["Exported rows",r.rows.length],["Coverage",r.rows.length?"All matching rows in the permitted scope, not only the screen page.":"No matching rows in the permitted scope."],...(r.columns.some(c=>c.money)?[["Blank monetary cells","Not recorded or not applicable; not zero. See coverage and definitions."]]:[]),[],["Summary","Value"]]);
+ summary.addRows([[r.agency,r.title],["Basis",r.description],["Date basis",r.metadata.dateBasis],["Calendar","Asia/Kolkata (UTC+05:30); inclusive end day"],["From",excelDay(r.period.from)??r.period.from],["Through",excelDay(r.period.to)??r.period.to],["Account",r.metadata.account],["Currency",r.metadata.currency],["Scope",r.metadata.scope],...r.metadata.filters.map(f=>[f.label,f.value]),["Generated (India time)",generatedLabel(r.generatedAt)],["Exported rows",r.rows.length],["Coverage",r.rows.length?"All matching rows in the permitted scope, not only the screen page.":"No matching rows in the permitted scope."],...(r.columns.some(c=>c.money)?[["Blank monetary cells","Not recorded or not applicable; not zero. See coverage and definitions."]]:[]),[],["Summary","Value"]]);
  for(const item of r.summary){const row=summary.addRow([item.label,item.value]);row.getCell(2).numFmt=item.money?EXCEL_MONEY:"#,##0";}
  summary.addRow([]);
  for(const warning of r.warnings)summary.addRow(["Definition",warning]);
@@ -86,7 +90,7 @@ export async function accountPdf(r:AccountReport):Promise<Buffer>{
  const left=38,right=557,width=519;let y=38;
  const text=(s:string,size=10,color:[number,number,number]=PDF_COLORS.ink)=>{doc.fillColor(color).fontSize(size);const h=doc.heightOfString(s,{width});if(y+h>770){doc.addPage();y=38;}doc.text(s,left,y,{width});y+=h+7;};
  text(r.agency,20);text(r.title,15);text(`${r.party?.name??""} · ${r.party?.code??""}`,11);if(r.party?.address)text(r.party.address);
- text(`${r.period.from} to ${r.period.to} · ${r.metadata.currency} · India calendar`,9,PDF_COLORS.muted);text(r.metadata.dateBasis,9,PDF_COLORS.muted);text(r.description,9,PDF_COLORS.muted);
+ text(`${dateLabel(r.period.from)} to ${dateLabel(r.period.to)} · ${r.metadata.currency} · India calendar`,9,PDF_COLORS.muted);text(r.metadata.dateBasis,9,PDF_COLORS.muted);text(r.description,9,PDF_COLORS.muted);
  for(const s of r.summary)text(`${s.label}: ${s.money?money(s.value):s.value}`,10);
  // Single-party statements always have six fixed columns, independent of registers.
  const widths=[55,85,160,73,73,73];const xs=widths.map((_,i)=>left+widths.slice(0,i).reduce((a,b)=>a+b,0));
@@ -107,9 +111,51 @@ export async function accountPdf(r:AccountReport):Promise<Buffer>{
  if(!r.rows.length)text("No movements in this period. The opening balance is carried forward.",10);
  y+=12;text(`Closing balance: ${money(r.summary.find(s=>s.label==="Closing balance")?.value??0)}`,12);
  for(const warning of r.warnings)text(warning,8,PDF_COLORS.muted);
- const pages=doc.bufferedPageRange();for(let i=0;i<pages.count;i++){doc.switchToPage(pages.start+i);doc.fontSize(8).fillColor(PDF_COLORS.muted).text(`Generated ${r.generatedAt.slice(0,19).replace("T"," ")} UTC · Page ${i+1} of ${pages.count}`,left,785,{width,align:"center",lineBreak:false});}
+ const pages=doc.bufferedPageRange();for(let i=0;i<pages.count;i++){doc.switchToPage(pages.start+i);doc.fontSize(8).fillColor(PDF_COLORS.muted).text(`Generated ${generatedLabel(r.generatedAt)} · Page ${i+1} of ${pages.count}`,left,785,{width,align:"center",lineBreak:false});}
  doc.end();return done;
 }
 
-/** Complete operational registers use readable record cards instead of squeezing many columns into a statement table. */
-async function registerPdf(r:AccountReport):Promise<Buffer>{const {default:PDFDocument}=await import("pdfkit");const doc=new PDFDocument({size:"A4",margin:38,bufferPages:true,info:{Title:r.title,Author:r.agency}}),chunks:Buffer[]=[];const done=new Promise<Buffer>((resolve,reject)=>{doc.on("data",c=>chunks.push(c));doc.on("end",()=>resolve(Buffer.concat(chunks)));doc.on("error",reject);});doc.font(path.join(process.cwd(),"node_modules/@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff"));let y=38;const width=519;function paragraph(value:string,size=9,color:[number,number,number]=PDF_COLORS.ink){doc.fontSize(size).fillColor(color);const lines=String(value).match(/[\s\S]{1,700}/g)??[""];for(const line of lines){const height=doc.heightOfString(line,{width});if(y+height>755){doc.addPage();y=38;}doc.text(line,38,y,{width});y+=height+7;}}paragraph(r.agency,18);paragraph(r.title,14);paragraph(`${r.period.from} to ${r.period.to} · ${r.metadata.currency} · India calendar`,9,PDF_COLORS.muted);paragraph(r.metadata.dateBasis);paragraph(`Scope: ${r.metadata.scope} · ${r.totalRows} records`);paragraph(r.description,9,PDF_COLORS.muted);for(const filter of r.metadata.filters)paragraph(`${filter.label}: ${filter.displayValue??filter.value}`,8);for(const item of r.summary)paragraph(`${item.label}: ${item.money?currencyMoney(item.value,r.metadata.currency):item.value}`,10);if(!r.rows.length)paragraph("No records match these filters.");for(let i=0;i<r.rows.length;i++){if(y+90>755){doc.addPage();y=38;}paragraph(`Record ${i+1} of ${r.rows.length}`,10);for(const col of r.columns){const value=exportValue(r.rows[i],col.key);const formatted=value===null||value===undefined?"Not recorded":col.money?currencyMoney(Number(value),r.metadata.currency):String(value);const color:[number,number,number]=col.key==="margin"&&typeof value==="number"?value<0?[180,35,35]:value>0?[21,128,61]:PDF_COLORS.ink:PDF_COLORS.ink;paragraph(`${col.label}: ${formatted}`,9,color);}doc.strokeColor(PDF_COLORS.line).moveTo(38,y).lineTo(557,y).stroke();y+=14;}for(const warning of r.warnings)paragraph(warning,8,PDF_COLORS.muted);const pages=doc.bufferedPageRange();for(let i=0;i<pages.count;i++){doc.switchToPage(pages.start+i);doc.fontSize(8).fillColor(PDF_COLORS.muted).text(`Generated ${r.generatedAt.slice(0,19).replace("T"," ")} UTC · Page ${i+1} of ${pages.count}`,38,785,{width,align:"center",lineBreak:false});}doc.end();return done;}
+/** Registers print as an A4 landscape table: repeated header row, measured rows, money right-aligned, India-time footer. */
+async function registerPdf(r:AccountReport):Promise<Buffer>{
+ const {default:PDFDocument}=await import("pdfkit");
+ const doc=new PDFDocument({size:"A4",layout:"landscape",margin:30,bufferPages:true,info:{Title:r.title,Author:r.agency}}),chunks:Buffer[]=[];
+ const done=new Promise<Buffer>((resolve,reject)=>{doc.on("data",c=>chunks.push(c));doc.on("end",()=>resolve(Buffer.concat(chunks)));doc.on("error",reject);});
+ doc.font(path.join(process.cwd(),"node_modules/@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff"));
+ const left=30,width=782,bottom=545;let y=30;
+ const block=(value:string,size=9,color:[number,number,number]=PDF_COLORS.ink)=>{doc.fontSize(size).fillColor(color);const h=doc.heightOfString(value,{width});if(y+h>bottom){doc.addPage();y=30;}doc.text(value,left,y,{width});y+=h+5;};
+ block(r.agency,16);block(r.title,13);
+ block(`${dateLabel(r.period.from)} to ${dateLabel(r.period.to)} · ${r.metadata.currency} · ${r.metadata.dateBasis}`,8.5,PDF_COLORS.muted);
+ block(`${r.metadata.account} · ${r.metadata.scope} · ${r.totalRows} ${r.totalRows===1?"record":"records"}${r.metadata.filters.length?" · "+r.metadata.filters.map(f=>`${f.label}: ${f.displayValue??f.value}`).join(" · "):""}`,8.5,PDF_COLORS.muted);
+ // Summary as a grid of label/value tiles, four per row.
+ if(r.summary.length){
+  y+=3;const per=4,tileW=(width-(per-1)*8)/per,tileH=34;
+  r.summary.forEach((s,i)=>{const col=i%per;if(col===0&&i>0)y+=tileH+6;if(col===0&&y+tileH>bottom){doc.addPage();y=30;}const x=left+col*(tileW+8);
+   doc.fillColor(PDF_COLORS.surface).rect(x,y,tileW,tileH).fill();
+   doc.fillColor(PDF_COLORS.muted).fontSize(7).text(s.label,x+6,y+4,{width:tileW-12,height:11,ellipsis:true,lineBreak:false});
+   const negative=s.money&&s.value<0,label=/margin|profit/i.test(s.label);
+   doc.fillColor(label&&s.value>0?[21,128,61]:negative?[180,35,35]:PDF_COLORS.ink).fontSize(11).text(s.money?currencyMoney(s.value,r.metadata.currency):String(s.value),x+6,y+16,{width:tileW-12,lineBreak:false});});
+  y+=tileH+10;
+ }
+ // Column widths: weight by kind, then scale to the page.
+ const weight=(c:AccountReport["columns"][number])=>c.money?1.15:DATE_KEYS.has(c.key)?0.85:c.key==="description"?2.2:["customer","supplier","allocation","coverage","title"].includes(c.key)?1.45:1;
+ const total=r.columns.reduce((n,c)=>n+weight(c),0),widths=r.columns.map(c=>weight(c)/total*width),xs=widths.map((_,i)=>left+widths.slice(0,i).reduce((a,b)=>a+b,0));
+ const size=r.columns.length>11?6.5:7.5;
+ const head=()=>{doc.fontSize(size);const h=Math.max(...r.columns.map((c,i)=>doc.heightOfString(c.label,{width:widths[i]-6})))+8;if(y+h+20>bottom){doc.addPage();y=30;}
+  doc.fillColor([18,54,71]).rect(left,y,width,h).fill();doc.fillColor([255,255,255]);r.columns.forEach((c,i)=>doc.text(c.label,xs[i]+3,y+4,{width:widths[i]-6,align:c.money?"right":"left"}));y+=h;};
+ const cell=(row:AccountReport["rows"][number],c:AccountReport["columns"][number])=>{const v=exportValue(row,c.key);if(v===null||v===undefined||v==="")return "—";if(c.money)return Number(v).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});if(DATE_KEYS.has(c.key)&&typeof v==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(v))return dateLabel(v);return String(v);};
+ head();
+ if(!r.rows.length){y+=6;block("No records match these filters.",9,PDF_COLORS.muted);}
+ r.rows.forEach((row,n)=>{
+  const texts=r.columns.map(c=>cell(row,c));doc.fontSize(size);
+  const h=Math.max(...texts.map((t,i)=>doc.heightOfString(t,{width:widths[i]-6})))+7;
+  if(y+h>bottom){doc.addPage();y=30;head();}
+  if(n%2===1){doc.fillColor([243,246,248]).rect(left,y,width,h).fill();}
+  texts.forEach((t,i)=>{const c=r.columns[i],v=row[c.key];doc.fillColor(c.key==="margin"&&typeof v==="number"?(v<0?[180,35,35]:v>0?[21,128,61]:PDF_COLORS.ink):PDF_COLORS.ink).fontSize(size).text(t,xs[i]+3,y+3.5,{width:widths[i]-6,align:c.money?"right":"left"});});
+  y+=h;
+ });
+ doc.strokeColor(PDF_COLORS.line).moveTo(left,y).lineTo(left+width,y).stroke();y+=10;
+ for(const warning of r.warnings)block(warning,7.5,PDF_COLORS.muted);
+ const pages=doc.bufferedPageRange(),stamp=generatedLabel(r.generatedAt);
+ for(let i=0;i<pages.count;i++){doc.switchToPage(pages.start+i);doc.page.margins.bottom=0;doc.fontSize(7.5).fillColor(PDF_COLORS.muted).text(`${r.agency} · ${r.title} · Generated ${stamp} · Page ${i+1} of ${pages.count}`,left,566,{width,align:"center",lineBreak:false});}
+ doc.end();return done;
+}
