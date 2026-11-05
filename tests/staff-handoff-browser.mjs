@@ -30,7 +30,7 @@ export async function checkStaffHandoffs(page, base, fixture) {
     await page.goto(`${base}/workspace/communications`, { waitUntil: "networkidle" });
     await page.waitForURL(url => url.pathname === "/email");
     await page.getByRole("heading", { name: "Customer email", exact: true }).waitFor();
-    await page.getByRole("link", { name: "Open customer Masters", exact: true }).waitFor();
+    await page.getByRole("link", { name: "Open customers", exact: true }).waitFor();
 
     original = await db.document.findFirstOrThrow({ where: { customerId: fixture.customerId } });
     await db.document.update({ where: { id: original.id }, data: { status: "RECEIVED", storagePath: "review-test-placeholder.pdf" } });

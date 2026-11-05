@@ -160,7 +160,8 @@
   .eyebrow { @apply mb-2 text-micro font-bold uppercase tracking-[.2em] text-brand-800; }
   .page-actions { @apply flex flex-wrap items-center gap-2; }
   .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-3.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:opacity-50; min-height:var(--btn-height); }
-  .btn,.btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50; min-height:var(--btn-height); }
+  .btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50; min-height:var(--btn-height); }
+  .btn:not(.btn-primary):not(.btn-secondary):not(.btn-danger) { @apply inline-flex items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50; min-height:var(--btn-height); }
   /* Solid destructive action, for the one button that closes or rejects a record for good. */
   .btn-danger { @apply inline-flex items-center justify-center gap-2 rounded-md bg-rose-600 px-3.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50; min-height:var(--btn-height); }
   .icon-button { @apply relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900; }
