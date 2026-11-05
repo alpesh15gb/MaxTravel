@@ -30,6 +30,8 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
     },
   });
   if (!b || !canTouchRecord(user, b)) notFound();
+  const issuers = await prisma.user.findMany({ where: { employeeCode: { in: b.tickets.flatMap(t => (t.issuedBy ? [t.issuedBy] : [])) } }, select: { employeeCode: true, name: true } });
+  const issuerNames = new Map(issuers.map(u => [u.employeeCode, u.name]));
   const suppliers = await prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
   // Fare, receipts and refunds are financial position: hidden without payment:view, like the
   // list-page balance and Customer 360. Masking happens here so the client never receives them.
@@ -63,7 +65,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
         })),
         tickets: b.tickets.map((t) => ({
           id: t.id, travellerId: t.travellerId, ticketNo: t.ticketNo, passenger: t.passenger,
-          issueDate: t.issueDate?.toISOString() ?? null, issuedBy: t.issuedBy,
+          issueDate: t.issueDate?.toISOString() ?? null, issuedBy: issuerNames.get(t.issuedBy ?? "") ?? t.issuedBy,
           originalFare: showMoney ? t.originalFare : 0, status: t.status,
         })),
         payments: showMoney ? b.payments.map((p) => ({ id: p.id, receiptNo: p.receiptNo, amount: p.amount, mode: p.mode, receivedOn: p.receivedOn.toISOString() })) : [],

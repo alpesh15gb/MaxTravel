@@ -1,3 +1,4 @@
+import { invoiceView, INVOICE_VIEW_INCLUDE } from "./invoice-view";
 import { customerSalesHistory } from "./customer-sales-history";
 import { prisma } from "./db";
 import type { SessionUser } from "./session";
@@ -32,7 +33,7 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
       },
       documents: { include: { traveller: { select: { fullName: true } }, verifiedBy: { select: { name: true } } }, orderBy: { createdAt: "desc" } },
       payments: { orderBy: { receivedOn: "desc" }, include: { booking: { select: { bookingNo: true } }, visaCase: { select: { caseNo: true } } } },
-      invoices: { orderBy: { issuedOn: "desc" } },
+      invoices: { orderBy: { issuedOn: "desc" }, include: INVOICE_VIEW_INCLUDE },
       refunds: { orderBy: { requestedOn: "desc" }, include: { booking: { select: { bookingNo: true } } } },
       tasks: { include: { owner: { select: { name: true } } }, orderBy: { createdAt: "desc" } },
       notes: { include: { author: { select: { name: true } } }, orderBy: { createdAt: "desc" } },
@@ -138,11 +139,14 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
       receivedOn: p.receivedOn.toISOString(),
       ref: p.booking?.bookingNo ?? p.visaCase?.caseNo ?? null,
     })),
-    invoices: c.invoices.map((i) => ({
-      id: i.id, invoiceNo: i.invoiceNo, description: i.description, amount: i.amount,
-      amountPaid: i.amountPaid, status: i.status, issuedOn: i.issuedOn.toISOString(),
-      dueDate: i.dueDate?.toISOString() ?? null,
-    })),
+    invoices: c.invoices.map((i) => {
+      const view = invoiceView(i);
+      return {
+        id: i.id, invoiceNo: i.invoiceNo, description: i.description, amount: i.amount,
+        amountPaid: view.paid, status: view.status, issuedOn: i.issuedOn.toISOString(),
+        dueDate: i.dueDate?.toISOString() ?? null,
+      };
+    }),
     refunds: c.refunds.map((r) => ({
       id: r.id, refundNo: r.refundNo, amount: r.amount, status: r.status, reason: r.reason,
       requestedOn: r.requestedOn.toISOString(), paidOn: r.paidOn?.toISOString() ?? null,

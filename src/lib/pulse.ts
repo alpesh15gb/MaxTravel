@@ -1,4 +1,5 @@
 import { airlineDeadlineEligible } from "./booking-deadline";
+import { invoiceView, INVOICE_VIEW_INCLUDE } from "./invoice-view";
 import { salesAttention } from "./sales-attention";
 import {serviceCaseScope} from "./service-cases";
 import { enumLabel } from "@/lib/labels";
@@ -37,7 +38,7 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
   const [bookings,cases,invoices,documents,passports,tasks,refunds,dues,customerCount,sales,journeys,activeCases,dueCases,dueTasks]=await Promise.all([
     can("ticketing:view")?prisma.booking.findMany({where:work,include:{customer:{select:{name:true}},payments:{select:{amount:true}},refunds:{select:{amount:true,status:true}}}}):[],
     can("visa:view")?prisma.visaCase.findMany({where:work,include:{stage:true,customer:{select:{name:true}},documents:{select:{status:true}}}}):[],
-    can("invoice:view")?prisma.invoice.findMany({where:{customer:{is:customer}},include:{customer:{select:{name:true}},booking:{select:{status:true}}}}):[],
+    can("invoice:view")?prisma.invoice.findMany({where:{customer:{is:customer}},include:{customer:{select:{name:true}},...INVOICE_VIEW_INCLUDE}}):[],
     can("document:view")?bounded(prisma.document.findMany({where:{customer:{is:customer},OR:[{status:{in:["RECEIVED","UNDER_REVIEW"]},verificationStatus:"PENDING"},{status:"REUPLOAD_REQUESTED"}]},include:{customer:{select:{name:true}},traveller:{select:{fullName:true}},visaCase:{select:{id:true,caseNo:true,travelDate:true,destination:true}}},take:ITEM_LIMIT+1}),"documents"):[],
     // Passports are found by the columns the expiry rule actually needs (a recorded expiry and a
     // trip to compare it against), and the rule itself still runs in TypeScript below, so a
@@ -55,8 +56,15 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
   ]);
   const items:PulseItem[]=[...sales];
   const open=(label:string,href:string):PulseAction=>({label,href});
-  for(const journey of journeys){const href=`/trips/${journey.id}`;items.push({id:`case:${journey.id}`,kind:"CASE_FOLLOWUP",severity:"HIGH",title:`${journey.caseNo} · follow-up due`,detail:`${journey.customer.name} · ${journey.title} · ${journey.owner.name}`,href,at:journey.nextFollowUpAt?.toISOString(),actions:[open("Review case",href)]});}
+  for(const journey of journeys){const href=`/trips/${journey.id}`;items.push({id:`case:${journey.id}`,kind:"CASE_FOLLOWUP",severity:"HIGH",title:`${journey.caseNo} · follow-up due`,detail:`${journey.customer.name} · ${journey.title} · ${journey.owner.name}`,href,at:journey.nextFollowUpAt?.toISOString(),actions:[open("Open trip",href)]});}
+  const invoiceDue=(inv:(typeof invoices)[number])=>inv.dueDate?inv.dueDate.getTime()<now:inv.issuedOn.getTime()<now-7*24*H;
+  const billedOverdue=new Set(invoices.filter(i=>i.bookingId&&invoiceDue(i)&&invoiceView(i).balance>0).map(i=>i.bookingId));
+  const billedOverdueVisas=new Set(invoices.filter(i=>i.visaCaseId&&invoiceDue(i)&&invoiceView(i).balance>0).map(i=>i.visaCaseId));
   for(const b of bookings){
+    if(!isWithdrawnBooking(b.status)&&can("payment:view")&&!["ENQUIRY","QUOTE_SENT"].includes(b.status)&&b.paymentDueDate&&b.paymentDueDate.getTime()<now&&!billedOverdue.has(b.id)){
+      const owed=balanceOf(bookingCharge(b),netReceived(b.payments.reduce((s,p)=>s+p.amount,0),b.refunds));
+      if(owed>0){const href=`/ticketing/${b.id}`;items.push({id:`due:${b.id}`,kind:"PAYMENT_OVERDUE",severity:"HIGH",title:`${b.bookingNo} · ${money(owed)} overdue`,detail:b.customer.name,href,actions:[open("Open booking",href),...(can("payment:record")&&b.gdsSource!=="TRIPJACK_API"?[open("Record payment",`/payments?action=record&customer=${b.customerId}&booking=${b.id}`)]:[])]});}
+    }
     if(isWithdrawnBooking(b.status)) {
       const balance=balanceOf(bookingCharge(b),netReceived(b.payments.reduce((s,p)=>s+p.amount,0),b.refunds));
       if(can("payment:view")&&hasCancellationAllocation(b)&&balance>0) {
@@ -78,18 +86,19 @@ export async function computePulse(prisma:PrismaClient,user:SessionUser){
     items.push({id:`pnr:${b.id}`,kind:"PNR_DEADLINE",severity:hours<=urgent?"URGENT":"HIGH",title:`${b.pnr??b.bookingNo} · ${hours<0?"ticketing deadline passed":`ticketing due in ${Math.max(1,Math.round(hours))}h`}`,detail:`${b.customer.name} · ${b.sector??"Route pending"}${can("payment:view")?` · Balance ${money(balance)}`:""}`,href,at:b.ticketingDeadline.toISOString(),actions});
   }
   for(const inv of invoices){
-    if(inv.booking&&isWithdrawnBooking(inv.booking.status))continue;
-    if(inv.status==="PAID"||inv.status==="CREDITED"||!(inv.dueDate?inv.dueDate.getTime()<now:inv.issuedOn.getTime()<now-7*24*H))continue;
+    const position=invoiceView(inv);
+    if(position.status==="CANCELLED"||position.status==="CREDITED"||position.balance<=0||!invoiceDue(inv))continue;
     const href=`/payments?focus=${inv.id}`,actions=[open("Open invoices",href)];
     if(can("payment:record"))actions.push(open("Record payment",`/payments?action=record&customer=${inv.customerId}&invoice=${inv.id}`));
-    items.push({id:`inv:${inv.id}`,kind:"PAYMENT_OVERDUE",severity:"HIGH",title:`${inv.invoiceNo} · ${money(inv.amount-inv.amountPaid)} overdue`,detail:inv.customer.name,href,actions});
+    items.push({id:`inv:${inv.id}`,kind:"PAYMENT_OVERDUE",severity:"HIGH",title:`${inv.invoiceNo} · ${money(position.balance)} overdue`,detail:inv.customer.name,href,actions});
   }
   for(const v of cases){
     const href=`/visa/${v.id}`,missing=v.documents.filter(d=>["REQUIRED","REQUESTED","REUPLOAD_REQUESTED"].includes(d.status)).length;
     if(missing&&["DOCUMENTS_PENDING","DOCUMENTS_VERIFICATION","READY_FOR_SUBMISSION"].includes(v.stage.key))items.push({id:`docs:${v.id}`,kind:"VISA_BLOCKED_DOCS",severity:"HIGH",title:`${v.caseNo} · ${missing} documents outstanding`,detail:`${v.customer.name} · ${v.destination} · ${v.stage.name}`,href,actions:[open("Review dossier",href)]});
-    if(v.appointmentDate&&v.appointmentDate.getTime()>=now&&v.appointmentDate.getTime()<now+36*H)items.push({id:`appt:${v.id}`,kind:"APPOINTMENT_TOMORROW",severity:"HIGH",title:`Appointment approaching · ${v.caseNo}`,detail:`${v.customer.name} · ${v.destination} · ${dateTimeLabel(v.appointmentDate)}`,href,at:v.appointmentDate.toISOString(),actions:[open("Open case",href)]});
-    if(v.stage.key==="APPOINTMENT_REQUIRED")items.push({id:`bookappt:${v.id}`,kind:"VISA_APPOINTMENT_NEEDED",severity:"MEDIUM",title:`Book appointment · ${v.caseNo}`,detail:`${v.customer.name} · ${v.destination}`,href,actions:[open("Open case",href)]});
-    if(can("payment:view")&&v.stage.key==="PAYMENT_AWAITED"&&v.sellingPrice>v.amountReceived)items.push({id:`pay:${v.id}`,kind:"PAYMENT_OVERDUE",severity:"MEDIUM",title:`${money(v.sellingPrice-v.amountReceived)} outstanding · ${v.caseNo}`,detail:`${v.customer.name} · Payment awaited`,href,actions:[open("Open case",href),...(can("payment:record")?[open("Record payment",`/payments?action=record&customer=${v.customerId}&visaCase=${v.id}`)]:[])]});
+    if(v.appointmentDate&&v.appointmentDate.getTime()>=now&&v.appointmentDate.getTime()<now+36*H)items.push({id:`appt:${v.id}`,kind:"APPOINTMENT_TOMORROW",severity:"HIGH",title:`Appointment approaching · ${v.caseNo}`,detail:`${v.customer.name} · ${v.destination} · ${dateTimeLabel(v.appointmentDate)}`,href,at:v.appointmentDate.toISOString(),actions:[open("Open visa",href)]});
+    if(v.stage.key==="APPOINTMENT_REQUIRED")items.push({id:`bookappt:${v.id}`,kind:"VISA_APPOINTMENT_NEEDED",severity:"MEDIUM",title:`Book appointment · ${v.caseNo}`,detail:`${v.customer.name} · ${v.destination}`,href,actions:[open("Open visa",href)]});
+    if(can("payment:view")&&v.stage.key!=="PAYMENT_AWAITED"&&!["ENQUIRY","ASSESSMENT"].includes(v.stage.key)&&v.paymentDueDate&&v.paymentDueDate.getTime()<now&&!billedOverdueVisas.has(v.id)&&v.sellingPrice>v.amountReceived)items.push({id:`due:${v.id}`,kind:"PAYMENT_OVERDUE",severity:"HIGH",title:`${v.caseNo} · ${money(v.sellingPrice-v.amountReceived)} overdue`,detail:v.customer.name,href,actions:[open("Open visa",href),...(can("payment:record")?[open("Record payment",`/payments?action=record&customer=${v.customerId}&visaCase=${v.id}`)]:[])]});
+    if(can("payment:view")&&v.stage.key==="PAYMENT_AWAITED"&&v.sellingPrice>v.amountReceived)items.push({id:`pay:${v.id}`,kind:"PAYMENT_OVERDUE",severity:"MEDIUM",title:`${money(v.sellingPrice-v.amountReceived)} outstanding · ${v.caseNo}`,detail:`${v.customer.name} · Payment awaited`,href,actions:[open("Open visa",href),...(can("payment:record")?[open("Record payment",`/payments?action=record&customer=${v.customerId}&visaCase=${v.id}`)]:[])]});
   }
   for(const d of documents){
     const href=`/documents?focus=${d.id}`;

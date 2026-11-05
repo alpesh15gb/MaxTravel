@@ -160,7 +160,7 @@
   .eyebrow { @apply mb-2 text-micro font-bold uppercase tracking-[.2em] text-brand-800; }
   .page-actions { @apply flex flex-wrap items-center gap-2; }
   .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-3.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:opacity-50; min-height:var(--btn-height); }
-  .btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50; min-height:var(--btn-height); }
+  .btn,.btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50; min-height:var(--btn-height); }
   /* Solid destructive action, for the one button that closes or rejects a record for good. */
   .btn-danger { @apply inline-flex items-center justify-center gap-2 rounded-md bg-rose-600 px-3.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50; min-height:var(--btn-height); }
   .icon-button { @apply relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900; }
@@ -377,7 +377,7 @@ main>div { animation:page-in .22s ease-out; }
 @media (min-width:768px) { .customer-summary { grid-template-columns:repeat(6,minmax(0,1fr)); } }
 @media (max-width:767px) {
   input:not([type=checkbox]):not([type=radio]),select,textarea { min-height:42px; }
-  .btn-primary,.btn-secondary,.btn-danger { min-height:42px; }
+  .btn,.btn-primary,.btn-secondary,.btn-danger { min-height:42px; }
   /* The compact actions in the detail views opt out of the .btn-* classes with their own explicit
      min-h-7/min-h-8, so the touch floor has to cover those heights too. Without this the visa
      workflow chips and document actions shipped at 28-32px on a phone, and one back-link at 16px,
@@ -403,7 +403,7 @@ main>div { animation:page-in .22s ease-out; }
 .nav-link.active { box-shadow:inset 3px 0 var(--accent); background:var(--accent-weak); }
 .nav-section { margin-top:22px; margin-bottom:8px; font-size:.8125rem; letter-spacing:.08em; }
 .nav-section:first-child { margin-top:12px; }
-.btn-primary,.btn-secondary,.btn-danger { border-radius:8px; }
+.btn,.btn-primary,.btn-secondary,.btn-danger { border-radius:8px; }
 .workspace-toolbar { padding:12px; gap:10px; border-radius:12px; }
 .segmented { max-width:100%; flex-wrap:wrap; gap:2px; box-shadow:none; }
 .segmented button { min-height:36px; height:auto; }
@@ -732,7 +732,7 @@ main table tbody tr:hover { background:var(--brand-50); }
 }
 
 .workspace-search-trigger,.workspace-search-close { display:none; }
-@media (max-width:639px) {
+@media (max-width:899px) {
   .workspace-search { width:44px; flex:0 0 44px; }
   .workspace-search-trigger { display:inline-flex; width:44px; height:44px; }
   .workspace-search-input-panel { display:none; }

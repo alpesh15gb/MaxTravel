@@ -341,7 +341,7 @@ export default function WorkDesk({
       </div>
       <div className="work-list-heading">
         <p>
-          {data.total} matching work items · {data.scope}
+          {data.total} matching {data.total === 1 ? "to-do" : "to-dos"} · {data.scope}
         </p>
         <div>
           {selected.length > 0 && data.permissions.assign && (
@@ -800,7 +800,7 @@ function WorkItem({
           </section>
         )}
         <div className="work-context-links">
-          {t.case && <Link href={`/trips/${t.case.id}`}>Open case</Link>}
+          {t.case && <Link href={`/trips/${t.case.id}`}>Open trip</Link>}
           {t.bookingId && (
             <Link href={`/ticketing/${t.bookingId}`}>Open linked booking</Link>
           )}
@@ -1106,7 +1106,7 @@ function CaseFields({
     c = cases.find((c) => c.id === id);
   return (
     <>
-      <Field label="Case">
+      <Field label="Trip (Max ID)">
         <select
           name="caseId"
           value={id}
@@ -1115,7 +1115,7 @@ function CaseFields({
             onSelectionChange?.(e.target.value, "");
           }}
         >
-          <option value="">Internal work — no customer case</option>
+          <option value="">Internal to-do — no trip</option>
           {cases.map((c) => (
             <option key={c.id} value={c.id}>
               {c.caseNo} · {c.title}
@@ -1126,7 +1126,7 @@ function CaseFields({
           <p className="mt-1 text-xs text-slate-500">
             A customer appears here once they have a trip (a Max ID). {cases.length === 0 ? "None exist yet. " : ""}
             <Link href="/trips/new" className="text-blue-700 underline">Start a trip</Link> for the customer
-            {" "}first, or choose Internal work for a general task.
+            {" "}first, or choose Internal to-do for a general task.
           </p>
         )}
       </Field>
@@ -1288,7 +1288,7 @@ function CreateWorkDialog({
             ? "Saving…"
             : w.uncertain
               ? "Retry same work"
-              : "Create work item"}
+              : "Create to-do"}
         </button>
       </form>
     </WorkModal>
@@ -1521,7 +1521,7 @@ function BulkDialog({
   return (
     <WorkModal
       busy={w.busy || w.uncertain}
-      title={`Assign ${selected.length} work items`}
+      title={`Assign ${selected.length} ${selected.length === 1 ? "to-do" : "to-dos"}`}
       onClose={() => {
         if (!w.busy && !w.uncertain) close();
       }}

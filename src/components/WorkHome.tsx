@@ -87,7 +87,7 @@ export default async function WorkHome({ user, denied = false }: { user: Session
               <Link className="btn-primary" href="/trips/new">New trip</Link>
             ) : (
               <Link className="btn-primary" href="/work">
-                {manager ? "Open work register" : "Open my work"}
+                {manager ? "Open to-dos" : "Open my work"}
               </Link>
             )}
           </>
@@ -152,7 +152,7 @@ export default async function WorkHome({ user, denied = false }: { user: Session
         >
           <header>
             <h2>{manager ? "Work needing attention" : "Your next actions"}</h2>
-            <Link href="/work">Open work register →</Link>
+            <Link href="/work">Open to-dos →</Link>
           </header>
           {priority.map((t) => (
             <div className="work-home-row" key={t.id}>
@@ -227,7 +227,7 @@ export default async function WorkHome({ user, denied = false }: { user: Session
           )}
         </section>
       </div>
-      {manager&&<section className="work-home-section mt-6" aria-label="Recorded completions"><header><h2>Recorded completions today</h2><Link href="/work?view=done">All completed work →</Link></header>{report.events.filter(e=>["COMPLETE","APPROVE"].includes(e.kind)).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)).slice(0,5).map(e=><div className="work-home-row" key={e.id}><div><span>{e.caseNo}</span><strong>{e.title}</strong><span>{e.assignee} · {e.kind==="APPROVE"?"Approved by":"Completed by"} {e.actor}</span><time className="block work-muted" dateTime={e.at}>{dateTimeLabel(e.at)}</time></div>{e.canOpen?<Link href={`/work?task=${e.taskId}`}>View work</Link>:<span>Historical result</span>}</div>)}{!report.summary.completedEvents&&<p className="p-5">No completion events recorded today. Completed work from earlier dates remains in the work register and reports.</p>}</section>}
+      {manager&&<section className="work-home-section mt-6" aria-label="Recorded completions"><header><h2>Recorded completions today</h2><Link href="/work?view=done">All completed work →</Link></header>{report.events.filter(e=>["COMPLETE","APPROVE"].includes(e.kind)).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)).slice(0,5).map(e=><div className="work-home-row" key={e.id}><div><span>{e.caseNo}</span><strong>{e.title}</strong><span>{e.assignee} · {e.kind==="APPROVE"?"Approved by":"Completed by"} {e.actor}</span><time className="block work-muted" dateTime={e.at}>{dateTimeLabel(e.at)}</time></div>{e.canOpen?<Link href={`/work?task=${e.taskId}`}>View work</Link>:<span>Historical result</span>}</div>)}{!report.summary.completedEvents&&<p className="p-5">No completion events recorded today. Completed work from earlier dates remains in to-dos and reports.</p>}</section>}
       <section
         className="work-home-section mt-6"
         aria-label="Service exceptions"

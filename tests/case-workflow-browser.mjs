@@ -200,7 +200,7 @@ try {
   await db.user.update({ where: { id: staff.id }, data: { active: false } });
   await d.getByRole("button", { name: "Refresh staff list", exact: true }).click();
   await page.waitForFunction(() => document.querySelector('dialog select[name="ownerId"]')?.validity.valid === false);
-  await d.getByRole("button", { name: "Create work item", exact: true }).click();
+  await d.getByRole("button", { name: "Create to-do", exact: true }).click();
   assert.equal(await db.task.count({ where: { title: "Prepare family visa review" } }), 0, "Unavailable selected staff must not silently create unassigned work");
   await db.user.update({ where: { id: staff.id }, data: { active: true } });
   await d.getByRole("button", { name: "Refresh staff list", exact: true }).click();
@@ -209,7 +209,7 @@ try {
   await d.getByLabel("Instructions").fill("Confirm requirements and record the next agreed action.");
   report.checks.push("Failed staff refresh retains the draft; deactivated selected staff blocks submission instead of silently unassigning; reactivation restores eligibility");
   await d
-    .getByRole("button", { name: "Create work item", exact: true })
+    .getByRole("button", { name: "Create to-do", exact: true })
     .click();
   await d.waitFor({ state: "hidden" });
   const task = await db.task.findFirstOrThrow({

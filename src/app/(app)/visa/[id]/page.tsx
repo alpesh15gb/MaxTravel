@@ -1,3 +1,5 @@
+import { findOnFile } from "@/lib/document-reuse";
+import { istDayKey } from "@/lib/dates";
 import CustomerEmail from "@/components/CustomerEmail";
 import WorkPassport from "@/components/WorkPassport";
 import CollectionRequest from "@/components/CollectionRequest";
@@ -41,6 +43,7 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
   const stages = await prisma.visaStage.findMany({ where: { active: true }, orderBy: { seq: "asc" } });
   const suppliers = await prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
 
+  const onFile = can(user.permissions, "document:view") ? (await prisma.document.findMany({ where: { customerId: vc.customerId, storagePath: { not: null } }, select: { id: true, docNo: true, docType: true, travellerId: true, verificationStatus: true, status: true, expiryDate: true, storagePath: true } })).map(f => ({ ...f, expiryDate: f.expiryDate?.toISOString() ?? null, hasFile: !!f.storagePath })) : [];
   return (
     <>
     <VisaCaseView
@@ -77,6 +80,7 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
           expiryDate: d.expiryDate?.toISOString() ?? null,
           rejectionReason: d.rejectionReason,
           hasFile: !!d.storagePath, version: d.version,
+          onFile: d.storagePath ? null : (() => { const f = findOnFile({ id: d.id, docType: d.docType, travellerId: d.travellerId }, onFile, istDayKey(new Date())); return f ? { id: f.id, docNo: f.docNo, verified: f.verificationStatus === "VERIFIED" } : null; })(),
           warnings: can(user.permissions, "sensitive:view") && d.warnings ? JSON.parse(d.warnings) : [],
           extracted: can(user.permissions, "sensitive:view") && d.extracted ? JSON.parse(d.extracted) : null,
           extractionConfirmed: !!d.extractedConfirmedAt,
@@ -100,6 +104,7 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
         audit: can(user.permissions, "audit:view"),
         edit: can(user.permissions, "visa:edit"),
         verify: can(user.permissions, "document:verify"),
+        reuseDocs: can(user.permissions, "document:upload"),
         record: can(user.permissions, "payment:record"),
         money: showMoney,
       }}

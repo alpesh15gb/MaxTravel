@@ -1,7 +1,7 @@
 // Turns a stored enum value into a readable label: "PAYMENT_AWAITED" -> "Payment awaited",
 // "PNR_CREATED" -> "PNR created", "high" -> "High". Keeps known acronyms in capitals.
 
-const ACRONYMS = new Set(["PNR", "UPI", "GST", "KYC", "ID"]);
+const ACRONYMS = new Set(["PNR", "UPI", "GST", "KYC", "ID", "NEFT"]);
 
 export function enumLabel(value: string | null | undefined) {
   if (!value) return "—";

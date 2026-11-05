@@ -82,7 +82,7 @@ export default function NewTrip({ needs, initial, canAddCustomer }: { needs: Nee
         <div className="sm:col-span-2 flex gap-2"><button className="btn-primary" disabled={busy}>{busy ? "Saving…" : "Add customer"}</button><button type="button" className="btn-secondary" onClick={() => { setAdding(false); setDuplicate(null); setError(""); }}>Back to search</button></div>
         <p className="sm:col-span-2 text-xs text-slate-500">You can fill in passport and other traveller details later on the customer page.</p>
       </form> : <div className="space-y-3">
-        <input type="search" autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name, phone or customer code" aria-label="Search customers" className="w-full" />
+        <input type="search" autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name, phone or customer code" aria-label="Search customers" className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3" />
         <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200" aria-live="polite">
           {results.map(c => <li key={c.id}><button type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-slate-50" onClick={() => { setCustomer(c); setError(""); }}><span><strong className="text-sm">{c.name}</strong> <span className="text-xs text-slate-500">· {c.code}</span></span><Icon name="arrow" size={14} /></button></li>)}
           {!results.length && <li className="px-3 py-2.5 text-sm text-slate-500">{searching ? "Searching…" : query ? "No customer found." : "No customers yet."}</li>}

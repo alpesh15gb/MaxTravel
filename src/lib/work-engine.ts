@@ -293,7 +293,8 @@ export async function recordWorkEvent(
         caseId: task.serviceCaseId,
         actorId: u?.id,
         kind: "WORK",
-        summary: `${kind.replaceAll("_", " ")} · ${task.title}`,
+        // A transfer keeps its reason on the trip timeline too.
+        summary: detail.startsWith("Transferred from ") ? `${task.title} — ${detail}`.slice(0, 1000) : `${kind.replaceAll("_", " ")} · ${task.title}`,
         permission: eventPermission,
         href: `/work?task=${task.id}`,
       },

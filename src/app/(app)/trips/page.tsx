@@ -38,7 +38,7 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
       {sp.stage && <input type="hidden" name="stage" value={sp.stage} />}
       {view && <input type="hidden" name="view" value={view} />}
       {customerId && <input type="hidden" name="customer" value={customerId} />}
-      <input name="q" defaultValue={q} placeholder="Customer, phone, Max ID, PNR or destination" aria-label="Search trips" className="min-w-0 flex-1 basis-60" />
+      <input name="q" defaultValue={q} placeholder="Customer, phone, Max ID, PNR or destination" aria-label="Search trips" className="min-h-11 min-w-0 flex-1 basis-60 rounded-lg border border-slate-300 bg-white px-3" />
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="mine" value="1" defaultChecked={mine} />Mine only</label>
       <button className="btn-secondary">Search</button>
     </form>
@@ -48,7 +48,7 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
       {TRIP_VIEWS.map(v => <Link key={v} href={href({ view: v, page: undefined })} className={`inline-flex min-h-8 items-center ${view === v ? "font-semibold text-slate-900" : "text-blue-700 underline"}`}>{VIEW_LABEL[v]}</Link>)}
     </div>
     {data.capped && <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">Showing the 500 most recently updated trips. Search by customer, phone, Max ID or PNR to find older ones.</p>}
-    {data.rows.length ? <TripsList rows={data.rows} /> : (q || view || sp.stage || mine || customerId)
+    {data.rows.length ? <TripsList rows={data.rows} /> : (all > 0 || q || view || mine || customerId)
       ? <EmptyState title="No trips match" description="Try another search, stage or service." href="/trips" action="Clear filters" />
       : <EmptyState title="No trips yet" description="Start one for a customer. Every enquiry, booking and visa lives inside a trip with its own Max ID." href="/trips/new" action="New trip" />}
     {pages > 1 && <nav aria-label="Pages" className="flex items-center justify-between text-sm">

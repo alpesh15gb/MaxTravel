@@ -196,7 +196,7 @@ export default function VisaPipeline({ cases, stages, perms, initialQuery, initi
       {nextStage && <button type="button" className="btn-secondary mt-3 w-full" disabled={busyId !== null} onClick={() => moveCase(c, nextStage)}>
         <Icon name="arrow" size={15} />{busy ? "Moving…" : `Move to ${nextStage.name}`}
       </button>}
-      <Link href={`/visa/${c.id}`} className="board-open-link">Open case & documents<Icon name="arrow" size={14}/></Link>
+      <Link href={`/visa/${c.id}`} className="board-open-link">Open visa & documents<Icon name="arrow" size={14}/></Link>
     </BoardCard>;
   }
 

@@ -22,7 +22,7 @@ export async function addTripService(db: PrismaClient, user: SessionUser, caseId
     const has = (s: string) => existing.some(w => w.service === s);
     if (want === "VISA" ? has("VISA") : has("FLIGHT") || has("HOTEL")) return { href };
     const service = want === "VISA" ? "VISA" : "FLIGHT";
-    await tx.serviceWork.create({ data: { caseId: trip.id, service, title: `${service} · ${trip.title}` } });
+    await tx.serviceWork.create({ data: { caseId: trip.id, service, title: trip.title } });
     await tx.serviceCaseEvent.create({ data: { caseId: trip.id, actorId: user.id, kind: "SERVICE_ADDED", summary: want === "VISA" ? "Visa added to this trip" : "Quote started on this trip" } });
     await tx.auditLog.create({ data: { userId: user.id, action: "SERVICE_ADDED", entity: "ServiceCase", entityId: trip.id, detail: service } });
     return { href };

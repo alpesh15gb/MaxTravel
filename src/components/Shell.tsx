@@ -70,6 +70,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
     };
   }, [mobile]);
   async function logout() { draftMemory.clear(); try { const r = await fetch("/api/auth/logout", { method: "POST" }); if (!r.ok) throw new Error(); packageDraftMemory.clear(); router.push("/login"); router.refresh(); } catch { setError("Could not sign out. Please try again."); } }
+  const activeTab = activeSection?.links.map(l => l.href).filter(h => path === h || path.startsWith(h + "/")).sort((a, b) => b.length - a.length)[0];
   const quick = QUICK_ACTIONS.filter(q => user.permissions.includes(q.perm));
   return <div className="operations-studio flex min-h-screen flex-col">
     <a href="#workspace-content" className="skip-link">Skip to workspace</a>
@@ -121,7 +122,7 @@ export default function Shell({ user, agencyName, children }: { user: ShellUser;
         </div>
       </aside>
       <div className="workspace-main-shell flex min-w-0 flex-1 flex-col">
-        <main id="workspace-content" tabIndex={-1} data-workspace-area={activeSection?.title??"Today / My work"} className="min-w-0 flex-1">{activeSection&&activeSection.links.filter(link=>user.permissions.includes(link.permission)).length>1&&<nav aria-label={`${activeSection.title} tools`} className="no-print flex gap-2 overflow-x-auto whitespace-nowrap border-b border-slate-200 bg-white sm:flex-wrap sm:overflow-visible px-4 py-3 sm:px-6">{activeSection.links.filter(link=>user.permissions.includes(link.permission)).map(link=><Link key={link.href} href={link.href} aria-current={path===link.href||path.startsWith(link.href+"/")?"page":undefined} className={`rounded-lg px-3 py-2 text-sm ${path===link.href||path.startsWith(link.href+"/")?"bg-slate-100 font-semibold text-slate-900":"text-slate-600 hover:bg-slate-50"}`}>{link.label}</Link>)}</nav>}<WorkspaceGuide key={path} path={path}/>{children}</main>
+        <main id="workspace-content" tabIndex={-1} data-workspace-area={activeSection?.title??"Today / My work"} className="min-w-0 flex-1">{activeSection&&activeSection.links.filter(link=>user.permissions.includes(link.permission)).length>1&&<nav aria-label={`${activeSection.title} tools`} className="no-print flex gap-2 overflow-x-auto whitespace-nowrap border-b border-slate-200 bg-white sm:flex-wrap sm:overflow-visible px-4 py-3 sm:px-6">{activeSection.links.filter(link=>user.permissions.includes(link.permission)).map(link=><Link key={link.href} href={link.href} aria-current={activeTab===link.href?"page":undefined} className={`rounded-lg px-3 py-2 text-sm ${activeTab===link.href?"bg-slate-100 font-semibold text-slate-900":"text-slate-600 hover:bg-slate-50"}`}>{link.label}</Link>)}</nav>}<WorkspaceGuide key={path} path={path}/>{children}</main>
         <footer className="no-print flex justify-between gap-3 border-t border-slate-200 px-6 py-3 text-small text-slate-600"><span>{agencyName} · Private agency workspace</span><span>Max Travel CRM</span></footer>
       </div>
     </div>

@@ -15,7 +15,7 @@ await runSyntheticJourney('admin-records-complete-journey',3402,async({base,out,
   const journey=await db.serviceCase.findFirstOrThrow({where:{customerId:fixture.customerId},include:{serviceWork:true}});assert(journey.serviceWork.length);
   await page.goto(base+'/cases/'+journey.id+'?tab=work');await page.getByRole('main').getByRole('button',{name:'Add work',exact:true}).click();
   let dialog=page.getByRole('dialog',{name:'Add work',exact:true});await dialog.getByLabel('Service work *').selectOption(journey.serviceWork[0].id);await dialog.getByLabel('Next action *').fill(title);await dialog.getByLabel('Assignee').selectOption(owner.id);await dialog.getByLabel('Due time *').fill('2099-11-01T10:30');
-  await postResult(page,'/api/work',()=>dialog.getByRole('button',{name:'Create work item',exact:true}).click());await dialog.waitFor({state:'hidden'});
+  await postResult(page,'/api/work',()=>dialog.getByRole('button',{name:'Create to-do',exact:true}).click());await dialog.waitFor({state:'hidden'});
   const task=await db.task.findFirstOrThrow({where:{title,serviceCaseId:journey.id}});assert.equal(task.title,title);
   await page.goto(base+'/audit?recordType=Task&entityId='+task.id);await page.getByRole('heading',{name:'Audit trail',exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.get('entityId'),task.id);
   const events=await db.auditLog.findMany({where:{entity:'Task',entityId:task.id}});assert.equal(events.length,1);

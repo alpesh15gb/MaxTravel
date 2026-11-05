@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import { readableEvent, eventRef } from "../src/lib/history-words";
+
+assert.equal(readableEvent("RF-2026-0001 · supplier_pending: status"), "Refund RF-2026-0001 status changed to Supplier pending");
+assert.equal(readableEvent("BK-2026-0001 · cancelled: status"), "Booking BK-2026-0001 status changed to Cancelled");
+assert.equal(readableEvent("BK-2026-0001 · pnr created: edit"), "Booking BK-2026-0001 changed");
+assert.equal(readableEvent("VC-2026-0001 · Enquiry: create"), "Visa VC-2026-0001 created");
+assert.equal(readableEvent("VC-2026-0001 · Assessment: stage"), "Visa VC-2026-0001 moved to Assessment");
+assert.equal(readableEvent("RCP-2026-0001: record"), "Payment RCP-2026-0001 recorded");
+assert.equal(readableEvent("INV-2026-0001: create"), "Invoice INV-2026-0001 created");
+assert.equal(readableEvent("BK-2026-0001 · pnr created: supplier cost"), "Booking BK-2026-0001 supplier cost updated");
+assert.equal(readableEvent("CANCEL · TEST call customer"), "To-do cancelled: TEST call customer");
+assert.equal(readableEvent("CREATED · TEST call customer"), "To-do created: TEST call customer");
+assert.equal(readableEvent("ASSIGN · TEST call customer"), "To-do assigned: TEST call customer");
+assert.equal(readableEvent("Customer request registered"), "Customer request registered");
+assert.equal(readableEvent("Visa added to this trip"), "Visa added to this trip");
+assert.equal(eventRef("RF-2026-0001 · approved: status"), "RF-2026-0001");
+assert.equal(eventRef("CANCEL · Call Asha"), "“Call Asha”");
+assert.equal(eventRef("Customer request registered"), null);
+console.log("History wording passed.");

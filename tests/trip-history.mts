@@ -34,6 +34,15 @@ try {
   await db.auditLog.create({ data: { userId: "owner", action: "UPDATE", entity: "Booking", entityId: "other-bk", at: at(4) } });
   await db.auditLog.create({ data: { userId: "owner", action: "SIGN_URL", entity: "Booking", entityId: "bk", at: at(5) } });
 
+  // The same change recorded as a Max ID event and an audit row is shown once, keeping the before/after values.
+  await db.serviceCaseEvent.create({ data: { caseId: "trip", actorId: "owner", kind: "RECORD", summary: "BK-1 · ticketed: status", at: at(10) } });
+  await db.auditLog.create({ data: { userId: "owner", action: "STATUS", entity: "Booking", entityId: "bk", detail: JSON.stringify({ from: "PNR_CREATED", to: "TICKETED" }), at: at(10) } });
+  await db.serviceCaseEvent.create({ data: { caseId: "trip", actorId: "owner", kind: "RECORD", summary: "BK-1 · ticketed: edit", at: at(20) } });
+  await db.auditLog.create({ data: { userId: "owner", action: "EDIT", entity: "Booking", entityId: "bk", detail: "Booking details corrected", at: at(20) } });
+  const clean = await tripHistory(owner, "trip", 1);
+  assert.deepEqual(clean.rows.slice(0, 2).map(r => r.what), ["Booking BK-1 changed", "Booking BK-1 status — PNR created → Ticketed"]);
+  await db.serviceCaseEvent.deleteMany({ where: { at: { gte: at(10) } } });
+  await db.auditLog.deleteMany({ where: { at: { gte: at(10) } } });
   const h = await tripHistory(owner, "trip", 1);
   assert.equal(h.rows.length, 3); assert.equal(h.more, false);
   assert.deepEqual(h.rows.map(r => r.who), ["Staff Name", "Owner Name", "Owner Name"]);

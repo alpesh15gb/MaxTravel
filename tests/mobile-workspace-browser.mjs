@@ -27,7 +27,7 @@ try {
     // Supplier holds and appointments legitimately precede the general task queue.
     // Keep the original requirement: the first urgent action must be usable without scrolling.
     const deadline=page.locator('.work-service-deadlines .work-source-alerts a').first();
-    const action=await deadline.count()?deadline:region.getByRole("link",{name:"Open work register →",exact:true});
+    const action=await deadline.count()?deadline:region.getByRole("link",{name:"Open to-dos →",exact:true});
     const box = await action.boundingBox(); geometry.push({ viewport: width, firstAction: box }); await capture(`dashboard-${width}`);
     assert(box && box.y >= 0 && box.y + box.height <= height, `The priority work queue action must be visible initially at ${width}px: ${JSON.stringify(box)}`);
   }

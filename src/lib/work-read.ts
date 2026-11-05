@@ -400,7 +400,7 @@ export async function readWork(u: SessionUser, params: URLSearchParams) {
     userId: u.id,
     branchId: u.branchId,
     scope: params.get("case")
-      ? "This case"
+      ? "This trip"
       : !u.permissions.includes("work:team")
         ? "Your assigned work"
         : u.accessMode === "ALL"

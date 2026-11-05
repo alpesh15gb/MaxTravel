@@ -1,3 +1,4 @@
+import { invoiceView } from "@/lib/invoice-view";
 import "./print-document.css";
 import { dateLabel } from "@/lib/dates";
 import { inrFixed } from "@/lib/money";
@@ -6,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { getServerSession } from "@/lib/session";
 import { canTouchRecord } from "@/lib/guard";
 import PrintButton from "./PrintButton";
+import { enumLabel } from "@/lib/labels";
 import { readInvoiceTaxSnapshot } from "@/lib/invoice-config";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +17,7 @@ const dOnly = (s: Date | null) => (s ? dateLabel(s) : "—");
 
 export default async function PrintDocumentPage({ searchParams }: { searchParams: Promise<{ invoice?: string; receipt?: string; creditNote?: string }> }) {
   const user = await getServerSession();
+  const agency = (await prisma.settings.findUnique({ where: { key: "agency.name" } }))?.value ?? "Max Travel";
   if (!user) redirect("/login");
   const { invoice: invoiceId, receipt: receiptId, creditNote: creditNoteId } = await searchParams;
 
@@ -26,16 +29,16 @@ export default async function PrintDocumentPage({ searchParams }: { searchParams
   }
 
   if (invoiceId) {
-    const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId }, include: { customer: { include: { branch: true } }, booking: true, visaCase: true, payments: { orderBy: { receivedOn: "asc" } }, creditNote: true } });
+    const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId }, include: { customer: { include: { branch: true } }, booking: { include: { payments: { select: { amount: true } }, refunds: { select: { amount: true, status: true } } } }, visaCase: true, payments: { orderBy: { receivedOn: "asc" } }, creditNote: true } });
     if (!invoice || !canTouchRecord(user, invoice.customer)) notFound();
-    const balance = invoice.status === "CREDITED" ? 0 : Math.round((invoice.amount - invoice.amountPaid) * 100) / 100;
+    const position = invoiceView(invoice), balance = position.balance;
     const tax = invoice.documentKind === "TAX_INVOICE" ? readInvoiceTaxSnapshot(invoice.taxSnapshot) : null;
     const taxSnapshotMissing = invoice.documentKind === "TAX_INVOICE" && !tax;
     return (
       <div className="financial-document mx-auto max-w-2xl bg-white p-10 text-sm text-slate-900 print:p-0">
         <div className="financial-document-header mb-8 flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold">{tax?.title ?? (taxSnapshotMissing ? "Tax invoice · snapshot unavailable" : "Operational invoice")}</h1>
+            {!tax && <p className="mb-1 text-base font-semibold">{agency}</p>}<h1 className="text-2xl font-bold">{tax?.title ?? (taxSnapshotMissing ? "Tax invoice · snapshot unavailable" : "Operational invoice")}</h1>
             <p className="mt-1 font-mono text-xs text-slate-500">{invoice.invoiceNo}</p>
             <p className="mt-1 text-xs uppercase tracking-widest text-slate-500">{invoice.documentKind === "TAX_INVOICE" ? "Invoice copy" : "Operational billing record"}</p>
           </div>
@@ -51,14 +54,14 @@ export default async function PrintDocumentPage({ searchParams }: { searchParams
             {tax&&<tr><td className="border border-slate-300 px-3 py-2 font-medium">Tax profile</td><td className="border border-slate-300 px-3 py-2">{tax.profile.label}</td></tr>}
             <tr><td className="border border-slate-300 px-3 py-2 font-medium">Issued</td><td className="border border-slate-300 px-3 py-2">{dOnly(invoice.issuedOn)}</td></tr>
             <tr><td className="border border-slate-300 px-3 py-2 font-medium">Due</td><td className="border border-slate-300 px-3 py-2">{dOnly(invoice.dueDate)}</td></tr>
-            <tr><td className="border border-slate-300 px-3 py-2 font-medium">Status</td><td className="border border-slate-300 px-3 py-2">{invoice.status === "CREDITED" ? "Credited in full" : invoice.status}</td></tr>
+            <tr><td className="border border-slate-300 px-3 py-2 font-medium">Status</td><td className="border border-slate-300 px-3 py-2">{position.status === "CREDITED" ? "Credited in full" : position.status === "CANCELLED" ? "Booking cancelled" : enumLabel(position.status)}</td></tr>
             {invoice.creditNote&&<tr><td className="border border-slate-300 px-3 py-2 font-medium">Credit note</td><td className="border border-slate-300 px-3 py-2"><a className="underline" href={`/payments/print?creditNote=${invoice.creditNote.id}`}>{invoice.creditNote.creditNoteNo}</a> · {dOnly(invoice.creditNote.issuedOn)}</td></tr>}
             {invoice.booking && <tr><td className="border border-slate-300 px-3 py-2 font-medium">Booking</td><td className="border border-slate-300 px-3 py-2">{invoice.booking.bookingNo}{invoice.booking.pnr ? ` · PNR ${invoice.booking.pnr}` : ""}</td></tr>}
             {invoice.visaCase && <tr><td className="border border-slate-300 px-3 py-2 font-medium">Visa case</td><td className="border border-slate-300 px-3 py-2">{invoice.visaCase.caseNo} · {invoice.visaCase.destination}</td></tr>}
             {tax&&<tr><td className="border border-slate-300 px-3 py-2">Taxable subtotal</td><td className="border border-slate-300 px-3 py-2">{money(tax.subtotalMinor/100)}</td></tr>}
             {tax?.components.map((component,index)=><tr key={`${component.label}-${index}`}><td className="border border-slate-300 px-3 py-2">{component.label} ({(component.rateBasisPoints/100).toFixed(2)}%)</td><td className="border border-slate-300 px-3 py-2">{money(component.amountMinor/100)}</td></tr>)}
             <tr><td className="border border-slate-300 px-3 py-2 font-bold">{tax?"Total": "Amount"}</td><td className="border border-slate-300 px-3 py-2 font-bold">{money(invoice.amount)}</td></tr>
-            <tr><td className="border border-slate-300 px-3 py-2">Received</td><td className="border border-slate-300 px-3 py-2">{money(invoice.amountPaid)}</td></tr>
+            <tr><td className="border border-slate-300 px-3 py-2">Received</td><td className="border border-slate-300 px-3 py-2">{money(position.paid)}</td></tr>
             <tr><td className="border border-slate-300 px-3 py-2 font-bold">Balance due</td><td className="border border-slate-300 px-3 py-2 font-bold">{money(balance)}</td></tr>
           </tbody>
         </table>
@@ -85,7 +88,7 @@ export default async function PrintDocumentPage({ searchParams }: { searchParams
     return (
       <div className="financial-document mx-auto max-w-xl bg-white p-10 text-sm text-slate-900 print:p-0">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold">Payment receipt</h1>
+          <p className="mb-1 text-base font-semibold">{agency}</p><h1 className="text-2xl font-bold">Payment receipt</h1>
           <p className="mt-1 font-mono text-xs text-slate-500">{receipt.receiptNo}</p>
         </div>
         <table className="financial-document-details w-full border-collapse text-sm">

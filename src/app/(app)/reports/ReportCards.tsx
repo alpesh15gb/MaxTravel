@@ -30,7 +30,7 @@ export default async function ReportCards({ user, period, from, to }: { user: Se
   ]);
   const q = (report: string) => `report=${report}&from=${range.from}&to=${range.to}`;
   const excel = user.permissions.includes("export:data");
-  const profit = pick(sales, "Costed confirmed booking margin", "Expected visa gross margin (confirmed costs)");
+  const profit = pick(sales, "Costed confirmed booking margin", "Expected visa gross margin (confirmed costs)", "Cancellation agency fee margin");
   const uncosted = pick(sales, "Uncosted confirmed bookings", "Visa records needing cost confirmation") ?? 0;
   const confirmed = pick(ageing, "Confirmed to collect"), unconfirmed = pick(ageing, "Not confirmed yet") ?? 0;
   const items = (n: number) => `${n} ${n === 1 ? "booking or visa needs" : "bookings and visas need"} a supplier cost`;
@@ -39,7 +39,7 @@ export default async function ReportCards({ user, period, from, to }: { user: Se
     { key: "collect", title: "Payments to collect", icon: "wallet", value: inrAmount(confirmed), tone: "text-amber-800", note: unconfirmed ? `Confirmed work customers still owe. A further ${inrAmount(unconfirmed)} is on enquiries and quotes not yet confirmed.` : "Confirmed work customers still owe, oldest first.", open: `/reports?${q("ageing")}`, excel: `/api/reports/accounts?${q("ageing")}&format=xlsx` },
     ...(canSupplier ? [{ key: "payables", title: "Supplier payables", icon: "suppliers" as IconName, value: inrAmount(pick(payables, "Total open obligations")), note: "What you still owe suppliers, by due date.", open: `/reports?${q("supplier-payables")}`, excel: `/api/reports/accounts?${q("supplier-payables")}&format=xlsx` }] : []),
     { key: "sales", title: "Sales by staff", icon: "customers", value: inrAmount(pick(sales, "Confirmed booking value", "Visa work value")), note: "Confirmed bookings and visa work in the period, with the staff member on each row.", open: `/reports?${q("sales")}`, excel: `/api/reports/accounts?${q("sales")}&format=xlsx` },
-    ...(team.length ? [{ key: "todos", title: "Staff to-dos", icon: "tasks" as IconName, value: `${team.reduce((n, r) => n + r.overdue, 0)} overdue`, tone: team.some(r => r.overdue) ? "text-rose-700" : "", note: `${team.reduce((n, r) => n + r.open, 0)} open to-dos across ${team.length} staff.`, open: "/reports/work" }] : []),
+    ...(team.length ? [{ key: "todos", title: "Staff to-dos", icon: "tasks" as IconName, value: `${team.reduce((n, r) => n + r.overdue, 0)} overdue`, tone: team.some(r => r.overdue) ? "text-rose-700" : "", note: `${team.reduce((n, r) => n + r.open, 0)} open across ${team.length} staff.`, open: "/reports/work" }] : []),
     { key: "travel", title: "Work & travel", icon: "plane", value: operations ? `${operations.totalRows} ${operations.totalRows === 1 ? "booking or visa" : "bookings and visas"}` : "—", note: "Opened in the period, with owner, travel dates and deadlines.", open: `/reports?${q("operations")}`, excel: `/api/reports/accounts?${q("operations")}&format=xlsx` },
   ];
   const periods: [Period, string][] = [["today", "Today"], ["week", "This week"], ["month", "This month"], ["custom", "Custom"]];

@@ -2,6 +2,7 @@ import { prisma } from "./db";
 import type { SessionUser } from "./session";
 import { caseFor, childWorkScope } from "./service-cases";
 import { taskScope } from "./work-engine";
+import { readableEvent, eventRef, codeWords } from "./history-words";
 
 export type TripHistoryRow = { id: string; at: Date; who: string; what: string; href?: string };
 
@@ -12,7 +13,7 @@ const ENTITY: Record<string, string> = { ServiceCase: "Max ID", Booking: "Bookin
 const words = (s: string) => s.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase();
 
 function describe(action: string, entity: string, ref: string, detail: string | null): string {
-  const verb = action === "CREATE" ? "created" : action === "UPDATE" || action === "EDIT" ? "changed" : action === "DELETE" ? "removed" : words(action);
+  const verb = action === "CREATE" ? "created" : action === "RECORD" ? "recorded" : action === "UPDATE" || action === "EDIT" ? "changed" : action === "DELETE" ? "removed" : words(action);
   let extra = "";
   if (detail) {
     try {
@@ -20,12 +21,12 @@ function describe(action: string, entity: string, ref: string, detail: string | 
       if (d && typeof d === "object") {
         const parts: string[] = [];
         if (Array.isArray(d.fields) && d.fields.length) parts.push(d.fields.map((f: unknown) => words(String(f))).join(", "));
-        if ("from" in d || "to" in d) parts.push(`${d.from ?? "—"} → ${d.to ?? "—"}`);
-        if (typeof d.status === "string") parts.push(`status ${words(d.status)}`);
+        if ("from" in d || "to" in d) parts.push(`${codeWords(d.from)} → ${codeWords(d.to)}`);
+        if (typeof d.status === "string") parts.push(`status ${codeWords(d.status)}`);
         extra = parts.join(": ");
       }
     } catch {
-      if (detail.length <= 120 && detail !== ref) extra = detail;
+      if (detail.length <= 120 && detail !== ref && !/^Work transition recorded/.test(detail)) extra = detail.replace(ref, "").trim();
     }
   }
   return `${ENTITY[entity] ?? entity} ${ref} ${verb}${extra ? ` — ${extra}` : ""}`.replace(/\s+/g, " ").trim();
@@ -65,9 +66,21 @@ export async function tripHistory(user: SessionUser, caseId: string, page: numbe
   const ids = [...new Set([...e.map(x => x.actorId), ...changes.map(x => x.userId)].filter((x): x is string => Boolean(x)))];
   const names = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map(u => [u.id, u.name]));
   const who = (id: string | null) => (id ? names.get(id) ?? "Former staff member" : "System");
+  // One change is often recorded twice: as a Max ID event and an audit row. Show it once. Keep the
+  // audit row when it adds before/after values, otherwise keep the shorter event.
+  const eventRows = e.map(x => ({ id: `e:${x.id}`, at: x.at, who: who(x.actorId), what: readableEvent(x.summary), href: x.href ?? undefined, ref: eventRef(x.summary), raw: x.summary.toLowerCase(), used: false }));
+  const auditRows: TripHistoryRow[] = [];
+  for (const x of changes) {
+    const r = refs.get(`${x.entity}:${x.entityId}`)!, what = describe(x.action, x.entity, r.ref, x.detail);
+    const near = eventRows.filter(ev => !ev.used && ev.ref === r.ref && Math.abs(ev.at.getTime() - x.at.getTime()) <= 90000);
+    const rich = what.includes("→") || what.includes("₹");
+    if (near.length && !rich) continue;
+    if (near.length) { const word = x.action.replaceAll("_", " ").toLowerCase(); const twin = near.find(ev => ev.raw.endsWith(word)) ?? near.find(ev => !/: (edit|create)$/.test(ev.raw)) ?? near[0]; twin.used = true; }
+    auditRows.push({ id: `a:${x.id}`, at: x.at, who: who(x.userId), what, href: r.href });
+  }
   const rows: TripHistoryRow[] = [
-    ...e.map(x => ({ id: `e:${x.id}`, at: x.at, who: who(x.actorId), what: x.summary, href: x.href ?? undefined })),
-    ...changes.map(x => { const r = refs.get(`${x.entity}:${x.entityId}`)!; return { id: `a:${x.id}`, at: x.at, who: who(x.userId), what: describe(x.action, x.entity, r.ref, x.detail), href: r.href }; }),
+    ...eventRows.filter(ev => !ev.used).map(({ id, at, who, what, href }) => ({ id, at, who, what, href })),
+    ...auditRows,
   ].sort((p, q) => q.at.getTime() - p.at.getTime() || q.id.localeCompare(p.id));
   const start = take - PAGE;
   return { rows: rows.slice(start, take), more: rows.length > take };

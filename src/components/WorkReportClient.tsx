@@ -39,7 +39,7 @@ export default function WorkReportClient({ report }: { report: WorkReport }) {
         description="Who owns unfinished work, what was delivered and where a decision or follow-up is needed."
         actions={
           <Link className="btn-primary" href="/work">
-            Open work register
+            Open to-dos
           </Link>
         }
       />
@@ -289,7 +289,7 @@ export default function WorkReportClient({ report }: { report: WorkReport }) {
         </div>
         <p className="work-report-note">
           Showing {Math.min(report.backlog.length, 100)} of{" "}
-          {report.backlog.length} open tasks. Open the work register for
+          {report.backlog.length} open tasks. Open to-dos for
           paginated work or export the complete backlog.
         </p>
       </section>

@@ -28,7 +28,7 @@ type Doc = {
   id: string; docNo: string; docType: string; status: string; traveller: string | null; travellerId: string | null;
   uploadedAt: string | null; uploadSource: string | null; verificationStatus: string;
   verifiedBy: string | null; expiryDate: string | null; rejectionReason: string | null;
-  hasFile: boolean; version: number;
+  hasFile: boolean; version: number; onFile?: { id: string; docNo: string; verified: boolean } | null;
   warnings: { type: string; message: string }[];
   extracted: Record<string, string> | null;
   extractionConfirmed: boolean;
@@ -54,7 +54,7 @@ type VC = {
 };
 
 type Stage = { id: string; key: string; name: string; seq: number };
-type Perms = {customerMaster:boolean; audit: boolean; edit: boolean; verify: boolean; record: boolean; money: boolean };
+type Perms = {customerMaster:boolean; audit: boolean; edit: boolean; verify: boolean; reuseDocs: boolean; record: boolean; money: boolean };
 
 // Document states use the same tones as every other status badge in the app.
 const docTone = (s: string): Tone => {
@@ -140,7 +140,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
             <AuditTrailLink entity="VisaCase" entityId={vc.id} allowed={perms.audit} />
             {perms.edit && (
               <>
-                <button type="button" onClick={() => setShowEdit(true)} className="btn-primary min-h-9 px-3 py-2 text-xs">Edit Case</button>
+                <button type="button" onClick={() => setShowEdit(true)} className="btn-primary min-h-9 px-3 py-2 text-xs">Edit visa</button>
                 <select
                   aria-label="Visa workflow stage" disabled={busy} value={stageId}
                   onChange={(e) => { setStageId(e.target.value); post(`/api/visa/cases/${vc.id}/stage`, { stageId: e.target.value }, "✓ Stage updated"); }}
@@ -191,7 +191,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
               })}
             </div>
             {vc.history.length > 0 && <details className="mt-3 border-t border-slate-100 pt-3">
-              <summary className="cursor-pointer text-xs text-slate-500">Stage history · {vc.history.length} changes</summary>
+              <summary className="cursor-pointer text-xs text-slate-500">Stage history · {vc.history.length} {vc.history.length === 1 ? "change" : "changes"}</summary>
               <ol className="mt-3 space-y-0">
                 {vc.history.slice(0, 8).map((h, i) => (
                   <li key={h.id} className="flex gap-3">
@@ -241,6 +241,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
                             {d.expiryDate ? ` · exp ${dOnly(d.expiryDate)}` : ""}
                           </span>
                           <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                            {perms.reuseDocs && !d.hasFile && d.onFile && <button type="button" disabled={busy} onClick={() => post("/api/documents/reuse", { requirementId: d.id, sourceId: d.onFile!.id }, `✓ Using ${d.onFile!.docNo}`)} className="btn-secondary min-h-7 px-2.5 py-1 text-small">Use on-file {d.onFile.docNo}{d.onFile.verified ? " (verified)" : ""}</button>}
                             {d.hasFile && (
                               <button
                                 type="button"
