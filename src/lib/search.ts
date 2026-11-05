@@ -4,6 +4,7 @@ import { inrAmount } from "@/lib/money";
 import type { PrismaClient } from "@prisma/client";
 import type { SessionUser } from "./session";
 import { scopeWhere } from "./guard";
+import { invoiceView, INVOICE_VIEW_INCLUDE } from "./invoice-view";
 export type SearchGroupKey="CASE"|"CUSTOMER"|"EMPLOYEE"|"VISA_CASE"|"BOOKING"|"PNR"|"TICKET"|"TRAVELLER"|"DOCUMENT"|"INVOICE"|"RECEIPT"|"SUPPLIER"|"TASK";
 export interface SearchHit{id:string;group:SearchGroupKey;title:string;subtitle:string;context:string;href:string}
 export interface SearchResponse{query:string;tookMs:number;groups:{key:SearchGroupKey;label:string;hits:SearchHit[]}[];exact?:SearchHit}
@@ -18,21 +19,21 @@ export async function universalSearch(prisma:PrismaClient,query:string,user:Sess
  can("ticketing:view")?prisma.booking.findMany({where:{AND:[work,{OR:[{bookingNo:contains},{pnr:contains},{sector:contains},{customer:{name:contains}}]}]},include:{customer:true},take:8}):[],
  can("traveller:view")?prisma.traveller.findMany({where:{customer:{is:customer},OR:[{fullName:contains},...(sensitive?[passportFilter]:[])]},include:{customer:true},take:6}):[],
  can("ticketing:view")?prisma.ticket.findMany({where:{booking:{is:work},OR:[{ticketNo:contains},{passenger:contains}]},include:{booking:true},take:6}):[],
- can("invoice:view")?prisma.invoice.findMany({where:{customer:{is:customer},OR:[{invoiceNo:contains},{description:contains},{customer:{name:contains}}]},include:{customer:true},take:6}):[],
+ can("invoice:view")?prisma.invoice.findMany({where:{customer:{is:customer},OR:[{invoiceNo:contains},{description:contains},{customer:{name:contains}}]},include:{customer:true,...INVOICE_VIEW_INCLUDE},take:6}):[],
  can("payment:view")?prisma.payment.findMany({where:{customer:{is:customer},OR:[{receiptNo:contains},{customer:{name:contains}}]},include:{customer:true},take:6}):[],
  can("supplier:view")?prisma.supplier.findMany({where:{OR:[{name:contains},{city:contains}]},take:6}):[],
  can("task:view")?prisma.task.findMany({where:{AND:[scopeWhere(user,null,"ownerId"),{title:contains}]},include:{owner:true},take:6}):[],
  can("document:view")?prisma.document.findMany({where:{customer:{is:customer},OR:[{docNo:contains},{docType:contains},{customer:{name:contains}},{traveller:{fullName:contains}}]},include:{customer:true},take:6}):[],
  ]);
  const groups:SearchResponse["groups"]=[];const add=(key:SearchGroupKey,label:string,hits:Omit<SearchHit,"group">[])=>{if(hits.length)groups.push({key,label,hits:hits.map(h=>({...h,group:key}))});};
- add("CASE","Client cases",journeys.map(c=>({id:c.id,title:c.caseNo,subtitle:`${c.customer.name} · ${c.title}`,context:`${c.status} · ${c.owner.name}`,href:`/trips/${c.id}`})));
+ add("CASE","Trips",journeys.map(c=>({id:c.id,title:c.caseNo,subtitle:`${c.customer.name} · ${c.title}`,context:`${c.status} · ${c.owner.name}`,href:`/trips/${c.id}`})));
  add("CUSTOMER","Customers",customers.map(c=>({id:c.id,title:c.name,subtitle:`${c.code} · ${c.phone}`,context:c.city,href:`/masters/${c.id}`})));
  add("EMPLOYEE","Team",employees.map(e=>({id:e.id,title:e.name,subtitle:e.employeeCode,context:e.role.name,href:`/employees/${e.id}`})));
  add("VISA_CASE","Visa cases",cases.map(v=>({id:v.id,title:v.caseNo,subtitle:`${v.customer.name} · ${v.destination}`,context:v.stage.name,href:`/visa/${v.id}`})));
  add("BOOKING","Bookings & PNRs",bookings.map(b=>({id:b.id,title:b.pnr??b.bookingNo,subtitle:`${b.customer.name} · ${b.bookingNo}`,context:b.sector??"",href:`/ticketing/${b.id}`})));
  add("TRAVELLER","Travellers",travellers.map(t=>({id:t.id,title:t.fullName,subtitle:t.customer.name,context:sensitive?t.passportNumber??"":t.relation,href:`/masters/${t.customerId}?tab=travellers&traveller=${t.id}`})));
  add("TICKET","Tickets",tickets.map(t=>({id:t.id,title:t.ticketNo,subtitle:t.passenger,context:t.booking.bookingNo,href:`/ticketing/${t.bookingId}`})));
- add("INVOICE","Invoices",invoices.map(i=>({id:i.id,title:i.invoiceNo,subtitle:i.customer.name,context:`${inrAmount((i.amount-i.amountPaid))} balance`,href:`/payments?focus=${i.id}`})));
+ add("INVOICE","Invoices",invoices.map(i=>{const view=invoiceView(i);return{id:i.id,title:i.invoiceNo,subtitle:i.customer.name,context:`${view.status === "CANCELLED" ? "Cancelled · " : view.status === "CREDITED" ? "Credited · " : ""}${inrAmount(view.balance)} balance`,href:`/payments?focus=${i.id}`};}));
  add("RECEIPT","Receipts",receipts.map(p=>({id:p.id,title:p.receiptNo,subtitle:p.customer.name,context:`${inrAmount(p.amount)}`,href:`/masters/${p.customerId}?tab=payments`})));
  add("SUPPLIER","Suppliers",suppliers.map(s=>({id:s.id,title:s.name,subtitle:s.city??"",context:s.type,href:`/suppliers?focus=${s.id}`})));
  add("TASK","Tasks",tasks.map(t=>({id:t.id,title:t.title,subtitle:t.owner.name,context:t.status,href:`/tasks?focus=${t.id}`})));

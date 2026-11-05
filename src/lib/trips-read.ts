@@ -51,7 +51,7 @@ function include(user: SessionUser) {
     bookings: { where: can("ticketing:view") ? child : { id: "__none__" }, select: { id: true, bookingNo: true, status: true, product: true, sector: true, hotelName: true, serviceDescription: true, travelDate: true, hotelCheckIn: true, gdsSource: true }, orderBy: { createdAt: "asc" as const } },
     visaCases: { where: can("visa:view") ? child : { id: "__none__" }, select: { id: true, caseNo: true, destination: true, visaType: true, travelDate: true, travelEndDate: true, stage: { select: { key: true, name: true } } }, orderBy: { createdAt: "asc" as const } },
     leads: { where: can("customer:view") ? child : { id: "__none__" }, select: { id: true, title: true, stage: true, travelDate: true, destination: true, quotes: { select: { id: true, state: true, totalMinor: true, version: true }, orderBy: { version: "desc" as const } } }, orderBy: { createdAt: "asc" as const } },
-    tasks: { where: can("task:view") ? { AND: [OPEN_TASK, taskScope(user)] } : { id: "__none__" }, select: { title: true, dueAt: true }, orderBy: [{ dueAt: { sort: "asc" as const, nulls: "last" as const } }, { createdAt: "asc" as const }], take: 1 },
+    tasks: { where: can("task:view") ? { AND: [OPEN_TASK, taskScope(user)] } : { id: "__none__" }, select: { title: true, dueAt: true, sourceKey: true, serviceWork: { select: { service: true } } }, orderBy: [{ dueAt: { sort: "asc" as const, nulls: "last" as const } }, { createdAt: "asc" as const }], take: 1 },
   } satisfies Prisma.ServiceCaseInclude;
 }
 type Loaded = Prisma.ServiceCaseGetPayload<{ include: ReturnType<typeof include> }>;
@@ -89,14 +89,20 @@ function toRow(c: Loaded, facts: Facts, now: Date): Omit<TripRow, "balanceMinor"
     ...c.visaCases.map(v => ({ kind: "VISA" as const, label: `${v.caseNo} · ${v.destination} ${v.visaType}`.trim(), status: v.stage.name, href: `/visa/${v.id}`, dead: isDeadVisaStage(v.stage.key) })),
     ...c.leads.map(l => ({ kind: "ENQUIRY" as const, label: l.title, status: enumLabel(l.stage), href: `/sales?lead=${l.id}`, dead: l.stage === "LOST" })),
   ];
-  const t = c.tasks[0];
+  const t = c.tasks[0], service = t?.serviceWork?.service;
+  const serviceBookings = c.bookings.filter(b => b.product === service);
+  const cancelledPlanning = Boolean(t?.sourceKey?.startsWith("plan:") && service && (
+    service === "VISA"
+      ? c.visaCases.length > 0 && c.visaCases.every(v => isDeadVisaStage(v.stage.key))
+      : serviceBookings.length > 0 && serviceBookings.every(b => DEAD_BOOKING.has(b.status))
+  ));
   return {
     id: c.id, caseNo: c.caseNo, title: c.title,
     customer: { id: c.customer.id, name: c.customer.name, code: c.customer.code },
     owner: c.owner.name, stage: tripStage(input),
     start: start?.toISOString() ?? null, end: end?.toISOString() ?? null, services,
     online: facts.bookings.some(b => isReservedBookingSource(b.gdsSource)),
-    nextTodo: t ? { title: t.title, dueAt: t.dueAt?.toISOString() ?? null, overdue: Boolean(t.dueAt && t.dueAt < now) } : null,
+    nextTodo: t ? { title: cancelledPlanning ? `Review work for cancelled ${service!.toLowerCase()} service` : t.title, dueAt: t.dueAt?.toISOString() ?? null, overdue: Boolean(t.dueAt && t.dueAt < now) } : null,
   };
 }
 

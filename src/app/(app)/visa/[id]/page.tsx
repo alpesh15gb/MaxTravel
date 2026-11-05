@@ -40,6 +40,7 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
   // Fees and receipts are financial position: hidden without payment:view, like the list-page
   // balance and Customer 360. Masking happens here so the client never receives them.
   const showMoney = can(user.permissions, "payment:view");
+  const checklistItems = new Map(vc.checklistLinks.flatMap(link => link.checklist.items.map(item => [item.id, item] as const)));
 
   const stages = await prisma.visaStage.findMany({ where: { active: true }, orderBy: { seq: "asc" } });
   const suppliers = await prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
@@ -81,6 +82,7 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
           expiryDate: d.expiryDate?.toISOString() ?? null,
           rejectionReason: d.rejectionReason,
           hasFile: !!d.storagePath, version: d.version,
+          needsExpiry: checklistItems.get(d.checklistItemId ?? "")?.needsExpiry ?? false, fileTypes: checklistItems.get(d.checklistItemId ?? "")?.fileTypes ?? "pdf,jpg,png", maxSizeMb: checklistItems.get(d.checklistItemId ?? "")?.maxSizeMb ?? 15,
           onFile: d.storagePath ? null : (() => { const f = findOnFile({ id: d.id, docType: d.docType, travellerId: d.travellerId }, onFile, istDayKey(new Date())); return f ? { id: f.id, docNo: f.docNo, verified: f.verificationStatus === "VERIFIED" } : null; })(),
           warnings: can(user.permissions, "sensitive:view") && d.warnings ? JSON.parse(d.warnings) : [],
           extracted: can(user.permissions, "sensitive:view") && d.extracted ? JSON.parse(d.extracted) : null,

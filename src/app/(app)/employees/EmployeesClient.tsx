@@ -9,7 +9,7 @@ import Modal from "@/components/Modal";
 import { useToast } from "@/lib/useToast";
 import { acknowledgeEmployeeAttempt, createEmployeeOperationGuard, employeeMatches, employeeOutcome, employeeRetryAllowed, isEmployeeRecord, type EmployeeAttempt, type EmployeeRecord } from "@/lib/employee-recovery";
 
-type StaffRole = { id: string; name: string; requiresBranch: boolean; combinedServices: boolean };
+type StaffRole = { id: string; name: string; requiresBranch: boolean; combinedServices: boolean; description: string };
 
 type E = {
   revision: string;
@@ -319,7 +319,7 @@ function EmployeeForm({ modal, roles, branches, defaultBranchId, hrVisible, canM
             </select>
           </Field>
         </div>
-        {selectedRole?.combinedServices && <p className="text-xs leading-6 text-slate-600">Handles assigned visa applications and flight/hotel bookings, including passport documents. Finance, staff management and work approval remain restricted.</p>}
+        {selectedRole && <p className="rounded-lg bg-slate-50 p-3 text-sm leading-6 text-slate-700" role="note">{selectedRole.description}</p>}
         {!emp && (
           <Field label="Initial password *" hint="At least 12 characters.">
             <input type="password" minLength={12} maxLength={72} autoComplete="new-password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />

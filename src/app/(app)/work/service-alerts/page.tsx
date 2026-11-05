@@ -21,8 +21,7 @@ export default async function ServiceAlerts() {
           <div>
             <h2>Needs your attention</h2>
             <p>
-              Authorized service alerts. Capped source lists link to their
-              specialist register.
+              Open an alert to review the service and its next action.
             </p>
           </div>
         </div>

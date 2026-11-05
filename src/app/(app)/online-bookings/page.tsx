@@ -37,7 +37,7 @@ export default async function OnlineBookingsPage({ searchParams }: { searchParam
     <div>
       <div className="eyebrow">BOOKING PLATFORM ↔ CRM</div>
       <h1 className="text-2xl font-semibold">Online bookings</h1>
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Flight and hotel bookings synced from the Max Travel booking platform. Customer approval and refund controls are handled through the mapped booking administrator permissions.</p>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Flight and hotel bookings from the Max Travel booking platform. Open a booking to review its status and available actions.</p>
     </div>
     <form key={JSON.stringify([filters.q, filters.product, filters.status, filters.cursor ?? null, filters.direction, filters.invalid])} action="/online-bookings" method="get" className="online-bookings-filters panel grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto]" aria-label="Find online bookings">
       <label className="min-w-0 text-sm font-medium">Search bookings<input name="q" defaultValue={filters.q} maxLength={100} placeholder="Reference, PNR or customer name" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3" /></label>

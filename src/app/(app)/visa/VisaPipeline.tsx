@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { BoardCard, BoardColumn, DocumentMeter } from "@/components/Board";
 import { EmptyState, Status, ViewToggle, avatarClass, initialsOf } from "@/components/ui";
+import { VISA_PHASES as COLUMNS, visaPhase } from "@/lib/visa-phase";
 
 export interface PipelineCase {
   id: string; caseNo: string; serviceCaseNo?:string|null; customerId: string; customerName: string; phone: string; email: string | null;
@@ -20,12 +21,6 @@ export interface PipelinePerms { canMove: boolean; canApprove: boolean; canFinan
 // Board columns group the workflow into the four stages a visa desk actually works through. Custom
 // stages inherit the column of the nearest preceding standard stage, and closed cases stay in the
 // decision column.
-const COLUMNS = [
-  { id: "enquiry", title: "Enquiry & assessment", dot: "bg-sky-500", keys: ["ENQUIRY", "ASSESSMENT", "PAYMENT_AWAITED"] },
-  { id: "documents", title: "Documents", dot: "bg-amber-500", keys: ["DOCUMENTS_PENDING", "DOCUMENTS_VERIFICATION", "READY_FOR_SUBMISSION"] },
-  { id: "submission", title: "Appointment & submission", dot: "bg-violet-500", keys: ["APPOINTMENT_REQUIRED", "APPOINTMENT_BOOKED", "SUBMITTED", "BIOMETRICS", "UNDER_PROCESS"] },
-  { id: "decision", title: "Decision & delivery", dot: "bg-emerald-500", keys: ["APPROVED", "REJECTED", "PASSPORT_RECEIVED", "DELIVERED", "CLOSED"] },
-];
 // Decisions are recorded from the case page's stage menu (gated by visa:approve), never by a drag or
 // the card's advance button.
 const DROP_BLOCKED = new Set(["decision"]);
@@ -33,10 +28,7 @@ const DROP_BLOCKED = new Set(["decision"]);
 const FINISHED = new Set(["REJECTED", "CLOSED", "DELIVERED"]);
 
 function columnOf(stage: { key: string; seq: number }, stages: PipelineStage[]): string {
-  const direct = COLUMNS.find(c => c.keys.includes(stage.key));
-  if (direct) return direct.id;
-  const prior = stages.filter(s => s.seq < stage.seq).sort((a, b) => b.seq - a.seq)[0];
-  return prior ? columnOf(prior, stages) : COLUMNS[0].id;
+  return visaPhase(stage, stages).id;
 }
 function columnForCase(c: PipelineCase, stages: PipelineStage[]): string {
   return columnOf({ key: c.stageKey, seq: c.stageSeq }, stages);

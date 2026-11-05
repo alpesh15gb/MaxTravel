@@ -70,11 +70,11 @@ export default function WorkDesk({
   };
   useEffect(() => {
     const m = window.matchMedia("(min-width: 701px)");
-    const resize = () => setFiltersOpen(m.matches);
+    const resize = () => setFiltersOpen(m.matches && !embedded);
     resize();
     m.addEventListener("change", resize);
     return () => m.removeEventListener("change", resize);
-  }, []);
+  }, [embedded]);
   const key = params.toString(),
     taskId = params.get("task"),
     view =
@@ -152,7 +152,7 @@ export default function WorkDesk({
     ["waiting", "Waiting"],
     ["done", "Done"],
     ["records", "All states"],
-    ...(data.permissions.assign ? [["legacy", "Needs a trip link"]] : []),
+    ...(data.permissions.assign && !embedded ? [["legacy", "Needs a trip link"]] : []),
   ];
   const caseRecord = data.cases.find((c) => c.id === caseId);
   return (
@@ -242,7 +242,7 @@ export default function WorkDesk({
         </details>
       )}
       <div className="work-filter-bar">
-        <label className="work-mobile-view">
+        <label className="work-view-select">
           Work view
           <select value={view} onChange={(e) => change("view", e.target.value)}>
             {views.map(([v, label]) => (
@@ -252,19 +252,6 @@ export default function WorkDesk({
             ))}
           </select>
         </label>
-        <nav className="work-desktop-views" aria-label="Work views">
-          {views.map(([v, label]) => (
-            <button
-              key={v}
-              type="button"
-              aria-current={view === v ? "page" : undefined}
-              className={view === v ? "work-view-active" : ""}
-              onClick={() => change("view", v)}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
         <details
           className="work-filter-disclosure"
           open={filtersOpen}
@@ -1029,7 +1016,7 @@ function AssignmentFields({
   useEffect(() => { selectRef.current?.setCustomValidity(ownerIssue ?? ""); }, [ownerIssue]);
   return (
     <>
-      <Field label="Assignee" hint={ownerIssue ?? "Unavailable colleagues show the role or branch that needs updating."}>
+      <Field label="Assignee" hint={ownerIssue ?? undefined}>
         <select
           ref={selectRef}
           aria-invalid={ownerIssue ? true : undefined}
@@ -1054,7 +1041,8 @@ function AssignmentFields({
         />
       </Field>
       {!assignmentOnly && (
-        <>
+        <details className="rounded-lg border p-3" open={requiresReview}>
+          <summary className="cursor-pointer text-sm font-semibold">Review options</summary>
           <label className="flex gap-3 items-center">
             <input
               type="checkbox"
@@ -1064,7 +1052,7 @@ function AssignmentFields({
             />
             Require a separate review
           </label>
-          <Field label={review ? "Reviewer *" : "Reviewer"}>
+          {review && <Field label="Reviewer *">
             <select
               name="reviewerId"
               required={review}
@@ -1082,8 +1070,8 @@ function AssignmentFields({
                   </option>
                 ))}
             </select>
-          </Field>
-        </>
+          </Field>}
+        </details>
       )}
     </>
   );
@@ -1238,16 +1226,6 @@ function CreateWorkDialog({
               placeholder="For example: verify the passport documents"
             />
           </Field>
-          <Field label="Instructions">
-            <textarea name="details" maxLength={3000} rows={3} />
-          </Field>
-          <Field label="Priority">
-            <select name="priority" defaultValue="MEDIUM">
-              {["LOW", "MEDIUM", "HIGH", "URGENT"].map((p) => (
-                <option key={p}>{p}</option>
-              ))}
-            </select>
-          </Field>
           {data.permissions.assign ? (
             <AssignmentFields
               data={data}
@@ -1266,6 +1244,9 @@ function CreateWorkDialog({
             {data.permissions.configure && <Link href="/employees" target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">Staff roles & branches <span className="sr-only">(opens in a new tab)</span></Link>}
             {refreshError && <p role="alert" className="text-red-700">{refreshError} Your draft is kept.</p>}
           </div>}
+          <details className="rounded-lg border p-3"><summary className="cursor-pointer text-sm font-semibold">More options</summary><div className="mt-4 space-y-4">
+          <Field label="Instructions (optional)"><textarea name="details" maxLength={3000} rows={3} /></Field>
+          <Field label="Priority"><select name="priority" defaultValue="MEDIUM">{["LOW","MEDIUM","HIGH","URGENT"].map(p=><option key={p}>{p}</option>)}</select></Field>
           <Field label="Required result">
             <select name="resultType" defaultValue="NOTE">
               {resultsForService(selection.service)
@@ -1281,15 +1262,16 @@ function CreateWorkDialog({
             <input type="checkbox" name="hardDeadline" />
             Hard service deadline
           </label>
+          </div></details>
         </fieldset>
         <SaveState error={w.error} uncertain={w.uncertain} />
-        <button className="btn-primary" disabled={w.busy}>
+        <div className="modal-sticky-footer flex justify-end"><button className="btn-primary" disabled={w.busy}>
           {w.busy
             ? "Saving…"
             : w.uncertain
               ? "Retry same work"
               : "Create to-do"}
-        </button>
+        </button></div>
       </form>
     </WorkModal>
   );
@@ -1587,7 +1569,7 @@ function WorkModal({
   return (
     <Modal labelledBy={id} onClose={onClose} busy={busy} width="max-w-3xl">
       <div className="work-dialog">
-        <div className="work-dialog-header">
+        <div className="work-dialog-header modal-sticky-header">
           <h2 id={id}>{title}</h2>
           <button
             type="button"

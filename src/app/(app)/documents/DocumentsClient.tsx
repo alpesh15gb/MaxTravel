@@ -10,6 +10,7 @@ import { PageHeader, EmptyState, SearchInput, Status } from "@/components/ui";
 import { openSignedFile } from "@/lib/openSignedFile";
 import ActionDialog from "@/components/ActionDialog";
 import { useToast } from "@/lib/useToast";
+import DocumentUpload from "@/components/DocumentUpload";
 
 type Doc = {
   id: string; docNo: string; docType: string; status: string;
@@ -18,6 +19,7 @@ type Doc = {
   uploadedAt: string | null; uploadSource: string | null;
   verificationStatus: string; verifiedBy: string | null; expiryDate: string | null;
   rejectionReason: string | null; hasFile: boolean; version: number;
+  needsExpiry: boolean; fileTypes: string; maxSizeMb: number;
   warnings: { type: string; message: string }[];
 };
 
@@ -47,6 +49,7 @@ export default function DocumentsClient({ documents, focus, perms, canExport, ca
   const { show, toast } = useToast();
 
   const [rejectTarget, setRejectTarget] = useState<Doc | null>(null);
+  const [uploadTarget, setUploadTarget] = useState<Doc | null>(null);
   const [busy, setBusy] = useState(false);
   const [reviewError, setReviewError] = useState("");
   const saving = useRef(false);
@@ -111,7 +114,7 @@ export default function DocumentsClient({ documents, focus, perms, canExport, ca
     <div className="workspace-page">
       {/* One primary action: work the verification queue. It steps back when there is nothing on the
           desk at all, because then the empty state's destination is the thing to do. */}
-      <PageHeader title="Document desk" description="Document requirements and uploaded files for each traveller. Up to 400 recent records in your scope."
+      <PageHeader title="Document desk" description="Upload missing documents and review each traveller’s files."
         actions={<>{canExport && <a className="btn-secondary" href="/api/export?entity=documents">Export</a>}<button type="button" className={documents.length ? "btn-primary" : "btn-secondary"} onClick={() => setTab("PENDING_VERIFICATION")}>Review verification queue{pendingCount ? ` (${pendingCount})` : ""}</button></>} />
 
       <div className="panel mb-5 flex flex-wrap items-center gap-3 p-3">
@@ -143,6 +146,7 @@ export default function DocumentsClient({ documents, focus, perms, canExport, ca
             </div>
             <Status tone={STATUS_TONE[d.status] ?? "neutral"}>{enumLabel(d.status)}</Status>
             <div className="flex flex-wrap shrink-0 gap-2">
+              {perms.upload && ["REQUIRED", "REQUESTED", "REJECTED", "REUPLOAD_REQUESTED"].includes(d.status) && <button type="button" className="btn-primary" onClick={() => setUploadTarget(d)}>{d.hasFile ? "Replace file" : "Upload document"}</button>}
               <AuditTrailLink entity="Document" entityId={d.id} allowed={canAudit} compact />
               {d.hasFile && (
                 <button onClick={() => view(d)} className="btn-secondary min-h-8 px-3 py-1.5 text-xs">View</button>
@@ -163,6 +167,7 @@ export default function DocumentsClient({ documents, focus, perms, canExport, ca
 
       {rejectTarget && <ActionDialog title={`Reject ${rejectTarget.docType}?`} description="Explain exactly what needs replacing. This saves the rejection reason; it does not send a message or upload link to the customer." fieldLabel="Reason for rejection" fieldType="textarea" fieldPlaceholder="For example: passport photo is blurred; please upload a clear full-page scan." required confirmLabel="Reject document" tone="danger" busy={busy} error={reviewError} onClose={() => { if (!busy) setRejectTarget(null); }} onConfirm={reason => void verify(rejectTarget.id, "REJECTED", reason)} />}
       {toast}
+      {uploadTarget && <DocumentUpload document={uploadTarget} onClose={() => setUploadTarget(null)} />}
     </div>
   );
 }

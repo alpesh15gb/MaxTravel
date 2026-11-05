@@ -21,6 +21,8 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
     focus ? prisma.document.findFirst({ where: { AND: [where, { id: focus }] }, include }) : Promise.resolve(null),
   ]);
   if (focusedDocument && !documents.some(document => document.id === focusedDocument.id)) documents.unshift(focusedDocument);
+  const itemIds = documents.flatMap(d => d.checklistItemId ? [d.checklistItemId] : []);
+  const items = new Map((await prisma.checklistItem.findMany({ where: { id: { in: itemIds } }, select: { id: true, needsExpiry: true, fileTypes: true, maxSizeMb: true } })).map(item => [item.id, item]));
 
   return (
     <DocumentsClient
@@ -34,6 +36,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
         verificationStatus: d.verificationStatus, verifiedBy: d.verifiedBy?.name ?? null,
         expiryDate: d.expiryDate?.toISOString() ?? null,
         rejectionReason: d.rejectionReason, hasFile: !!d.storagePath, version: d.version,
+        needsExpiry: items.get(d.checklistItemId ?? "")?.needsExpiry ?? false, fileTypes: items.get(d.checklistItemId ?? "")?.fileTypes ?? "pdf,jpg,png", maxSizeMb: items.get(d.checklistItemId ?? "")?.maxSizeMb ?? 15,
         // Warnings can quote identity details (e.g. the passport name in a mismatch), so they
         // follow the same sensitive:view rule as the extraction data on the case page.
         warnings: can(user.permissions, "sensitive:view") && d.warnings ? JSON.parse(d.warnings) : [],

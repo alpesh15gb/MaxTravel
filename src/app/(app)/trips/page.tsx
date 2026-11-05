@@ -3,7 +3,7 @@ import { requirePage } from "@/lib/guard";
 import { CASE_READ } from "@/lib/service-cases";
 import { readTrips, TRIP_VIEWS, type TripView } from "@/lib/trips-read";
 import { TRIP_STAGES, TRIP_STAGE_LABEL, type TripStage } from "@/lib/trip-stage";
-import { PageHeader, EmptyState } from "@/components/ui";
+import { PageHeader, EmptyState, Field } from "@/components/ui";
 import TripsList from "./TripsList";
 export const dynamic = "force-dynamic";
 
@@ -31,22 +31,14 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
   const pages = Math.max(1, Math.ceil(data.total / 50));
   return <div className="workspace-page space-y-4">
     <PageHeader title="Trips" description="Every customer job under one Max ID: enquiry, quote, bookings, visa and payment." actions={<Link className="btn-primary" href="/trips/new">New trip</Link>} />
-    <nav aria-label="Trip stage" className="flex flex-wrap gap-2">
-      {chips.map(([id, label, n]) => <Link key={id} href={href({ stage: id === "ACTIVE" ? undefined : id, page: undefined })} aria-current={current === id ? "page" : undefined} className={`rounded-full border px-3 py-1.5 text-sm ${current === id ? "border-teal-700 bg-teal-700 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}>{label} <span className="opacity-75">{n}</span></Link>)}
-    </nav>
-    <form className="flex flex-wrap items-center gap-2" action="/trips">
-      {sp.stage && <input type="hidden" name="stage" value={sp.stage} />}
-      {view && <input type="hidden" name="view" value={view} />}
+    <form className="panel grid grid-cols-2 items-end gap-3 p-4 sm:flex sm:flex-wrap" action="/trips">
       {customerId && <input type="hidden" name="customer" value={customerId} />}
-      <input name="q" defaultValue={q} placeholder="Customer, phone, Max ID, PNR or destination" aria-label="Search trips" className="min-h-11 min-w-0 flex-1 basis-60 rounded-lg border border-slate-300 bg-white px-3" />
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="mine" value="1" defaultChecked={mine} />Mine only</label>
-      <button className="btn-secondary">Search</button>
+      <label className="col-span-2 min-w-0 flex-1 text-sm font-medium sm:basis-64">Search trips<input name="q" defaultValue={q} placeholder="Customer, Max ID, PNR or destination" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3" /></label>
+      <Field label="Travel stage"><select name="stage" defaultValue={current}>{chips.map(([id,label,n])=><option key={id} value={id}>{label} ({n})</option>)}</select></Field>
+      <Field label="Service"><select name="view" defaultValue={view??""}><option value="">All services</option>{TRIP_VIEWS.map(v=><option key={v} value={v}>{VIEW_LABEL[v]}</option>)}</select></Field>
+      <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="mine" value="1" defaultChecked={mine} />Mine only</label>
+      <button className="btn-secondary">Apply filters</button>
     </form>
-    <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
-      <span className="inline-flex min-h-8 items-center text-slate-500">Show:</span>
-      <Link href={href({ view: undefined, page: undefined })} className={`inline-flex min-h-8 items-center ${!view ? "font-semibold text-slate-900" : "text-blue-700 underline"}`}>All services</Link>
-      {TRIP_VIEWS.map(v => <Link key={v} href={href({ view: v, page: undefined })} className={`inline-flex min-h-8 items-center ${view === v ? "font-semibold text-slate-900" : "text-blue-700 underline"}`}>{VIEW_LABEL[v]}</Link>)}
-    </div>
     {data.capped && <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">Showing the 500 most recently updated trips. Search by customer, phone, Max ID or PNR to find older ones.</p>}
     {data.rows.length ? <TripsList rows={data.rows} /> : (all > 0 || q || view || mine || customerId)
       ? <EmptyState title="No trips match" description="Try another search, stage or service." href="/trips" action="Clear filters" />

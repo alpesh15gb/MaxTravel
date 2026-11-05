@@ -16,6 +16,8 @@ import ActionDialog from "@/components/ActionDialog";
 import Modal from "@/components/Modal";
 import { openSignedFile } from "@/lib/openSignedFile";
 import { useToast } from "@/lib/useToast";
+import DocumentUpload from "@/components/DocumentUpload";
+import { VISA_PHASES, visaPhase } from "@/lib/visa-phase";
 
 const money = (n: number | null | undefined) => (n == null ? "—" : inrAmount(n));
 const dt = (s: string | null | undefined) => (s ? dateTimeLabel(s) : "—");
@@ -29,6 +31,7 @@ type Doc = {
   uploadedAt: string | null; uploadSource: string | null; verificationStatus: string;
   verifiedBy: string | null; expiryDate: string | null; rejectionReason: string | null;
   hasFile: boolean; version: number; onFile?: { id: string; docNo: string; verified: boolean } | null;
+  needsExpiry: boolean; fileTypes: string; maxSizeMb: number;
   warnings: { type: string; message: string }[];
   extracted: Record<string, string> | null;
   extractionConfirmed: boolean;
@@ -74,6 +77,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
   const [stageId, setStageId] = useState(vc.stage.id);
   const [showEdit, setShowEdit] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<Doc | null>(null);
+  const [uploadTarget, setUploadTarget] = useState<Doc | null>(null);
   const [reviewError, setReviewError] = useState("");
   const saving = useRef(false);
 
@@ -102,7 +106,9 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
   }
 
   const outstanding = vc.sellingPrice - vc.amountReceived;
-  const visitedStages = new Set(vc.history.map(h => h.stageId));
+  const phase = visaPhase(stages.find(s => s.id === vc.stage.id) ?? { key: vc.stage.key, seq: 0 }, stages);
+  const missing = vc.documents.filter(d => ["REQUIRED", "REQUESTED", "REJECTED", "REUPLOAD_REQUESTED"].includes(d.status)).length;
+  const finished = ["REJECTED", "DELIVERED", "CLOSED"].includes(vc.stage.key);
 
   const byTraveller = useMemo(() => {
     const map = new Map<string, Doc[]>();
@@ -140,14 +146,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
             <AuditTrailLink entity="VisaCase" entityId={vc.id} allowed={perms.audit} />
             {perms.edit && (
               <>
-                <button type="button" onClick={() => setShowEdit(true)} className="btn-primary min-h-9 px-3 py-2 text-xs">Edit visa</button>
-                <select
-                  aria-label="Visa workflow stage" disabled={busy} value={stageId}
-                  onChange={(e) => { setStageId(e.target.value); post(`/api/visa/cases/${vc.id}/stage`, { stageId: e.target.value }, "✓ Stage updated"); }}
-                  className="control h-9 text-xs"
-                >
-                  {stages.map((s) => <option key={s.id} value={s.id}>{s.seq}. {s.name}</option>)}
-                </select>
+                <button type="button" onClick={() => setShowEdit(true)} className="btn-secondary min-h-9 px-3 py-2 text-xs">Edit visa</button>
               </>
             )}
           </div>
@@ -155,41 +154,17 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
       </section>
 
       <RecordSectionNav label="Visa case sections" sections={[{id:"case-workflow",label:"Application progress"},{id:"case-documents",label:"Documents & applicants"},...(perms.money?[{id:"case-money",label:"Fees & collections"}]:[]),{id:"case-dates",label:"Dates & appointments"},{id:"customer-email",label:"Customer email"},{id:"booking-collections",label:"Collect payment"}]}/>
-      <div className="record-next-step"><span>Current stage</span><strong>{vc.stage.name}</strong><p>Review each applicant’s requirements and evidence before progressing the application.</p></div>
+      <div className="record-next-step flex flex-wrap items-center gap-3"><div className="min-w-0 flex-1"><span className="block text-xs font-semibold uppercase tracking-wide text-slate-600">Next step</span><strong className="mt-1 block">{finished ? "Review the recorded outcome" : missing ? `${missing} documents need attention` : "Check application progress"}</strong></div><a href={finished || !missing ? "#case-workflow" : "#case-documents"} className="btn-primary">{finished ? "Review outcome" : missing ? "Review missing documents" : "Review progress"}</a></div>
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-5">
           {/* Workflow stepper */}
           <section className="panel p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <h2 id="case-workflow" tabIndex={-1} className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Workflow — {stages.length} stages</h2>
-              {perms.edit && <span className="text-small text-slate-500">Select a stage to move this case</span>}
+              <h2 id="case-workflow" tabIndex={-1} className="font-semibold">Application progress</h2>
             </div>
-            {/* Wraps instead of scrolling: the 16 chips fit in four rows, and a strip that scrolled sideways
-                inside the page was a nested scroll region the reader had to discover. */}
-            <div className="flex flex-wrap gap-1.5 pb-2">
-              {stages.map((s) => {
-                const current = s.key === vc.stage.key;
-                const passed = visitedStages.has(s.id);
-                const look = `inline-flex min-h-8 shrink-0 items-center rounded-lg border px-2.5 py-1 text-small ${
-                  current ? "border-teal-300 bg-teal-50 font-semibold text-teal-800" :
-                  passed ? "border-slate-200 bg-slate-100 text-slate-600" : "border-slate-200 bg-white text-slate-500"
-                }`;
-                if (!perms.edit) return <div key={s.id} className={look}>{s.name}</div>;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    disabled={busy || current}
-                    aria-current={current ? "step" : undefined}
-                    title={current ? `Current stage: ${s.name}` : `Move case to ${s.name}`}
-                    onClick={() => { setStageId(s.id); post(`/api/visa/cases/${vc.id}/stage`, { stageId: s.id }, "✓ Stage updated"); }}
-                    className={`${look} ${current ? "" : "hover:border-teal-300 hover:text-teal-700"}`}
-                  >
-                    {s.name}
-                  </button>
-                );
-              })}
-            </div>
+            <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4 !list-none !p-0" aria-label="Visa phases">{VISA_PHASES.map((p,i) => <li key={p.id} aria-current={phase.id===p.id?"step":undefined} className={`rounded-lg p-3 text-sm ${phase.id===p.id?"bg-teal-50 font-semibold text-teal-900":"bg-slate-50 text-slate-600"}`}><span className="block text-xs mb-1">{i+1}</span>{p.title}</li>)}</ol>
+            <p className="mt-3 text-sm">Current stage: <strong>{vc.stage.name}</strong></p>
+            {perms.edit && <details className="mt-3"><summary className="cursor-pointer py-2 text-sm font-semibold">Change stage</summary><label className="mt-2 block text-sm">Visa workflow stage<select aria-label="Visa workflow stage" disabled={busy} value={stageId} onChange={e => { setStageId(e.target.value); void post(`/api/visa/cases/${vc.id}/stage`, { stageId: e.target.value }, "Stage updated"); }} className="mt-2"><option disabled value="">Choose stage</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label><p className="mt-2 text-xs text-slate-600">Complete the required checks before changing the stage.</p></details>}
             {vc.history.length > 0 && <details className="mt-3 border-t border-slate-100 pt-3">
               <summary className="cursor-pointer text-xs text-slate-500">Stage history · {vc.history.length} {vc.history.length === 1 ? "change" : "changes"}</summary>
               <ol className="mt-3 space-y-0">
@@ -240,7 +215,8 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
                             {d.verifiedBy ? ` · ✓ ${d.verifiedBy}` : ""}
                             {d.expiryDate ? ` · exp ${dOnly(d.expiryDate)}` : ""}
                           </span>
-                          <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                          <span className="ml-auto flex flex-wrap items-center gap-1.5">
+                            {perms.reuseDocs && ["REQUIRED", "REQUESTED", "REJECTED", "REUPLOAD_REQUESTED"].includes(d.status) && <button type="button" disabled={busy} onClick={() => setUploadTarget(d)} className="btn-primary min-h-9 px-3 py-2 text-xs">{d.hasFile ? "Replace file" : "Upload document"}</button>}
                             {perms.reuseDocs && !d.hasFile && d.onFile && <button type="button" disabled={busy} onClick={() => post("/api/documents/reuse", { requirementId: d.id, sourceId: d.onFile!.id }, `✓ Using ${d.onFile!.docNo}`)} className="btn-secondary min-h-7 px-2.5 py-1 text-small">Use on-file {d.onFile.docNo}{d.onFile.verified ? " (verified)" : ""}</button>}
                             {d.hasFile && (
                               <button
@@ -333,6 +309,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
       )}
       {rejectTarget && <ActionDialog title={`Reject ${rejectTarget.docType}?`} description="Record what needs replacing. This does not send a message; contact the customer to request a replacement." fieldLabel="Reason for rejection" fieldType="textarea" required confirmLabel="Reject document" tone="danger" busy={busy} error={reviewError} onClose={() => { if (!busy) setRejectTarget(null); }} onConfirm={async reason => { if (await post("/api/documents/verify", { documentId: rejectTarget.id, decision: "REJECTED", reason }, "Document rejected. Contact the customer for a replacement.")) setRejectTarget(null); }} />}
       {toast}
+      {uploadTarget && <DocumentUpload document={uploadTarget} onClose={() => setUploadTarget(null)} />}
     </div>
   );
 }

@@ -123,7 +123,7 @@ export default function Modal({
         // (rather than its form) is a click outside the panel.
         if (event.target === dialog.current && !busy) onClose();
       }}
-      className={`panel m-auto max-h-[90vh] w-[calc(100%-2rem)] ${width} overflow-y-auto p-6 backdrop:bg-slate-900/40 tos-scroll`}
+      className={`panel workspace-dialog m-auto max-h-[90vh] w-[calc(100%-2rem)] ${width} overflow-y-auto p-6 backdrop:bg-slate-900/40 tos-scroll`}
     >
       {children}
     </dialog>

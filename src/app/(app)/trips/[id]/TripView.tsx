@@ -66,12 +66,12 @@ export default function TripView({ user, trip, work, record, imported, owners, h
           {can("chat:use") && <Link className="btn-secondary" href={`/team-chat?case=${id}`}>Discuss</Link>}
         </div>
       </div>
-      <TripStageBar stage={trip.stage} />
+      <div><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Travel stage</p><Status>Work status: {enumLabel(trip.caseStatus)}</Status></div><TripStageBar stage={trip.stage} /></div>
       {trip.money && (can("finance:internal") ? <ProfitBanner user={user} id={id} /> : <dl className="grid gap-3 rounded-lg bg-slate-50 p-4 text-sm sm:grid-cols-3"><div><dt>Selling charge</dt><dd>{customerMoney(trip.money.invoicedMinor)}</dd></div><div><dt>Received</dt><dd>{customerMoney(trip.money.receivedMinor)}</dd></div><div><dt>Customer balance</dt><dd>{customerMoney(trip.money.dueMinor)}</dd></div></dl>)}
       {record.followUp && <p className="text-sm text-slate-700"><Icon name="calendar" size={14} className="mr-1 inline" />Follow up: {dateTimeLabel(record.followUp)}</p>}
     </header>
 
-    {imported && <section className="panel space-y-1 p-5 text-sm" aria-label="Imported trip"><h2 className="font-semibold">Imported from earlier records</h2><p className="break-words">Original reference: <strong>{imported.reference}</strong> · Source: {imported.source}{imported.stage ? ` · Original stage: ${imported.stage}` : ""}</p><p className="text-slate-600">Imported {dateTimeLabel(imported.at)}.</p></section>}
+    {trip.nextTodo && work && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-teal-200 bg-teal-50 p-4" aria-label="Next step"><div><p className="text-xs font-semibold uppercase tracking-wide text-teal-800">Next step</p><p className="mt-1 font-semibold">{trip.nextTodo.title}</p>{trip.nextTodo.dueAt&&<p className="text-sm text-slate-600">Due {dateTimeLabel(trip.nextTodo.dueAt)}</p>}</div><a className="btn-primary" href="#todos">Review to-dos</a></section>}{imported && <section className="panel space-y-1 p-5 text-sm" aria-label="Imported trip"><h2 className="font-semibold">Imported from earlier records</h2><p className="break-words">Original reference: <strong>{imported.reference}</strong> · Source: {imported.source}{imported.stage ? ` · Original stage: ${imported.stage}` : ""}</p><p className="text-slate-600">Imported {dateTimeLabel(imported.at)}.</p></section>}
 
     {add.length > 0 && <section className={`panel p-5 ${empty ? "border-2 border-teal-600" : ""}`} aria-labelledby="add-title">
       <h2 id="add-title" className="text-lg font-semibold">{empty ? `What does ${trip.customer.name} need?` : "Add to this trip"}</h2>
@@ -105,7 +105,7 @@ export default function TripView({ user, trip, work, record, imported, owners, h
       <h2 id="docs-title" className="text-lg font-semibold">Documents</h2>
       {trip.documents.length ? <ul className="mt-3 divide-y divide-slate-100">{trip.documents.map(d => <li key={d.id} className="flex flex-wrap justify-between gap-2 py-2 text-sm"><Link className="text-blue-700 underline" href={`/documents?focus=${d.id}`}>{d.docNo} · {d.docType}</Link><span className="text-slate-600">{enumLabel(d.status)}</span></li>)}</ul>
         : <p className="mt-2 text-sm text-slate-600">No visa documents on this trip yet.</p>}
-      <p className="mt-3 text-sm"><Link className="text-blue-700 underline" href={`/masters/${trip.customer.id}?tab=travellers`}>Passports and traveller documents are on the customer page</Link></p>
+      <p className="mt-3 text-sm"><Link className="text-blue-700 underline" href={`/masters/${trip.customer.id}?tab=documents`}>Passports and traveller documents are on the customer page</Link></p>
     </section>}
 
     {canEditCase(user) && <CaseEditor key={record.version} record={record} owners={owners} canAssign={canAssignCase(user)} />}

@@ -2,9 +2,10 @@ import {canManageStaffAccess} from "@/lib/staff-access";
 import { prisma } from "@/lib/db";
 import { requirePage } from "@/lib/guard";
 import { can } from "@/lib/rbac";
-import { ROLE_ACCESS, type RoleKey } from "@/lib/permissions";
+import { ROLE_ACCESS, ROLE_PERMISSIONS, type RoleKey } from "@/lib/permissions";
 import EmployeesClient from "./EmployeesClient";
 import { employeeReadScope, employeeRecoveryContext, employeeRevision } from "@/lib/employee-recovery-server";
+import { roleDescription } from "@/lib/role-description";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,7 @@ export default async function EmployeesPage() {
         hrVisible: can(user.permissions, "hr:view"),
         workload: { tasks: e.tasks.length, visaCases: e.visaCases.length, bookings: e.bookings.length },
       }))}
-      roles={roles.map((r) => ({ id: r.id, name: r.name, requiresBranch: ["ASSIGNED", "BRANCH"].includes(ROLE_ACCESS[r.key as RoleKey]), combinedServices: r.key === "TRAVEL_EXECUTIVE" }))}
+      roles={roles.map((r) => ({ id: r.id, name: r.name, requiresBranch: ["ASSIGNED", "BRANCH"].includes(ROLE_ACCESS[r.key as RoleKey]), combinedServices: r.key === "TRAVEL_EXECUTIVE", description: roleDescription(r.key, ROLE_PERMISSIONS[r.key as RoleKey] ?? []) }))}
       defaultBranchId={user.branchId}
       branches={branches.map((b) => ({ id: b.id, name: b.name }))}
       canManage={can(user.permissions, "employee:manage")}

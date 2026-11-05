@@ -3,7 +3,7 @@ export const SALES_STAGES = ["NEW", "QUALIFIED", "QUOTED", "WON", "LOST"] as con
 
 export type SalesQuote = {
   id: string; version: number; state: string; totalMinor: number | null;
-  costMinor: number | null; items?: { description: string; quantity: number; priceMinor: number; costMinor: number }[]; bookingId: string | null; expiresAt: string; terms: string;
+  costMinor: number | null; items?: { description: string; quantity: number; priceMinor: number; costMinor: number }[]; bookingId: string | null; bookingStatus?: string | null; expiresAt: string; terms: string;
 };
 export type SalesLead = {
   baseRevision?: string;
@@ -22,7 +22,7 @@ export function matchingEnquiries(leads: SalesLead[], customers: SalesCustomer[]
 }
 
 export function quoteExplanation(quote: SalesQuote) {
-  if (quote.bookingId) return "Linked CRM booking created. Supplier confirmation and payment are managed separately.";
+  if (quote.bookingId) return ["CANCELLED", "VOID", "REFUNDED"].includes(quote.bookingStatus ?? "") ? "The linked booking was cancelled, void or refunded. Review its settlement and history." : "Linked CRM booking created. Supplier confirmation and payment are managed separately.";
   switch (quote.state) {
     case "DRAFT": return "Staff-only draft. Not shared with the customer or published in the package catalogue.";
     case "PUBLISHED": return "Private customer proposal. Accessible through its private link, not the public package catalogue.";
@@ -75,7 +75,7 @@ export function customerPrerequisite(canCreateCustomer: boolean) {
 export function enquiryNextStep(lead: SalesLead, now = Date.now()): { title: string; detail: string; quoteId?: string; version?: number } {
   if (hasConflictingAcceptedQuotes(lead)) return { title: "Review conflicting quotation records", detail: "More than one accepted or linked version is recorded. Do not choose a price or create another booking until your team has reviewed the acceptance and booking history." };
   const linked = lead.quotes.find(quote => quote.bookingId);
-  if (linked) return { title: "Continue in the linked booking", detail: "Review supplier confirmation, invoices and receipts in the booking. An accepted quotation alone does not confirm travel or payment.", quoteId: linked.id, version: linked.version };
+  if (linked) return ["CANCELLED", "VOID", "REFUNDED"].includes(linked.bookingStatus ?? "") ? { title: "Review the cancelled booking", detail: "Review cancellation settlement and refunds in the linked booking. Prepare a fresh enquiry if the customer wants new travel.", quoteId: linked.id, version: linked.version } : { title: "Continue in the linked booking", detail: "Review supplier confirmation, invoices and receipts in the booking. An accepted quotation alone does not confirm travel or payment.", quoteId: linked.id, version: linked.version };
   if (lead.stage === "LOST") return { title: "Enquiry closed as lost", detail: "Review the lost reason before reopening. Closing an enquiry does not withdraw its proposal links or cancel supplier arrangements." };
   if (lead.stage === "WON") return { title: "Review the recorded booking", detail: "This enquiry is marked won, but no linked booking is available in this view. Refresh and review the customer history; do not create a second booking." };
   const accepted = lead.quotes.find(quote => quote.state === "ACCEPTED");

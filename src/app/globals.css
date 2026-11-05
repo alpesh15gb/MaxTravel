@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Keep the title and commit action visible while long dialogs scroll. */
+.workspace-dialog .modal-sticky-header { position:sticky; top:-24px; z-index:3; margin-inline:-24px; margin-top:-24px; padding:20px 24px 16px; background:white; border-bottom:1px solid #e2e8f0; }
+.workspace-dialog .modal-sticky-footer { position:sticky; bottom:-24px; z-index:2; margin-inline:-24px; margin-bottom:-24px; padding:16px 24px; background:white; border-top:1px solid #e2e8f0; }
+.workspace-dialog .work-dialog { padding:0; }
+.workspace-dialog .work-dialog-header { display:flex; flex-wrap:nowrap; align-items:flex-start; }
+.workspace-dialog .work-dialog-header h2 { flex:1; max-width:none; margin:0; }
+.workspace-dialog .work-dialog-header button { flex-shrink:0; }
+.work-view-select { display:block; width:min(100%,280px); font-size:.875rem; font-weight:600; }
+.work-view-select select { display:block; margin-top:6px; }
+
 /* Focused workspaces: one open navigation section, four concise daily metrics. */
 .workspace-section-nav-heading { display:flex; align-items:center; border-radius:8px; margin-top:6px; }
 .workspace-section-nav-heading > a { display:flex; flex:1; min-width:0; min-height:48px; align-items:center; gap:10px; padding:10px 8px; color:var(--studio-rail-text); font-size:.875rem; font-weight:600; }

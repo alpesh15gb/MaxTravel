@@ -120,7 +120,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
             <div className="eyebrow">Booking workspace</div>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight">{b.bookingNo}</h1>
-              {perms.internalFinance&&<span className={`rounded-md px-3 py-1 text-sm font-semibold ${account.marginMinor===null?"bg-slate-50 text-slate-600":account.marginMinor<0?"bg-red-50 text-red-700":account.marginMinor>0?"bg-green-50 text-green-700":"bg-slate-50 text-slate-700"}`}>Expected gross profit: {account.marginMinor===null?"Cost confirmation needed":money(account.marginMinor/100)}</span>}
+              {perms.internalFinance&&<span className={`rounded-md px-3 py-1 text-sm font-semibold ${account.marginMinor===null?"bg-slate-50 text-slate-600":account.marginMinor<0?"bg-red-50 text-red-700":account.marginMinor>0?"bg-green-50 text-green-700":"bg-slate-50 text-slate-700"}`}>{withdrawn?"Cancellation margin":"Expected gross profit"}: {account.marginMinor===null?"Cost confirmation needed":money(account.marginMinor/100)}</span>}
               {b.pnr && <span className="max-w-full break-all rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-xs text-slate-700">{hotel?"Supplier reference":"PNR"} {b.pnr}</span>}
               <Status tone={urgent ? "danger" : warn ? "warning" : statusTone(b.status)}>{enumLabel(b.status)}</Status>
               {refundsInFlight.length > 0
@@ -161,8 +161,8 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
         </div>
       </section>
 
-      <RecordSectionNav label="Booking sections" sections={[{id:"booking-travel",label:hotel?"Stay details":"Flight tickets"},...(perms.money?[{id:"booking-money",label:"Payments & refunds"},{id:"booking-pricing",label:"Price & charges"}]:[]),{id:"booking-facts",label:"Booking facts"},{id:"booking-travellers",label:hotel?"Guests":"Passengers"},...(b.gdsSource!=="TRIPJACK_API"?[{id:"booking-custody",label:"Tickets & delivery"},{id:"booking-collections",label:"Collect payment"},{id:"customer-email",label:"Customer email"}]:[])]}/>
-      <div className="record-next-step"><span>Next step</span><strong>{b.gdsSource==="TRIPJACK_API"?"Use Online bookings for supplier actions":withdrawn?"Review cancellation settlement and any outstanding refund":hotel&&b.status!=="CONFIRMED"?"Check the stay details before recording supplier confirmation":!hotel&&!b.tickets.length?"Record airline-issued tickets when available":"Review travel details and the current customer balance"}</strong></div>
+      <RecordSectionNav label="Booking sections" sections={[{id:"booking-travel",label:hotel?"Stay details":"Flight tickets"},...(perms.money?[{id:"booking-money",label:"Payments & refunds"},{id:"booking-pricing",label:"Price & charges"}]:[]),{id:"booking-facts",label:"Booking facts"},{id:"booking-travellers",label:hotel?"Guests":"Passengers"},...(withdrawn?[{id:"cancellation-settlement",label:"Cancellation settlement"},...(b.gdsSource!=="TRIPJACK_API"?[{id:"booking-document-history",label:"Document history"}]:[])]:b.gdsSource!=="TRIPJACK_API"?[{id:"booking-custody",label:"Tickets & delivery"},{id:"booking-collections",label:"Collect payment"},{id:"customer-email",label:"Customer email"}]:[])]}/>
+      <div className="record-next-step"><span>Next step</span><strong>{b.gdsSource==="TRIPJACK_API"?"Use Online bookings for supplier actions":withdrawn?"Review cancellation settlement and any outstanding refund":hotel&&b.status!=="CONFIRMED"?"Check the stay details before recording supplier confirmation":!hotel&&!b.tickets.length?"Record airline-issued tickets when available":"Review travel details and the current customer balance"}</strong>{withdrawn&&<a className="btn-secondary" href="#cancellation-settlement">Review settlement</a>}</div>
       {b.gdsSource === "TRIPJACK_API" ? <div className="panel mb-4 p-4 text-sm text-slate-600">This booking is managed by the booking platform. <Link className="font-semibold text-teal-700 underline" href="/online-bookings">Open online bookings for live status, cancellation and refunds</Link>.</div> : <div className="mb-4 flex flex-wrap gap-2">
         {perms.record && outstanding > 0 && <Link className="btn-secondary" href={`/payments?action=record&customer=${b.customer.id}&booking=${b.id}`}>Record payment</Link>}
         {perms.invoice && !withdrawn && <Link className="btn-secondary" href={`/payments?action=invoice&customer=${b.customer.id}&booking=${b.id}`}>Create invoice</Link>}
@@ -209,7 +209,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
           )}
 
           {hotel ? <section className="panel space-y-3 p-5"><h2 id="booking-travel" tabIndex={-1} className="font-semibold">Stay details</h2><KV k="Hotel" v={b.hotelName??"Not entered"}/><KV k="Check-in" v={dOnly(b.hotelCheckIn)}/><KV k="Check-out" v={dOnly(b.hotelCheckOut)}/><KV k="Supplier confirmation reference" v={b.pnr??"Not entered"}/><p className="text-sm text-slate-600">{b.gdsSource==="TRIPJACK_API"?"Stay details synced from the booking platform. Use Online bookings for supplier status and current documents.":b.status==="CONFIRMED"?"Supplier confirmation recorded by the agency. Verify changes directly with the supplier.":"Current record is not a confirmed hotel reservation. Review its status and supplier evidence."}</p></section> : <section className="panel p-5">
-            <h2 id="booking-travel" tabIndex={-1} className="mb-4 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Tickets</h2>
+            <h2 id="booking-travel" tabIndex={-1} className="mb-4 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">{withdrawn?"Historical tickets":"Tickets"}</h2>{withdrawn&&<p className="mb-4 text-sm text-slate-600">This booking is cancelled, void or refunded. Ticket entries below are retained as history; check current travel validity with the supplier.</p>}
             {b.tickets.length ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -222,7 +222,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
                         <td className="px-3 py-2.5 text-slate-500">{dOnly(t.issueDate)}</td>
                         <td className="px-3 py-2.5 text-slate-500">{t.issuedBy ?? "—"}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums">{perms.internalFinance ? money(t.originalFare) : "Restricted"}</td>
-                        <td className="px-3 py-2.5"><Status tone={t.status === "OK" ? "success" : "neutral"}>{t.status}</Status></td>
+                        <td className="px-3 py-2.5"><Status tone={!withdrawn&&t.status === "OK" ? "success" : "neutral"}>{withdrawn?"Historical · ":""}{t.status}</Status></td>
                       </tr>
                     ))}
                   </tbody>
@@ -302,7 +302,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
         </div>
 
         <aside className="min-w-0 space-y-5">
-          {WITHDRAWING.includes(b.status) && <section className="panel space-y-2.5 p-5">
+          {WITHDRAWING.includes(b.status) && <section id="cancellation-settlement" className="panel scroll-mt-20 space-y-2.5 p-5">
             <h2 className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Cancellation settlement</h2>
             {!perms.money ? <p className="text-xs text-slate-500">Settlement amounts are restricted for your role.</p> : !perms.internalFinance ? <KV k="Customer cancellation charge" v={money(b.customerCharge)} /> : b.cancellationSupplierCharge === null || b.cancellationAgencyFee === null ? <p className="text-xs leading-5 text-amber-800">Legacy cancellation: supplier charges and agency fees were not recorded. Do not infer a zero charge or profit from this record; ask accounts to reconcile the terms.</p> : <>
               <KV k="Supplier cancellation charge" v={money(b.cancellationSupplierCharge)} />
@@ -358,7 +358,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
       </div>
 
       {hotel&&showHotelConfirmation&&<HotelConfirmationForm b={b} onClose={()=>setShowHotelConfirmation(false)}/>}
-      {b.gdsSource!=="TRIPJACK_API"&&<BookingCustody key={b.id+":"+b.revision} bookingId={b.id}/>}
+      {b.gdsSource!=="TRIPJACK_API"&&(withdrawn?<details id="booking-document-history" className="panel p-5"><summary className="cursor-pointer font-semibold">Travel documents & delivery history</summary><div className="mt-4"><BookingCustody key={b.id+":"+b.revision} bookingId={b.id}/></div></details>:<BookingCustody key={b.id+":"+b.revision} bookingId={b.id}/>)}
       {showPassengers && <PassengerForm b={b} options={passengerOptions} onClose={() => setShowPassengers(false)} />}
       {!hotel && showTickets && <TicketForm b={b} onClose={() => setShowTickets(false)} />}
       {cancelTo && (

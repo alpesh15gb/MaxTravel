@@ -404,7 +404,7 @@ function Documents({ data, perms, onToast }: { data: Data; perms: Perms; onToast
                 <div key={i} className="mt-1 text-xs text-amber-700">⚠ {w.message}</div>
               ))}
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex max-w-full flex-wrap items-center gap-2">
               <Status tone={toneOf(d.status)}>{enumLabel(d.status)}</Status>
               {d.hasFile && (
                 <button
@@ -418,7 +418,7 @@ function Documents({ data, perms, onToast }: { data: Data; perms: Perms; onToast
                   }}
                   className="btn-secondary min-h-8 px-3 py-1.5 text-xs"
                 >
-                  View (signed)
+                  View file
                 </button>
               )}
               <Link href={`/documents?focus=${d.id}`} className="btn-secondary min-h-8 px-3 py-1.5 text-xs">Open document desk</Link>

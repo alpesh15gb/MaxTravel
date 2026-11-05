@@ -37,7 +37,11 @@ export async function GET(req:Request){try{
  const requestedId=params.has("leadId")?params.get("leadId"):null;
  if(requestedId!==null&&(!requestedId.trim()||requestedId.length>200||params.getAll("leadId").length!==1))throw new ApiError(400,"Choose a valid enquiry.");
  const page=await salesLeadPage(prisma,user,salesFilters(params),requestedId??undefined);
- const projected=page.leads.map(l=>({...l,baseRevision:salesBaseRevision(l,l.quotes),budgetMinor:finance?l.budgetMinor:null,quotes:l.quotes.map(q=>({...q,shareHash:undefined,items:finance?z.array(quoteItemSchema).parse(JSON.parse(q.items)).map(item=>({...item,costMinor:internal?item.costMinor:0})):[],totalMinor:finance?q.totalMinor:null,costMinor:internal?q.costMinor:null}))}));
+ const bookingIds=[...new Set(page.leads.flatMap(l=>l.quotes.flatMap(q=>q.bookingId?[q.bookingId]:[])))];
+ const bookings=user.permissions.includes("ticketing:view")&&bookingIds.length
+  ?await prisma.booking.findMany({where:{id:{in:bookingIds}},select:{id:true,status:true,branchId:true,ownerId:true}}):[];
+ const bookingStates=new Map(bookings.filter(b=>canTouchRecord(user,b)).map(b=>[b.id,b.status]));
+ const projected=page.leads.map(l=>({...l,baseRevision:salesBaseRevision(l,l.quotes),budgetMinor:finance?l.budgetMinor:null,quotes:l.quotes.map(q=>({...q,bookingStatus:q.bookingId?bookingStates.get(q.bookingId)??null:null,shareHash:undefined,items:finance?z.array(quoteItemSchema).parse(JSON.parse(q.items)).map(item=>({...item,costMinor:internal?item.costMinor:0})):[],totalMinor:finance?q.totalMinor:null,costMinor:internal?q.costMinor:null}))}));
  if(requestedId!==null){if(!projected[0])throw new ApiError(404,"Enquiry not found.");const customer=await prisma.customer.findFirst({where:{AND:[salesCustomerScope(user),{id:projected[0].customerId}]},select:salesCustomerSelect});return Response.json({lead:projected[0],customer,...context},{headers:noStore});}
  const customerPage=await salesCustomerPage(prisma,user,{q:"",stage:""});
  const linkedCustomers=await prisma.customer.findMany({where:{AND:[salesCustomerScope(user),{id:{in:page.leads.map(l=>l.customerId)}}]},select:salesCustomerSelect,take:50});
