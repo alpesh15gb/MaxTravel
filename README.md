@@ -142,7 +142,9 @@ upgrades, backups, the container path and an incident checklist. The short versi
 
 ## Roles and access
 
-12 roles with module, action, approval, export, `sensitive:view` (passport numbers masked
+Staff visibility and owner-only account administration: [Staff access boundaries](docs/STAFF-ACCESS.md).
+
+13 roles with module, action, approval, export, `sensitive:view` (passport numbers masked
 server-side) and `hr:view` (salary/bank) permissions, plus record scope modes `ALL` /
 `BRANCH` / `ASSIGNED` enforced in list queries, pulse, search and API guards. Deactivating an
 employee or changing a password invalidates their existing sessions.

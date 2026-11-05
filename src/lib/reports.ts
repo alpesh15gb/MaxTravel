@@ -1,3 +1,4 @@
+import {canViewInternalFinance} from "./finance-policy";
 import { prisma } from "./db";
 import { accountCustomerScope } from "./report-scope";
 import { ApiError, scopeWhere } from "./guard";
@@ -21,6 +22,7 @@ export function reportPeriod(params: URLSearchParams, now = new Date()) {
 }
 
 export async function buildReport(user: SessionUser, params: URLSearchParams) {
+  if (!user.permissions.includes("payment:view") || !canViewInternalFinance(user)) throw new ApiError(403, "Agency financial reporting requires internal finance access.");
   const period = reportPeriod(params);
   const customerScope = accountCustomerScope(user);
   const workScope = scopeWhere(user, null, "ownerId");

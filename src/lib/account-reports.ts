@@ -1,3 +1,4 @@
+import {canReadAccountReport} from "./finance-policy";
 import {enumLabel} from "./labels";
 import {dateLabel} from "./dates";
 import type { Prisma } from "@prisma/client";
@@ -28,6 +29,7 @@ const readableDescription=(text:string)=>text.replace(/ · ([A-Z]+(?:_[A-Z]+)*)(
 export async function buildAccountReport(user:SessionUser,params:URLSearchParams,exporting=false):Promise<AccountReport> {
  const key=params.get("report")||"statement";
  if(!(ACCOUNT_REPORTS as readonly string[]).includes(key))throw new ApiError(400,"Choose a valid report.");
+ if(!canReadAccountReport(user,key))throw new ApiError(403,"This report requires internal finance access.");
  if(key.startsWith("supplier")&&(!user.permissions.includes("supplier:view")||user.accessMode!=="ALL"))throw new ApiError(403,"Supplier financial reports require supplier visibility and agency-wide finance access.");
  if(key==="refunds"&&!user.permissions.includes("refund:view"))throw new ApiError(403,"Refund visibility is required.");
  const rawPage=params.get("page")||"1";

@@ -13,6 +13,7 @@ export type Permission =
   | "reissue:manage"
   | "document:view" | "document:upload" | "document:verify" | "document:delete"
   | "sensitive:view" // passport numbers & sensitive customer docs
+  | "finance:internal"
   | "payment:view" | "payment:record" | "payment:approve"
   | "invoice:view" | "invoice:create"
   | "refund:view" | "refund:manage" | "refund:approve"
@@ -38,6 +39,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   "reissue:manage",
   "document:view", "document:upload", "document:verify", "document:delete",
   "sensitive:view",
+  "finance:internal",
   "payment:view", "payment:record", "payment:approve",
   "invoice:view", "invoice:create",
   "refund:view", "refund:manage", "refund:approve",
@@ -68,7 +70,7 @@ export const ROLE_ACCESS: Record<RoleKey, AccessMode> = {
   ACCOUNTS: "ALL",
   HR: "ALL",
   OPERATIONS: "BRANCH",
-  READ_ONLY: "ALL",
+  READ_ONLY: "ASSIGNED",
 };
 
 const R = (...ps: Permission[]): Permission[] => ps;
@@ -121,7 +123,6 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "task:view", "task:create", "task:edit",
     "supplier:view",
     "employee:view",
-    "export:data",
   ),
   VISA_EXECUTIVE: R(
     "dashboard:view", "search:use",
@@ -146,7 +147,6 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "task:view", "task:create", "task:edit",
     "supplier:view",
     "employee:view",
-    "export:data",
   ),
   TICKETING_EXECUTIVE: R(
     "dashboard:view", "search:use",
@@ -194,7 +194,6 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
   ),
   HR: R(
     "dashboard:view", "search:use",
-    "customer:view",
     "employee:view", "employee:manage", "hr:view",
     "task:view", "task:create", "task:edit",
   ),
@@ -211,12 +210,12 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
   READ_ONLY: R(
     "dashboard:view", "search:use",
     "customer:view", "traveller:view", "visa:view", "checklist:view",
-    "ticketing:view", "document:view", "payment:view", "invoice:view",
-    "refund:view", "task:view", "supplier:view", "employee:view", "audit:view",
+    "ticketing:view", "document:view",
+    "task:view", "supplier:view",
   ),
 };
 
-ROLE_PERMISSIONS.READ_ONLY.push("work:team", "work:report");
+for (const role of ["OWNER", "BRANCH_MANAGER", "ACCOUNTS"] as const) ROLE_PERMISSIONS[role].push("finance:internal");
 ROLE_PERMISSIONS.ACCOUNTS.push("task:create", "task:edit");
 
 // Delegation is independent of HR and agency-security administration.

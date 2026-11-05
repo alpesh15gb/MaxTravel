@@ -14,7 +14,7 @@ export const roleCanOwnCase=(role:string)=>["customer:edit","visa:edit","ticketi
 export function serviceCaseScope(user:SessionUser):Prisma.ServiceCaseWhereInput {
   if(user.accessMode==="ALL")return {};
   if(user.accessMode==="BRANCH")return user.branchId?{branchId:user.branchId}:{id:"__none__"};
-  return {OR:[{ownerId:user.id},{tasks:{some:{OR:[{ownerId:user.id,unassigned:false},{reviewerId:user.id}]}}},{createdById:user.id,customer:{assignedToId:user.id}},...(user.permissions.includes("ticketing:view")?[{bookings:{some:{ownerId:user.id}}}]:[]),...(user.permissions.includes("visa:view")?[{visaCases:{some:{ownerId:user.id}}}]:[]),...(user.permissions.includes("customer:view")?[{leads:{some:{ownerId:user.id}}}]:[])]};
+  return {OR:[...(user.role==="READ_ONLY"?[{customer:{assignedToId:user.id}}]:[]),{ownerId:user.id},{tasks:{some:{OR:[{ownerId:user.id,unassigned:false},{reviewerId:user.id}]}}},{createdById:user.id,customer:{assignedToId:user.id}},...(user.permissions.includes("ticketing:view")?[{bookings:{some:{ownerId:user.id}}}]:[]),...(user.permissions.includes("visa:view")?[{visaCases:{some:{ownerId:user.id}}}]:[]),...(user.permissions.includes("customer:view")?[{leads:{some:{ownerId:user.id}}}]:[])]};
 }
 export async function caseFor(db:Prisma.TransactionClient|PrismaClient,user:SessionUser,id:string){
   const row=await db.serviceCase.findFirst({where:{AND:[serviceCaseScope(user),{OR:[{id},{caseNo:id}]}]}});

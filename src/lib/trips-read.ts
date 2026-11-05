@@ -1,3 +1,4 @@
+import {canViewInternalFinance} from "./finance-policy";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import type { SessionUser } from "./session";
@@ -22,8 +23,8 @@ export type TripRow = {
 export type TripDetail = Omit<TripRow, "customer"> & {
   customer: { id: string; name: string; code: string; phone: string; email: string | null };
   branchId: string; ownerId: string; caseStatus: string; canEdit: boolean;
-  quotes: { leadId: string; title: string; stage: string; latestQuote: { id: string; state: string; totalMinor: number } | null }[];
-  money: { invoicedMinor: number; receivedMinor: number; dueMinor: number } | null;
+  quotes: { leadId: string; title: string; stage: string; latestQuote: { id: string; state: string; totalMinor: number | null } | null }[];
+  money: { currency: string; invoicedMinor: number; receivedMinor: number; dueMinor: number } | null;
   documents: { id: string; docNo: string; docType: string; status: string }[];
 };
 export type TripView = "flights" | "hotels" | "visas" | "enquiries" | "online";
@@ -103,7 +104,7 @@ async function finance(user: SessionUser, id: string): Promise<Pick<TripRow, "ba
   if (!user.permissions.includes("payment:view")) return { balanceMinor: null, profit: null };
   const { groups } = await caseFinance(prisma, user, id);
   const g = groups.find(x => x.currency === "INR") ?? groups[0];
-  return { balanceMinor: g?.balance ?? 0, profit: g ? { marginMinor: g.margin, unknown: g.unknown } : null };
+  return { balanceMinor: g?.balance ?? 0, profit: canViewInternalFinance(user) && g ? { marginMinor: g.margin, unknown: g.unknown } : null };
 }
 
 export async function readTrips(user: SessionUser, q: TripQuery): Promise<{ rows: TripRow[]; total: number; counts: Record<TripStage, number>; capped: boolean }> {
@@ -142,9 +143,9 @@ export async function readTrip(user: SessionUser, id: string): Promise<TripDetai
   if (user.permissions.includes("payment:view")) {
     const { groups } = await caseFinance(prisma, user, base.id);
     const g = groups.find(x => x.currency === "INR") ?? groups[0];
-    money = { invoicedMinor: g?.sale ?? 0, receivedMinor: g?.received ?? 0, dueMinor: g?.balance ?? 0 };
+    money = { currency: g?.currency ?? "INR", invoicedMinor: g?.sale ?? 0, receivedMinor: g?.received ?? 0, dueMinor: g?.balance ?? 0 };
     balanceMinor = money.dueMinor;
-    profit = g ? { marginMinor: g.margin, unknown: g.unknown } : null;
+    profit = canViewInternalFinance(user) && g ? { marginMinor: g.margin, unknown: g.unknown } : null;
   }
   const documents = user.permissions.includes("document:view") && c.visaCases.length
     ? await prisma.document.findMany({ where: { visaCaseId: { in: c.visaCases.map(v => v.id) } }, select: { id: true, docNo: true, docType: true, status: true }, orderBy: { createdAt: "desc" }, take: 100 })
@@ -153,6 +154,6 @@ export async function readTrip(user: SessionUser, id: string): Promise<TripDetai
     ...row, balanceMinor, profit, money, documents,
     customer: { ...c.customer },
     branchId: c.branchId, ownerId: c.ownerId, caseStatus: c.status, canEdit: canEditCase(user),
-    quotes: c.leads.map(l => ({ leadId: l.id, title: l.title, stage: l.stage, latestQuote: l.quotes[0] ? { id: l.quotes[0].id, state: l.quotes[0].state, totalMinor: l.quotes[0].totalMinor } : null })),
+    quotes: c.leads.map(l => ({ leadId: l.id, title: l.title, stage: l.stage, latestQuote: l.quotes[0] ? { id: l.quotes[0].id, state: l.quotes[0].state, totalMinor: user.permissions.includes("payment:view") ? l.quotes[0].totalMinor : null } : null })),
   };
 }

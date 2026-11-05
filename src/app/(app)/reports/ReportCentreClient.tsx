@@ -9,15 +9,16 @@ import { dateLabel, dateTimeLabel } from "@/lib/dates";
 import { enumLabel } from "@/lib/labels";
 import type { AccountReport, ReportRow } from "@/lib/account-reports";
 import { REPORT_CATALOGUE, REPORT_GROUPS, REPORT_DATE_PRESETS, indiaDay, isBalanceReport, isStatementReport, isWorkReport, reportCurrency, reportDatePreset, reportDefinition, reportFilterQuery } from "@/lib/report-workspace";
+import { isCustomerAccountReport } from "@/lib/finance-policy";
 import { readReportJson } from "@/lib/report-read";
 import type { ReportFilters } from "@/lib/report-workspace";
 import "./reporting-workspace.css";
 
 type Options = { customers: { id: string; name: string; code: string }[]; suppliers: { id: string; name: string }[]; staff: { id: string; name: string }[]; statuses: string[]; cutover: string | null };
-type Props = { canExport: boolean; canSupplier: boolean; canRefund: boolean; canTerms: boolean; initialReport?: string; initialCustomer?: string; initialFilters?: Partial<ReportFilters> };
-export default function ReportCentreClient({ canExport, canSupplier, canRefund, canTerms, initialReport, initialCustomer, initialFilters={} }: Props) {
- const available = REPORT_CATALOGUE.filter(r => (!r.key.startsWith("supplier") || canSupplier) && (r.key !== "refunds" || canRefund));
- const [selected, setSelected] = useState(initialReport === "overview" || available.some(r => r.key === initialReport) ? initialReport! : "ageing");
+type Props = { canInternal: boolean; canExport: boolean; canSupplier: boolean; canRefund: boolean; canTerms: boolean; initialReport?: string; initialCustomer?: string; initialFilters?: Partial<ReportFilters> };
+export default function ReportCentreClient({ canInternal, canExport, canSupplier, canRefund, canTerms, initialReport, initialCustomer, initialFilters={} }: Props) {
+ const available = REPORT_CATALOGUE.filter(r => (canInternal || isCustomerAccountReport(r.key)) && (!r.key.startsWith("supplier") || canSupplier) && (r.key !== "refunds" || canRefund));
+ const [selected, setSelected] = useState((canInternal && initialReport === "overview") || available.some(r => r.key === initialReport) ? initialReport! : "ageing");
  const [search, setSearch] = useState("");
  const [library, setLibrary] = useState(false), [linkNotice, setLinkNotice] = useState("");
  const [options, setOptions] = useState<Options | null>(null), [optionsError, setOptionsError] = useState("");
@@ -56,7 +57,7 @@ export default function ReportCentreClient({ canExport, canSupplier, canRefund, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [options, from, to, draftQuery]);
  const matches = available.filter(r => `${r.label} ${r.hint} ${r.group}`.toLowerCase().includes(search.trim().toLowerCase()));
- const overviewMatches = "Business overview sales cash outstanding workload".toLowerCase().includes(search.trim().toLowerCase());
+ const overviewMatches = canInternal && "Business overview sales cash outstanding workload".toLowerCase().includes(search.trim().toLowerCase());
  function choose(key: string) {
   ++generation.current; request.current?.abort(); setSelected(key); setData(null); setError(""); setBusy(false); setApplied(""); setTerms(false); setLibrary(false); setLinkNotice(""); lastRequest.current = null;
   window.history.replaceState(null,"",`/reports?${new URLSearchParams({report:key})}`);
@@ -81,9 +82,9 @@ export default function ReportCentreClient({ canExport, canSupplier, canRefund, 
  const appliedCustomer = new URLSearchParams(applied).get("customerId");
  return <div className="workspace-page reporting-desk">
   <PageHeader eyebrow="Agency reporting" title="Reports & insights" description="Answer a business question, check the source records, and take the next action." actions={<button type="button" className="btn-secondary" onClick={()=>setLibrary(true)}>Browse report library</button>}/>
-  <section className="report-launchbar panel no-print" aria-label="Find a report"><Field label="Choose a report"><select value={selected} onChange={e=>choose(e.target.value)}>{REPORT_GROUPS.map(group=><optgroup key={group} label={group}>{available.filter(report=>report.group===group).map(report=><option key={report.key} value={report.key}>{report.label}</option>)}</optgroup>)}<option value="overview">Business overview</option></select></Field><div><span className="report-mode-label">{selected==="overview"?"Business overview":balance?"As-of balance":statement?"Account movements":"Period activity"}</span><p>{chosen?.hint||"Sales, cash, outstanding work and the records behind them."}</p></div></section>
+  <section className="report-launchbar panel no-print" aria-label="Find a report"><Field label="Choose a report"><select value={selected} onChange={e=>choose(e.target.value)}>{REPORT_GROUPS.map(group=><optgroup key={group} label={group}>{available.filter(report=>report.group===group).map(report=><option key={report.key} value={report.key}>{report.label}</option>)}</optgroup>)}{canInternal && <option value="overview">Business overview</option>}</select></Field><div><span className="report-mode-label">{selected==="overview"?"Business overview":balance?"As-of balance":statement?"Account movements":"Period activity"}</span><p>{chosen?.hint||"Sales, cash, outstanding work and the records behind them."}</p></div></section>
   {library&&<Modal labelledBy="report-library-title" width="max-w-4xl" onClose={()=>setLibrary(false)}><div className="report-library"><div className="flex justify-between items-start gap-4"><div><p className="eyebrow">Choose the question</p><h2 id="report-library-title">Report library</h2></div><button type="button" className="btn-secondary" onClick={()=>setLibrary(false)}>Close</button></div><Field label="Search reports"><input autoFocus type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Customer balance, supplier, sales, refunds…"/></Field>{search&&<button type="button" className="report-link-action" onClick={()=>setSearch("")}>Clear search</button>}<nav aria-label="Report catalogue">{REPORT_GROUPS.map(group=>{const entries=matches.filter(report=>report.group===group);return entries.length?<section key={group}><h3>{group}</h3><div className="report-library-grid">{entries.map(report=><button type="button" className="report-library-card" aria-label={report.label} aria-pressed={selected===report.key} key={report.key} onClick={()=>choose(report.key)}><strong>{report.label}</strong><span>{report.hint}</span><small>{report.basis}</small></button>)}</div></section>:null;})}{overviewMatches&&<button className="report-library-card" type="button" aria-label="Business overview" aria-pressed={selected==="overview"} onClick={()=>choose("overview")}><strong>Business overview</strong><span>How are sales, cash, outstanding balances and workload moving?</span></button>}</nav>{!matches.length&&!overviewMatches&&<p role="status">No permitted reports match this search.</p>}</div></Modal>}
-  {selected === "overview" ? <ReportsClient canExport={canExport} embedded initialFrom={initialFilters.from} initialTo={initialFilters.to} /> : <>
+  {canInternal && selected === "overview" ? <ReportsClient canExport={canExport} embedded initialFrom={initialFilters.from} initialTo={initialFilters.to} /> : <>
    <div className="report-selection-heading"><h2>{chosen?.label||"Financial report"}</h2><button className="btn-primary" type="submit" form="report-filters" disabled={busy || !options}>{busy ? "Generating…" : "Generate report"}</button></div>
    <div className="report-basis mb-4"><strong>Date basis</strong><span>{chosen?.basis}</span><span>India calendar · {reportCurrency(selected)}</span></div>
    {optionsError && <div role="alert" className="panel p-4 mb-4"><p className="form-error">{optionsError}</p><button type="button" className="btn-secondary mt-2" onClick={() => void loadOptions()}>Retry loading report accounts</button></div>}

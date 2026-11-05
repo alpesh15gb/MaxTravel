@@ -14,7 +14,7 @@ process.env.DATABASE_URL = url;
 const { prisma: db } = await import("../src/lib/db");
 const { readTrips, readTrip } = await import("../src/lib/trips-read");
 const person = (id: string, accessMode: string, permissions: string[]) => ({ id, name: id, email: `${id}@example.test`, role: "OWNER", roleName: "x", branchId: "branch-a", branchName: "a", employeeCode: id, accessMode, permissions }) as unknown as SessionUser;
-const owner = person("owner", "ALL", ["customer:view", "ticketing:view", "visa:view", "payment:view", "task:view"]);
+const owner = person("owner", "ALL", ["customer:view", "ticketing:view", "visa:view", "payment:view", "finance:internal", "task:view"]);
 const staff = person("staff", "ASSIGNED", ["customer:view", "ticketing:view", "visa:view", "task:view"]);
 try {
   await db.role.create({ data: { id: "role", key: "FIXTURE", name: "Fixture", desc: "Test only" } });

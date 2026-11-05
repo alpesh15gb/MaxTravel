@@ -20,7 +20,7 @@ async function run(){
  const branch=await prisma.branch.create({data:{name:"Reporting office",code:"RP",city:"Pune"}});
  const role=await prisma.role.create({data:{key:"OWNER",name:"Owner",desc:"Reporting fixture"}});
  const owner=await prisma.user.create({data:{name:"Finance owner",email:"reports@example.test",phone:"9000000000",passwordHash:"unused-test-hash",employeeCode:"EMP-RP",roleId:role.id,branchId:branch.id}});
- const user={...owner,role:"OWNER",roleName:"Owner",branchName:branch.name,accessMode:"ALL",permissions:["payment:view","supplier:view","refund:view","export:data"]} as unknown as SessionUser;
+ const user={...owner,role:"OWNER",roleName:"Owner",branchName:branch.name,accessMode:"ALL",permissions:["payment:view","finance:internal","supplier:view","refund:view","export:data"]} as unknown as SessionUser;
  // Seed the legacy schema using only legacy columns. The current generated client
  // includes new booking-platform columns that intentionally do not exist until migration.
  const customer={id:"reporting-legacy-customer"},booking={id:"reporting-legacy-booking"};

@@ -1,3 +1,4 @@
+import {canViewInternalFinance} from "@/lib/finance-policy";
 import { prisma } from "@/lib/db";
 import { caseFinance } from "@/lib/case-finance";
 import type { SessionUser } from "@/lib/session";
@@ -6,7 +7,7 @@ const money = (minor: number, currency: string) => new Intl.NumberFormat("en-IN"
 
 /** Profit (green) or loss (red) on one Max ID, per currency. Grey until every supplier cost is confirmed. */
 export default async function ProfitBanner({ user, id }: { user: SessionUser; id: string }) {
-  if (!user.permissions.includes("payment:view")) return null;
+  if (!user.permissions.includes("payment:view") || !canViewInternalFinance(user)) return null;
   const { groups } = await caseFinance(prisma, user, id);
   if (!groups.length) return <div className="rounded-xl bg-slate-100 p-4 text-sm text-slate-700">Profit appears here once a booking or visa with a price is added.</div>;
   return <div className="space-y-2" aria-label="Profit or loss">

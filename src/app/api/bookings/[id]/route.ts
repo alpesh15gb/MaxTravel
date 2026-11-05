@@ -1,3 +1,4 @@
+import {canViewInternalFinance} from "@/lib/finance-policy";
 import {boundedJson} from "@/lib/bounded-json";
 import {passportReadiness} from "@/lib/travel-readiness";
 import { hotelDate, hotelStayProblem } from "@/lib/manual-hotel";
@@ -49,7 +50,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       const financial = ["fare", "taxes", "markup", "serviceFee", "supplierCost"] as const;
       const values = Object.fromEntries(financial.map(key => [key, b[key] === undefined ? current[key] : money(b[key], key)])) as Record<typeof financial[number], number>;
       if (financial.some(key => values[key] !== current[key])) {
-        if (!user.permissions.includes("payment:record")) throw new ApiError(403, "Fare corrections require finance recording permission.");
+        if (!user.permissions.includes("payment:record") || !canViewInternalFinance(user)) throw new ApiError(403, "Fare corrections require finance recording permission.");
         if (current.tickets.length || current.payments.length || current.Invoice.length) throw new ApiError(400, "Financially committed bookings are locked. Use a reissue or an approved finance adjustment.");
       }
       const supplierId = b.supplierId === undefined ? current.supplierId : optionalId(b.supplierId);

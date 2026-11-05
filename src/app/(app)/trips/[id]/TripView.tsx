@@ -29,6 +29,7 @@ type Props = {
 
 export default function TripView({ user, trip, work, record, imported, owners, history }: Props) {
   const can = (p: string) => user.permissions.includes(p as SessionUser["permissions"][number]);
+  const customerMoney = (minor: number) => new Intl.NumberFormat("en-IN", {style:"currency",currency:trip.money?.currency ?? "INR"}).format(minor / 100);
   const closed = isClosedCase({ status: trip.caseStatus });
   const id = trip.id, phone = trip.customer.phone.replace(/[^+0-9]/g, "");
   const liveBookings = trip.services.filter(s => !s.dead && s.kind !== "VISA" && s.kind !== "ENQUIRY");
@@ -66,7 +67,7 @@ export default function TripView({ user, trip, work, record, imported, owners, h
         </div>
       </div>
       <TripStageBar stage={trip.stage} />
-      {trip.money && <ProfitBanner user={user} id={id} />}
+      {trip.money && (can("finance:internal") ? <ProfitBanner user={user} id={id} /> : <dl className="grid gap-3 rounded-lg bg-slate-50 p-4 text-sm sm:grid-cols-3"><div><dt>Selling charge</dt><dd>{customerMoney(trip.money.invoicedMinor)}</dd></div><div><dt>Received</dt><dd>{customerMoney(trip.money.receivedMinor)}</dd></div><div><dt>Customer balance</dt><dd>{customerMoney(trip.money.dueMinor)}</dd></div></dl>)}
       {record.followUp && <p className="text-sm text-slate-700"><Icon name="calendar" size={14} className="mr-1 inline" />Follow up: {dateTimeLabel(record.followUp)}</p>}
     </header>
 
@@ -88,11 +89,11 @@ export default function TripView({ user, trip, work, record, imported, owners, h
           <Status tone={s.dead ? "danger" : "neutral"}>{s.status}</Status>
         </li>)}
       </ul>
-      {trip.quotes.some(q => q.latestQuote) && <p className="mt-2 text-xs text-slate-500">Latest quote: {trip.quotes.filter(q => q.latestQuote).map(q => `${q.title} · ${enumLabel(q.latestQuote!.state)} · ${inrAmount(q.latestQuote!.totalMinor / 100)}`).join("; ")}</p>}
+      {trip.quotes.some(q => q.latestQuote) && <p className="mt-2 text-xs text-slate-500">Latest quote: {trip.quotes.filter(q => q.latestQuote).map(q => `${q.title} · ${enumLabel(q.latestQuote!.state)}${q.latestQuote!.totalMinor === null ? "" : ` · ${inrAmount(q.latestQuote!.totalMinor / 100)}`}`).join("; ")}</p>}
     </section>}
 
     {trip.money && <section id="money" className="space-y-3" aria-label="Money">
-      <details className="panel p-5"><summary className="cursor-pointer font-semibold">Profit for each booking and visa</summary><div className="mt-3"><CaseProfit user={user} id={id} /></div></details>
+      {can("finance:internal") && <details className="panel p-5"><summary className="cursor-pointer font-semibold">Profit for each booking and visa</summary><div className="mt-3"><CaseProfit user={user} id={id} /></div></details>}
       <div className="flex flex-wrap gap-2"><Link className="btn-secondary" href={`/reports?report=statement&customerId=${trip.customer.id}`}>Customer statement</Link><Link className="btn-secondary" href={`/payments?customer=${trip.customer.id}`}>Invoices & receipts</Link></div>
     </section>}
 

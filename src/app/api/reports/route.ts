@@ -5,7 +5,7 @@ import { audit } from "@/lib/audit";
 export const dynamic = "force-dynamic";
 export async function GET(req:Request) {
   try {
-    const user=await requireSession("payment:view");
+    const user=await requireSession("finance:internal");
     const params=new URL(req.url).searchParams;
     const exporting=params.get("format")==="csv";
     if(exporting)assertCan(user,"export:data");

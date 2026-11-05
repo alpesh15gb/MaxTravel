@@ -93,7 +93,13 @@ export async function getServerSession(): Promise<SessionUser | null> {
       ROLE_PERMISSIONS[role]?.includes("ticketing:view")&&bookingAssignments.length?prisma.booking.findMany({where:{OR:bookingAssignments.map(t=>({serviceCaseId:t.serviceCaseId,product:t.serviceWork!.service}))},select:{id:true}}):[],
       ROLE_PERMISSIONS[role]?.includes("visa:view")&&visaAssignments.length?prisma.visaCase.findMany({where:{serviceCaseId:{in:visaAssignments.map(t=>t.serviceCaseId!)}},select:{id:true}}):[],
     ]);
-    const workRecordIds = [...new Set([...delegated.flatMap(t=>[t.bookingId,t.visaCaseId].filter((id):id is string=>!!id)),...quotes.map(q=>q.id),...assignedBookings.map(b=>b.id),...assignedVisas.map(v=>v.id)])];
+    const viewCustomerIds = role==="READ_ONLY"?(await prisma.customer.findMany({where:{assignedToId:user.id},select:{id:true}})).map(customer=>customer.id):[];
+    const [viewBookings,viewVisas,viewQuotes] = await Promise.all([
+      viewCustomerIds.length&&ROLE_PERMISSIONS[role].includes("ticketing:view")?prisma.booking.findMany({where:{customerId:{in:viewCustomerIds}},select:{id:true}}):[],
+      viewCustomerIds.length&&ROLE_PERMISSIONS[role].includes("visa:view")?prisma.visaCase.findMany({where:{customerId:{in:viewCustomerIds}},select:{id:true}}):[],
+      viewCustomerIds.length&&ROLE_PERMISSIONS[role].includes("customer:view")?prisma.salesLead.findMany({where:{customerId:{in:viewCustomerIds}},select:{id:true}}):[],
+    ]);
+    const workRecordIds = [...new Set([...delegated.flatMap(t=>[t.bookingId,t.visaCaseId].filter((id):id is string=>!!id)),...quotes.map(q=>q.id),...assignedBookings.map(b=>b.id),...assignedVisas.map(v=>v.id),...viewBookings.map(row=>row.id),...viewVisas.map(row=>row.id),...viewQuotes.map(row=>row.id)])];
     return { workRecordIds, mfaEnabled:!!mfa?.enabled, sessionId: session.id, id: user.id, name: user.name, email: user.email, role, roleName: user.role.name,
       branchId: user.branchId, branchName: user.branch?.name ?? null, employeeCode: user.employeeCode,
       accessMode: ROLE_ACCESS[role] ?? "ASSIGNED", permissions: ROLE_PERMISSIONS[role] ?? [] };

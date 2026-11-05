@@ -1,3 +1,4 @@
+import {canViewInternalFinance} from "@/lib/finance-policy";
 import {dateOnly} from "@/lib/master-validation";
 import { prisma } from "@/lib/db";
 import { requirePage, scopeWhere } from "@/lib/guard";
@@ -12,24 +13,25 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
   const filterError=!validFrom.success||!validTo.success?"Choose valid due dates.":from&&to&&from>to?"Due-date start must be on or before the end date.":"";
   const dueDate={...(from?{gte:new Date(from+"T00:00:00+05:30")}:{}),...(to?{lt:new Date(new Date(to+"T00:00:00+05:30").getTime()+86400000)}:{})};
 
-  const canManage = user.permissions.includes("supplier:manage");
+  const canViewFinance = canViewInternalFinance(user);
+  const canManage = canViewFinance && user.permissions.includes("supplier:manage");
   const [suppliers, bookings,visaCases] = await Promise.all([prisma.supplier.findMany({
     include: {
       dues: {
-        where: filterError?{id:"__none__"}:{...(status==="OPEN"?{paid:false}:status==="PAID"?{paid:true,amount:{gt:0}}:status==="VOID"?{paid:true,amount:0}:{}),...(from||to?{dueDate}:{}),...(user.accessMode==="ALL"?{}:{OR:[{booking:{is:scopeWhere(user,"branchId","ownerId")}},{visaCase:{is:scopeWhere(user,"branchId","ownerId")}}]})},
+        where: !canViewFinance||filterError?{id:"__none__"}:{...(status==="OPEN"?{paid:false}:status==="PAID"?{paid:true,amount:{gt:0}}:status==="VOID"?{paid:true,amount:0}:{}),...(from||to?{dueDate}:{}),...(user.accessMode==="ALL"?{}:{OR:[{booking:{is:scopeWhere(user,"branchId","ownerId")}},{visaCase:{is:scopeWhere(user,"branchId","ownerId")}}]})},
         include: {visaCase:{select:{id:true,caseNo:true}}, booking: { select: { id: true, bookingNo: true } }, settlements: { orderBy: { settledOn: "desc" }, include: { recordedBy: { select: { name: true } }, reversedBy: { select: { name: true } } } } },
         orderBy: { dueDate: "asc" },
       },
-      _count: { select: { visaCases: true, bookings: true } },
+      _count: { select: { visaCases: {where:canViewFinance?scopeWhere(user,"branchId","ownerId"):{id:"__none__"}}, bookings: {where:canViewFinance?scopeWhere(user,"branchId","ownerId"):{id:"__none__"}} } },
     },
     orderBy: { name: "asc" },
   }), canManage ? prisma.booking.findMany({ where: {currency:"INR", supplierId: { not: null },AND:[scopeWhere(user,"branchId","ownerId"),{OR:[{gdsSource:null},{gdsSource:{not:"TRIPJACK_API"}}]}] }, select: { id: true, bookingNo: true, product: true, supplierId: true, sector: true, hotelName: true, customer: { select: { name: true } } }, orderBy: { bookingDate: "desc" }, take: 300 }) : Promise.resolve([]),canManage&&user.permissions.includes("visa:view")?prisma.visaCase.findMany({where:{supplierId:{not:null},...scopeWhere(user,"branchId","ownerId")},select:{id:true,caseNo:true,supplierId:true,destination:true,customer:{select:{name:true}}},orderBy:{createdAt:"desc"},take:300}):Promise.resolve([])]);
 
   return (
-    <SuppliersClient dateFilter={{from,to,status,error:filterError,active:Boolean(from||to||status!=="ALL")}} canViewBookings={user.permissions.includes("ticketing:view")}
+    <SuppliersClient canViewFinance={canViewFinance} dateFilter={canViewFinance?{from,to,status,error:filterError,active:Boolean(from||to||status!=="ALL")}:{from:"",to:"",status:"ALL",error:"",active:false}} canViewBookings={user.permissions.includes("ticketing:view")}
       suppliers={suppliers.map((s) => ({
         id: s.id, name: s.name, type: s.type, phone: s.phone, city: s.city,
-        paymentDueDays: s.paymentDueDays,
+        paymentDueDays: canViewFinance ? s.paymentDueDays : 0,
         visaCases: s._count.visaCases, bookings: s._count.bookings,
         dues: s.dues.map((d) => ({ id: d.id, description: d.description, supplierInvoiceNo: d.supplierInvoiceNo, bookingId: d.bookingId,visaCaseId:d.visaCaseId,workHref:d.bookingId&&user.permissions.includes("ticketing:view")?"/ticketing/"+d.bookingId:d.visaCaseId&&user.permissions.includes("visa:view")?"/visa/"+d.visaCaseId:null, bookingNo: d.booking?.bookingNo ?? d.visaCase?.caseNo??null, amount: d.amount, paidAmount: d.paidAmount, paid: d.paid, paidOn: d.paidOn?.toISOString() ?? null, dueDate: d.dueDate.toISOString(), settlements: d.settlements.map((p) => ({ id: p.id, amount: p.amount, method: p.method, reference: p.reference, note: p.note, settledOn: p.settledOn.toISOString(), recordedBy: p.recordedBy?.name ?? "Former staff", reversedOn: p.reversedOn?.toISOString() ?? null, reversedBy: p.reversedBy?.name ?? null, reversalReason: p.reversalReason })) })),
       }))}

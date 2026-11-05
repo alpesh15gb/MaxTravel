@@ -1,3 +1,4 @@
+import {canConfirmSupplierCost} from "@/lib/finance-policy";
 import {z} from "zod";
 import {boundedJson} from "@/lib/bounded-json";
 import { requireSession, jsonError, ApiError, canTouchRecord } from "@/lib/guard";
@@ -28,7 +29,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       const next = money(b.sellingPrice, "Selling price");
       if (next < vc.amountReceived) throw new ApiError(400, `Selling price cannot be below the ${inrAmount(vc.amountReceived)} already received from this case. Record a refund for the difference, or correct the receipts instead.`);
     }
-    if(b.supplierCost!==undefined&&!user.permissions.includes("payment:record"))throw new ApiError(403,"Supplier cost confirmation requires accounts permission.");
+    if(b.supplierCost!==undefined&&!canConfirmSupplierCost(user))throw new ApiError(403,"Supplier cost confirmation requires accounts permission.");
     const dateField = (v: unknown, label: string) => (v ? parseDate(v, label) : null);
     if (b.supplierId && !(await prisma.supplier.findUnique({ where: { id: String(b.supplierId) } }))) throw new ApiError(400, "Supplier not found.");
     const updated = await prisma.$transaction(async tx => {

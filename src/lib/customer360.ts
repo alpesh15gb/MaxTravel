@@ -63,7 +63,7 @@ export async function loadCustomer360(customerId: string, user: SessionUser) {
   }
   if (!can("sensitive:view")) c.documents = c.documents.map(d => ({ ...d, extracted: null, warnings: null }));
   // Cross-module activity can contain money or sensitive details; restrict this consolidated feed.
-  if (!can("payment:view") || !can("sensitive:view")) c.activities = [];
+  if (!can("finance:internal") || !can("sensitive:view")) c.activities = [];
 
   // Shared definition (lib/receivables): standalone invoices plus unpaid bookings and visa cases.
   const outstanding = receivablesFrom({

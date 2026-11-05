@@ -51,7 +51,7 @@ export async function POST(req: Request) {
         }
       }
       await transactionAudit(tx, user, "STATUS", "Reissue", r.id, `${r.status} → ${status}`);
-      return updated;
+      return { id: updated.id, status: updated.status };
     });
     return Response.json({ ok: true, reissue });
   } catch (e) {if(e instanceof z.ZodError)return Response.json({error:"Choose a valid reschedule and status."},{status:400});return jsonError(e); }

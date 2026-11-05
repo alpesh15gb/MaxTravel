@@ -1,3 +1,4 @@
+import {canViewInternalFinance} from "@/lib/finance-policy";
 import {salesRecoveryContext} from "@/lib/sales-recovery-context";
 import {isClosedCase} from "@/lib/case-constants";
 import {redirect} from "next/navigation";
@@ -26,5 +27,5 @@ export default async function NewBookingPage({ searchParams }: { searchParams: P
     prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
 
-  return <NewBooking recoveryContext={salesRecoveryContext(user)} serviceCase={journey?{id:journey.id,caseNo:journey.caseNo}:null} customers={customers.map(({branchId,assignedToId,...c})=>({...c,canOpenMaster:user.permissions.includes("customer:view")&&canTouchRecord(user,{id:c.id,branchId,assignedToId})}))} suppliers={suppliers} defaultCustomerId={customer ?? null} defaultProduct={["FLIGHT","HOTEL","STAY","BUS","TRAIN","INSURANCE"].includes(product??"")?product!:"FLIGHT"} />;
+  return <NewBooking canInternalFinance={canViewInternalFinance(user)} recoveryContext={salesRecoveryContext(user)} serviceCase={journey?{id:journey.id,caseNo:journey.caseNo}:null} customers={customers.map(({branchId,assignedToId,...c})=>({...c,canOpenMaster:user.permissions.includes("customer:view")&&canTouchRecord(user,{id:c.id,branchId,assignedToId})}))} suppliers={suppliers} defaultCustomerId={customer ?? null} defaultProduct={["FLIGHT","HOTEL","STAY","BUS","TRAIN","INSURANCE"].includes(product??"")?product!:"FLIGHT"} />;
 }

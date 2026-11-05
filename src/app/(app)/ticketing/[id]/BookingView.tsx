@@ -18,7 +18,7 @@ import Modal from "@/components/Modal";
 import { AuditTrailLink } from "@/components/AuditTrailLink";
 import RecordEditor from "@/components/RecordEditor";
 import { useToast } from "@/lib/useToast";
-import { bookingCharge, isInFlightRefund, isWithdrawnBooking, netReceived, promisedTotal, refundedTotal } from "@/lib/receivables";
+import { isInFlightRefund, isWithdrawnBooking, netReceived, promisedTotal, refundedTotal } from "@/lib/receivables";
 
 const money = (n: number | null | undefined) => (n == null ? "—" : inrAmount(n));
 const dt = (s: string | null | undefined) => (s ? dateTimeLabel(s) : "—");
@@ -32,7 +32,7 @@ type B = {
   cancellationSupplierCharge: number | null; cancellationAgencyFee: number | null; cancellationReason: string | null;
   status: string; sector: string | null; flightNo: string | null;
   travelEndDate:string|null;travelDate: string | null; bookingDate: string; ticketingDeadline: string | null;
-  fare: number; taxes: number;airlineChangeFee:number;noShowFee:number; markup: number; serviceFee: number; sellingPrice: number; supplierCost: number;supplierCostConfirmed:boolean;travelScope:string;passportValidityMonths?:number;requirementsNote?:string|null; currency: string;
+  customerCharge: number; fare: number; taxes: number;airlineChangeFee:number;noShowFee:number; markup: number; serviceFee: number; sellingPrice: number; supplierCost: number;supplierCostConfirmed:boolean;travelScope:string;passportValidityMonths?:number;requirementsNote?:string|null; currency: string;
   owner: string; branch: string;
   travellers: { id: string; fullName: string; relation: string; passportNumber: string | null }[];
   tickets: { id: string; travellerId: string | null; ticketNo: string; passenger: string; issueDate: string | null; issuedBy: string | null; originalFare: number; status: string }[];
@@ -42,7 +42,7 @@ type B = {
   reissueOf: { id: string; bookingNo: string; pnr: string | null } | null;
 };
 
-type Perms = { customerMaster:boolean;email:boolean;audit: boolean; invoice: boolean; edit: boolean; record: boolean; reissue: boolean; money: boolean; refund: boolean };
+type Perms = { customerMaster:boolean;email:boolean;audit: boolean; invoice: boolean; edit: boolean; record: boolean; reissue: boolean; money: boolean; internalFinance: boolean; refund: boolean };
 type SupplierOpt = { id: string; name: string };
 type Tone = "neutral" | "success" | "warning" | "danger" | "info";
 
@@ -80,7 +80,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
   const refundsInFlight = b.refunds.filter((r) => isInFlightRefund(r.status));
   // A withdrawn sale owes nothing further; otherwise the customer owes the price minus what we kept.
   const withdrawn = isWithdrawnBooking(b.status);
-  const outstanding = Math.max(0, bookingCharge(b) - netPaid);
+  const outstanding = Math.max(0, b.customerCharge - netPaid);
   // What cancelling this booking would still owe: money we hold, less anything a refund already
   // promised back. Positive means cancelling without answering this question writes off real money.
   // Margin is only knowable once the supplier cost is filled in. Until then the honest figure is
@@ -120,7 +120,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
             <div className="eyebrow">Booking workspace</div>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight">{b.bookingNo}</h1>
-              {perms.money&&<span className={`rounded-md px-3 py-1 text-sm font-semibold ${account.marginMinor===null?"bg-slate-50 text-slate-600":account.marginMinor<0?"bg-red-50 text-red-700":account.marginMinor>0?"bg-green-50 text-green-700":"bg-slate-50 text-slate-700"}`}>Expected gross profit: {account.marginMinor===null?"Cost confirmation needed":money(account.marginMinor/100)}</span>}
+              {perms.internalFinance&&<span className={`rounded-md px-3 py-1 text-sm font-semibold ${account.marginMinor===null?"bg-slate-50 text-slate-600":account.marginMinor<0?"bg-red-50 text-red-700":account.marginMinor>0?"bg-green-50 text-green-700":"bg-slate-50 text-slate-700"}`}>Expected gross profit: {account.marginMinor===null?"Cost confirmation needed":money(account.marginMinor/100)}</span>}
               {b.pnr && <span className="max-w-full break-all rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-xs text-slate-700">{hotel?"Supplier reference":"PNR"} {b.pnr}</span>}
               <Status tone={urgent ? "danger" : warn ? "warning" : statusTone(b.status)}>{enumLabel(b.status)}</Status>
               {refundsInFlight.length > 0
@@ -135,7 +135,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
           </div>
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
             <AuditTrailLink entity="Booking" entityId={b.id} allowed={perms.audit} />
-            {perms.edit && !withdrawn && !b.reissueOf && !b.tickets.length && (hotel ? <RecordEditor title="Edit hotel stay" buttonLabel="Edit hotel stay" endpoint={`/api/bookings/${b.id}`} values={{hotelName:b.hotelName,hotelCheckIn:b.hotelCheckIn?.slice(0,10)??"",hotelCheckOut:b.hotelCheckOut?.slice(0,10)??"",pnr:b.pnr,sector:b.sector,supplierId:b.supplierId??"",gdsSource:b.gdsSource,...(perms.record&&perms.money&&!b.payments.length?{fare:b.fare,taxes:b.taxes,markup:b.markup,serviceFee:b.serviceFee,supplierCost:b.supplierCost}:{})}} fields={[{key:"hotelName",label:"Hotel name",maxLength:200},{key:"hotelCheckIn",label:"Check-in date",type:"date"},{key:"hotelCheckOut",label:"Check-out date",type:"date"},{key:"pnr",label:"Supplier confirmation reference",maxLength:100},{key:"sector",label:"Destination"},{key:"supplierId",label:"Supplier",type:"select",options:[{value:"",label:"No supplier linked"},...suppliers.map(s=>({value:s.id,label:s.name}))]},{key:"gdsSource",label:"Booking source"},...(perms.record&&perms.money&&!b.payments.length?[{key:"fare",label:"Room charge",type:"number" as const},{key:"taxes",label:"Taxes",type:"number" as const},{key:"markup",label:"Markup",type:"number" as const},{key:"serviceFee",label:"Service fee",type:"number" as const},{key:"supplierCost",label:"Supplier cost",type:"number" as const}]:[])]}/> : <RecordEditor title="Edit booking" buttonLabel="Edit booking" endpoint={`/api/bookings/${b.id}`} values={{pnr:b.pnr,airline:b.airline,sector:b.sector,flightNo:b.flightNo,gdsSource:b.gdsSource,supplierId:b.supplierId??"",travelDate:b.travelDate?.slice(0,10)??"",travelEndDate:b.travelEndDate?.slice(0,10)??"",travelScope:b.travelScope,passportValidityMonths:b.passportValidityMonths??0,requirementsNote:b.requirementsNote??"",ticketingDeadline:b.ticketingDeadline?new Date(new Date(b.ticketingDeadline).getTime()-new Date(b.ticketingDeadline).getTimezoneOffset()*60000).toISOString().slice(0,16):"",fare:b.fare,taxes:b.taxes,markup:b.markup,serviceFee:b.serviceFee,supplierCost:b.supplierCost}} fields={[{key:"pnr",label:"Actual PNR"},{key:"airline",label:"Airline"},{key:"sector",label:"Route / sector"},{key:"flightNo",label:"Flight number"},{key:"gdsSource",label:"Booking source"},{key:"supplierId",label:"Supplier",type:"select",options:[{value:"",label:"No supplier linked"},...suppliers.map(s=>({value:s.id,label:s.name}))]},{key:"travelDate",label:"Travel date",type:"date"},{key:"travelEndDate",label:"Travel end date",type:"date"},{key:"passportValidityMonths",label:"Passport validity after return (months)",type:"number" as const},{key:"requirementsNote",label:"Airline / embassy requirement checked"},{key:"travelScope",label:"Travel scope",type:"select",options:[{value:"UNSPECIFIED",label:"Choose travel scope"},{value:"DOMESTIC",label:"Domestic"},{value:"INTERNATIONAL",label:"International"}]},{key:"ticketingDeadline",label:"Ticketing deadline",type:"datetime-local"},...(perms.record&&!b.tickets.length&&!b.payments.length?[{key:"fare",label:"Base fare",type:"number" as const},{key:"taxes",label:"Taxes",type:"number" as const},{key:"markup",label:"Markup",type:"number" as const},{key:"serviceFee",label:"Service fee",type:"number" as const},{key:"supplierCost",label:"Supplier cost",type:"number" as const}]:[])]}/>)}
+            {perms.edit && !withdrawn && !b.reissueOf && !b.tickets.length && (hotel ? <RecordEditor title="Edit hotel stay" buttonLabel="Edit hotel stay" endpoint={`/api/bookings/${b.id}`} values={{hotelName:b.hotelName,hotelCheckIn:b.hotelCheckIn?.slice(0,10)??"",hotelCheckOut:b.hotelCheckOut?.slice(0,10)??"",pnr:b.pnr,sector:b.sector,supplierId:b.supplierId??"",gdsSource:b.gdsSource,...(perms.record&&perms.internalFinance&&!b.payments.length?{fare:b.fare,taxes:b.taxes,markup:b.markup,serviceFee:b.serviceFee,supplierCost:b.supplierCost}:{})}} fields={[{key:"hotelName",label:"Hotel name",maxLength:200},{key:"hotelCheckIn",label:"Check-in date",type:"date"},{key:"hotelCheckOut",label:"Check-out date",type:"date"},{key:"pnr",label:"Supplier confirmation reference",maxLength:100},{key:"sector",label:"Destination"},{key:"supplierId",label:"Supplier",type:"select",options:[{value:"",label:"No supplier linked"},...suppliers.map(s=>({value:s.id,label:s.name}))]},{key:"gdsSource",label:"Booking source"},...(perms.record&&perms.internalFinance&&!b.payments.length?[{key:"fare",label:"Room charge",type:"number" as const},{key:"taxes",label:"Taxes",type:"number" as const},{key:"markup",label:"Markup",type:"number" as const},{key:"serviceFee",label:"Service fee",type:"number" as const},{key:"supplierCost",label:"Supplier cost",type:"number" as const}]:[])]}/> : <RecordEditor title="Edit booking" buttonLabel="Edit booking" endpoint={`/api/bookings/${b.id}`} values={{pnr:b.pnr,airline:b.airline,sector:b.sector,flightNo:b.flightNo,gdsSource:b.gdsSource,supplierId:b.supplierId??"",travelDate:b.travelDate?.slice(0,10)??"",travelEndDate:b.travelEndDate?.slice(0,10)??"",travelScope:b.travelScope,passportValidityMonths:b.passportValidityMonths??0,requirementsNote:b.requirementsNote??"",ticketingDeadline:b.ticketingDeadline?new Date(new Date(b.ticketingDeadline).getTime()-new Date(b.ticketingDeadline).getTimezoneOffset()*60000).toISOString().slice(0,16):"",fare:b.fare,taxes:b.taxes,markup:b.markup,serviceFee:b.serviceFee,supplierCost:b.supplierCost}} fields={[{key:"pnr",label:"Actual PNR"},{key:"airline",label:"Airline"},{key:"sector",label:"Route / sector"},{key:"flightNo",label:"Flight number"},{key:"gdsSource",label:"Booking source"},{key:"supplierId",label:"Supplier",type:"select",options:[{value:"",label:"No supplier linked"},...suppliers.map(s=>({value:s.id,label:s.name}))]},{key:"travelDate",label:"Travel date",type:"date"},{key:"travelEndDate",label:"Travel end date",type:"date"},{key:"passportValidityMonths",label:"Passport validity after return (months)",type:"number" as const},{key:"requirementsNote",label:"Airline / embassy requirement checked"},{key:"travelScope",label:"Travel scope",type:"select",options:[{value:"UNSPECIFIED",label:"Choose travel scope"},{value:"DOMESTIC",label:"Domestic"},{value:"INTERNATIONAL",label:"International"}]},{key:"ticketingDeadline",label:"Ticketing deadline",type:"datetime-local"},...(perms.record&&!b.tickets.length&&!b.payments.length?[{key:"fare",label:"Base fare",type:"number" as const},{key:"taxes",label:"Taxes",type:"number" as const},{key:"markup",label:"Markup",type:"number" as const},{key:"serviceFee",label:"Service fee",type:"number" as const},{key:"supplierCost",label:"Supplier cost",type:"number" as const}]:[])]}/>)}
 
             {perms.edit&&!hotel&&!withdrawn&&!b.reissueOf&&b.tickets.length>0&&(!b.travelDate||!b.travelEndDate||!b.pnr)&&<RecordEditor title="Complete issued booking details" buttonLabel="Complete travel details" endpoint={`/api/bookings/${b.id}`} values={{...(!b.pnr?{pnr:""}:{}),...(!b.travelDate?{travelDate:""}:{}),...(!b.travelEndDate?{travelEndDate:""}:{}),...(b.travelScope==="UNSPECIFIED"?{travelScope:"UNSPECIFIED"}:{})}} fields={[...(!b.pnr?[{key:"pnr",label:"Actual PNR"}]:[]),...(!b.travelDate?[{key:"travelDate",label:"Recorded travel date",type:"date" as const,required:true}]:[]),...(!b.travelEndDate?[{key:"travelEndDate",label:"Recorded travel end date",type:"date" as const,required:true}]:[]),...(b.travelScope==="UNSPECIFIED"?[{key:"passportValidityMonths",label:"Passport validity after return (months)",type:"number" as const},{key:"requirementsNote",label:"Airline / embassy requirement checked"},{key:"travelScope",label:"Travel scope",type:"select" as const,options:[{value:"DOMESTIC",label:"Domestic"},{value:"INTERNATIONAL",label:"International"}]}]:[])]}/>}
             {perms.edit && !withdrawn && (
@@ -221,7 +221,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
                         <td className="px-3 py-2.5">{t.passenger}</td>
                         <td className="px-3 py-2.5 text-slate-500">{dOnly(t.issueDate)}</td>
                         <td className="px-3 py-2.5 text-slate-500">{t.issuedBy ?? "—"}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{perms.money ? money(t.originalFare) : "Restricted"}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{perms.internalFinance ? money(t.originalFare) : "Restricted"}</td>
                         <td className="px-3 py-2.5"><Status tone={t.status === "OK" ? "success" : "neutral"}>{t.status}</Status></td>
                       </tr>
                     ))}
@@ -256,7 +256,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
                   <div key={r.id} className="mb-2 rounded-xl bg-slate-50 px-4 py-3 text-xs">
                     <div className="flex justify-between gap-3"><span className="font-medium">{r.reason}</span><Status tone={r.status === "DONE" ? "success" : r.status === "REJECTED" ? "danger" : "info"}>{r.status}</Status></div>
                     <div className="mt-1 text-slate-500">
-                      {perms.money ? <>fare diff {money(r.fareDifference)} · penalty {money(r.penalty)}</> : "Financial details restricted"}{r.supplier ? ` · via ${r.supplier}` : ""}
+                      {perms.internalFinance ? <>fare diff {money(r.fareDifference)} · penalty {money(r.penalty)}</> : "Financial details restricted"}{r.supplier ? ` · via ${r.supplier}` : ""}
                       {r.reissuedBooking && <> · <Link href={`/ticketing/${r.reissuedBooking}`} className="text-teal-700 hover:underline">reissued booking</Link></>}
                     </div>
                   </div>
@@ -266,7 +266,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
           </section>}
 
           <section className="panel p-5">
-            <h2 id="booking-money" tabIndex={-1} className="mb-4 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Payments{perms.money ? ` · ${money(netPaid)} net received against ${money(bookingCharge(b))}${refunded > 0 ? ` · ${money(refunded)} refunded` : ""}` : ""}</h2>
+            <h2 id="booking-money" tabIndex={-1} className="mb-4 text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Payments{perms.money ? ` · ${money(netPaid)} net received against ${money(b.customerCharge)}${refunded > 0 ? ` · ${money(refunded)} refunded` : ""}` : ""}</h2>
             {!perms.money ? <div className="text-sm text-slate-500">Receipts are restricted for your role.</div> : b.payments.length ? (
               <div className="divide-y divide-slate-100">
                 {b.payments.map((p) => (
@@ -304,10 +304,10 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
         <aside className="min-w-0 space-y-5">
           {WITHDRAWING.includes(b.status) && <section className="panel space-y-2.5 p-5">
             <h2 className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">Cancellation settlement</h2>
-            {!perms.money ? <p className="text-xs text-slate-500">Settlement amounts are restricted for your role.</p> : b.cancellationSupplierCharge === null || b.cancellationAgencyFee === null ? <p className="text-xs leading-5 text-amber-800">Legacy cancellation: supplier charges and agency fees were not recorded. Do not infer a zero charge or profit from this record; ask accounts to reconcile the terms.</p> : <>
+            {!perms.money ? <p className="text-xs text-slate-500">Settlement amounts are restricted for your role.</p> : !perms.internalFinance ? <KV k="Customer cancellation charge" v={money(b.customerCharge)} /> : b.cancellationSupplierCharge === null || b.cancellationAgencyFee === null ? <p className="text-xs leading-5 text-amber-800">Legacy cancellation: supplier charges and agency fees were not recorded. Do not infer a zero charge or profit from this record; ask accounts to reconcile the terms.</p> : <>
               <KV k="Supplier cancellation charge" v={money(b.cancellationSupplierCharge)} />
               <KV k="Agency cancellation fee" v={money(b.cancellationAgencyFee)} />
-              <KV k="Agreed cancellation total" v={money(bookingCharge(b))} strong />
+              <KV k="Agreed cancellation total" v={money(b.customerCharge)} strong />
               <KV k="Net customer receipts" v={money(netPaid)} />
               <KV k="Refunds in progress" v={money(promisedTotal(b.refunds))} />
               <KV k="Still to collect" v={money(outstanding)} />
@@ -317,7 +317,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
           </section>}
           <section className="panel space-y-2.5 p-5">
             <h2 id="booking-pricing" tabIndex={-1} className="text-micro font-semibold uppercase tracking-[.12em] text-slate-500">{withdrawn ? "Original fare breakdown (historical)" : "Fare breakdown"}</h2>
-            {perms.money ? <>
+            {perms.internalFinance ? <>
               <KV k={hotel?"Room charge":"Base fare"} v={money(b.fare)} />
               <KV k={b.reissueOf ? "Tax difference" : "Taxes"} v={money(b.taxes)} />
               {b.reissueOf&&<><KV k="Airline change fee" v={money(b.airlineChangeFee)}/><KV k="No-show fee" v={money(b.noShowFee)}/></>}
@@ -327,7 +327,7 @@ export default function BookingView({ b, perms, suppliers, passengerOptions }: {
               <KV k="Supplier cost" v={costKnown ? money(b.supplierCost) : b.supplierCost > 0 ? `${money(b.supplierCost)} · not confirmed` : "Not entered"} />
               {!withdrawn && <KV k={costKnown ? "Known-cost booking margin" : "Recorded markup & service fee"} v={money(margin)} />}
               {!withdrawn && !costKnown && <p className="text-small leading-4 text-slate-500">{b.supplierCost > 0 ? "Confirm this supplier cost to see the profit on this booking." : "Supplier cost is not recorded. Markup and service fees alone do not establish the booking margin or net profit."}</p>}
-            </> : <p className="text-xs text-slate-500">Fare and margin figures are restricted for your role.</p>}
+            </> : perms.money ? <KV k="Selling price" v={money(b.sellingPrice)} strong /> : <p className="text-xs text-slate-500">Internal pricing is restricted for your role.</p>}
             <KV k="Currency" v={b.currency} />
           </section>
           <section className="panel space-y-2.5 p-5">

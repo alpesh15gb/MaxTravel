@@ -1,3 +1,4 @@
+import {canViewInternalFinance} from "@/lib/finance-policy";
 import { findOnFile } from "@/lib/document-reuse";
 import { istDayKey } from "@/lib/dates";
 import CustomerEmail from "@/components/CustomerEmail";
@@ -52,7 +53,7 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
         customer: { id: vc.customer.id, name: vc.customer.name, code: vc.customer.code, phone: vc.customer.phone },
         stage: { id: vc.stage.id, key: vc.stage.key, name: vc.stage.name },
         destination: vc.destination, visaType: vc.visaType, visaCategory: vc.visaCategory,
-        supplierCost:showMoney?vc.supplierCost:null,travelEndDate:vc.travelEndDate?.toISOString()??null,travelDate: vc.travelDate?.toISOString() ?? null, intendedStay: vc.intendedStay,
+        supplierCost:canViewInternalFinance(user)&&showMoney?vc.supplierCost:null,travelEndDate:vc.travelEndDate?.toISOString()??null,travelDate: vc.travelDate?.toISOString() ?? null, intendedStay: vc.intendedStay,
         applicationDate: vc.applicationDate?.toISOString() ?? null,
         submissionDate: vc.submissionDate?.toISOString() ?? null,
         appointmentDate: vc.appointmentDate?.toISOString() ?? null,
@@ -107,6 +108,7 @@ export default async function VisaCasePage({ params }: { params: Promise<{ id: s
         reuseDocs: can(user.permissions, "document:upload"),
         record: can(user.permissions, "payment:record"),
         money: showMoney,
+        internalFinance:canViewInternalFinance(user),
       }}
     />
     {can(user.permissions,"traveller:edit")&&can(user.permissions,"sensitive:view")&&<div className="workspace-page flex flex-wrap gap-3" aria-label="Applicant passport checks">{vc.travellers.map(t=><WorkPassport key={t.travellerId} type="VISA" id={vc.id} travellerId={t.travellerId} name={t.traveller.fullName}/>)}</div>}

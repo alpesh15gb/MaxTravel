@@ -1,3 +1,4 @@
+import {canManageStaffAccess} from "@/lib/staff-access";
 import { prisma } from "@/lib/db";
 import { requirePage } from "@/lib/guard";
 import { can } from "@/lib/rbac";
@@ -20,7 +21,7 @@ export default async function EmployeesPage() {
       },
       orderBy: { employeeCode: "asc" },
     }),
-    prisma.role.findMany({ where: ["OWNER", "SUPER_ADMIN"].includes(user.role) ? {} : { key: { in: ["HR", "READ_ONLY"] } }, orderBy: { name: "asc" } }),
+    prisma.role.findMany({ orderBy: { name: "asc" } }),
     prisma.branch.findMany({ orderBy: { name: "asc" } }),
   ]);
 
@@ -44,7 +45,7 @@ export default async function EmployeesPage() {
       // Resetting somebody's password hands over their whole account, so the route only allows it for
       // an owner or super administrator. The form offers nothing else, rather than offering it and
       // refusing on submit.
-      canResetPassword={["OWNER", "SUPER_ADMIN"].includes(user.role)}
+      canManageAccess={canManageStaffAccess(user)}
     />
   );
 }

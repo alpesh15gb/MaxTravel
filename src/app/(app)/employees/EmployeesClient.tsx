@@ -22,8 +22,8 @@ type E = {
 
 const money = (n: number | null) => (n == null ? "—" : inrAmount(Math.round(n)));
 
-export default function EmployeesClient({ employees, roles, branches, defaultBranchId, canManage, canResetPassword, recoveryContext }: {
-  recoveryContext: string; employees: E[]; roles: StaffRole[]; defaultBranchId: string | null; branches: { id: string; name: string }[]; canManage: boolean; canResetPassword: boolean;
+export default function EmployeesClient({ employees, roles, branches, defaultBranchId, canManage, canManageAccess, recoveryContext }: {
+  recoveryContext: string; employees: E[]; roles: StaffRole[]; defaultBranchId: string | null; branches: { id: string; name: string }[]; canManage: boolean; canManageAccess: boolean;
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -152,7 +152,7 @@ export default function EmployeesClient({ employees, roles, branches, defaultBra
       <PageHeader
         title="Your team"
         description="Roles, access and current workloads. Salary and bank details are permission-restricted."
-        actions={canManage ? <button disabled={blocked} onClick={() => { if (!actionRef.current && !accessChanged) setModal({ mode: "create" }); }} className="btn-primary">+ New employee</button> : undefined}
+        actions={canManage && canManageAccess ? <button disabled={blocked} onClick={() => { if (!actionRef.current && !accessChanged) setModal({ mode: "create" }); }} className="btn-primary">+ New employee</button> : undefined}
       />
 
       {accessChanged && <p role="alert" className="form-error mb-5">Staff session or access changed. Reload the team page before continuing.</p>}
@@ -202,8 +202,8 @@ export default function EmployeesClient({ employees, roles, branches, defaultBra
                 </td>
                 {canManage && (
                   <td className="whitespace-nowrap px-4 text-right">
-                    <button disabled={blocked} onClick={() => { if (!actionRef.current && !accessChanged) setModal({ mode: "edit", emp: e }); }} className="mr-3 text-xs font-semibold text-teal-700 hover:underline">Edit</button>
-                    <button disabled={blocked} aria-busy={action?.attempt.id === e.id && action.phase === "saving"} onClick={() => toggleActive(e)} className="text-xs text-slate-500 hover:text-slate-900">{action?.attempt.id === e.id && action.phase === "saving" ? "Saving…" : e.active ? "Deactivate" : "Activate"}</button>
+                    {(canManageAccess || !["OWNER", "SUPER_ADMIN"].includes(e.roleKey)) && <button disabled={blocked} onClick={() => { if (!actionRef.current && !accessChanged) setModal({ mode: "edit", emp: e }); }} className="mr-3 text-xs font-semibold text-teal-700 hover:underline">Edit</button>}
+                    {canManageAccess && <button disabled={blocked} aria-busy={action?.attempt.id === e.id && action.phase === "saving"} onClick={() => toggleActive(e)} className="text-xs text-slate-500 hover:text-slate-900">{action?.attempt.id === e.id && action.phase === "saving" ? "Saving…" : e.active ? "Deactivate" : "Activate"}</button>}
                   </td>
                 )}
               </tr>
@@ -213,7 +213,7 @@ export default function EmployeesClient({ employees, roles, branches, defaultBra
       </div>
 
       {filtered.length === 0 && <div className="mt-5"><EmptyState icon="customers" title="No matching team members" description="Try another name, email or role." /></div>}
-      {modal && <EmployeeForm key={modal.mode === "edit" ? modal.emp.id : "create"} modal={modal} roles={roles} branches={branches} defaultBranchId={defaultBranchId} hrVisible={modal.mode === "edit" ? modal.emp.hrVisible : showHr} canResetPassword={canResetPassword} onClose={closeForm} action={action} checkCurrent={checkCurrent} writeEmployee={writeEmployee} finishReview={finishReview} />}
+      {modal && <EmployeeForm key={modal.mode === "edit" ? modal.emp.id : "create"} modal={modal} roles={roles} branches={branches} defaultBranchId={defaultBranchId} hrVisible={modal.mode === "edit" ? modal.emp.hrVisible : showHr} canManageAccess={canManageAccess} onClose={closeForm} action={action} checkCurrent={checkCurrent} writeEmployee={writeEmployee} finishReview={finishReview} />}
       {toast}
     </div>
   );
@@ -255,11 +255,11 @@ function StaffRecovery({ action, checkCurrent, focusOnChange = false }: { action
   </section>;
 }
 
-function EmployeeForm({ modal, roles, branches, defaultBranchId, hrVisible, canResetPassword, onClose, action, checkCurrent, writeEmployee, finishReview }: {
+function EmployeeForm({ modal, roles, branches, defaultBranchId, hrVisible, canManageAccess, onClose, action, checkCurrent, writeEmployee, finishReview }: {
   action: StaffAction | null; checkCurrent: () => void; finishReview: (refresh?: boolean) => void;
   writeEmployee: (body: Record<string, unknown>, attempt: EmployeeAttempt) => Promise<string | null>;
   modal: { mode: "create" } | { mode: "edit"; emp: E };
-  roles: StaffRole[]; defaultBranchId: string | null; branches: { id: string; name: string }[]; hrVisible: boolean; canResetPassword: boolean; onClose: () => void;
+  roles: StaffRole[]; defaultBranchId: string | null; branches: { id: string; name: string }[]; hrVisible: boolean; canManageAccess: boolean; onClose: () => void;
 }) {
   const emp = modal.mode === "edit" ? modal.emp : null;
   const [form, setForm] = useState({
@@ -303,17 +303,17 @@ function EmployeeForm({ modal, roles, branches, defaultBranchId, hrVisible, canR
         {!action && err && <div ref={errorFeedback} tabIndex={-1} role="alert" className="form-error">{err}</div>}
         <fieldset disabled={!!action} className="space-y-4">
         <Field label="Full name *"><input ref={firstField} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-        <Field label="Email *"><input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
+        <Field label="Email *"><input type="email" required readOnly={!canManageAccess} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
         <Field label="Phone"><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
         <div className="form-grid">
           <Field label="Role *">
-            <select required value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })}>
+            <select required disabled={!canManageAccess} value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })}>
               <option value="">Choose a role</option>
               {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </Field>
           <Field label={needsBranch ? "Branch *" : "Branch"} hint={needsBranch ? "Choose the branch whose cases this person will handle." : undefined}>
-            <select required={needsBranch} value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
+            <select required={needsBranch} disabled={!canManageAccess} value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
               <option value="">No branch</option>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
@@ -325,14 +325,14 @@ function EmployeeForm({ modal, roles, branches, defaultBranchId, hrVisible, canR
             <input type="password" minLength={12} maxLength={72} autoComplete="new-password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           </Field>
         )}
-        {emp && canResetPassword && (
+        {emp && canManageAccess && (
           <Field label="Reset password" hint="Leave blank to keep the current password.">
             <input type="password" minLength={12} maxLength={72} autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           </Field>
         )}
-        {emp && !canResetPassword && (
+        {emp && !canManageAccess && (
           <p className="text-xs leading-6 text-slate-500">
-            Profile details only. Changing another person&rsquo;s password is an owner or super administrator task — ask
+            Profile and HR details only. Login email, role, branch, active status and password changes require an owner or super administrator — ask
             one of them, or use your own change-password screen for your own account.
           </p>
         )}

@@ -1,3 +1,5 @@
+import {canViewInternalFinance} from "@/lib/finance-policy";
+import {bookingCharge} from "@/lib/receivables";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePage, canTouchRecord } from "@/lib/guard";
@@ -36,6 +38,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
   // Fare, receipts and refunds are financial position: hidden without payment:view, like the
   // list-page balance and Customer 360. Masking happens here so the client never receives them.
   const showMoney = can(user.permissions, "payment:view");
+  const internalFinance = showMoney && canViewInternalFinance(user);
 
   if(!["FLIGHT","HOTEL"].includes(b.product))return <><GenericBooking key={b.id} b={{id:b.id,bookingNo:b.bookingNo,product:b.product,customerName:b.customer.name,customerId:b.customerId,serviceCaseId:b.serviceCaseId,serviceCaseNo:b.serviceCase?.caseNo??null,status:b.status,sector:b.sector,serviceDescription:b.serviceDescription,pnr:b.pnr,travelDate:b.travelDate?.toISOString()??null,travelEndDate:b.travelEndDate?.toISOString()??null,travelScope:b.travelScope,hotelName:b.hotelName,hotelCheckIn:b.hotelCheckIn?.toISOString()??null,hotelCheckOut:b.hotelCheckOut?.toISOString()??null,updatedAt:b.updatedAt.toISOString(),travellers:b.travellers.map(t=>t.traveller.fullName),edit:b.gdsSource!=="TRIPJACK_API"&&can(user.permissions,"ticketing:edit")}}/><div className="workspace-page"><BookingCustody key={b.id+":"+b.updatedAt.toISOString()} bookingId={b.id}/></div></>;
   return (
@@ -46,16 +49,16 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
         serviceCase: b.serviceCase, id: b.id, revision:b.updatedAt.toISOString(),bookingNo: b.bookingNo, product:b.product, hotelName:b.hotelName, hotelCheckIn:b.hotelCheckIn?.toISOString()??null,hotelCheckOut:b.hotelCheckOut?.toISOString()??null, supplierId:b.supplierId,
         customer: { id: b.customer.id, name: b.customer.name, code: b.customer.code, phone: b.customer.phone },
         pnr: b.pnr, airline: b.airline, gdsSource: b.gdsSource, supplier: b.supplier?.name ?? null,
-        cancellationSupplierCharge: showMoney ? b.cancellationSupplierCharge : null,
-        cancellationAgencyFee: showMoney ? b.cancellationAgencyFee : null,
+        cancellationSupplierCharge: internalFinance ? b.cancellationSupplierCharge : null,
+        cancellationAgencyFee: internalFinance ? b.cancellationAgencyFee : null,
         cancellationReason: b.cancellationReason,
         status: b.status, sector: b.sector, flightNo: b.flightNo,
         travelEndDate:b.travelEndDate?.toISOString()??null,travelDate: b.travelDate?.toISOString() ?? null,
         bookingDate: b.bookingDate.toISOString(),
         ticketingDeadline: b.ticketingDeadline?.toISOString() ?? null,
-        airlineChangeFee:showMoney?b.airlineChangeFee:0,noShowFee:showMoney?b.noShowFee:0,fare: showMoney ? b.fare : 0, taxes: showMoney ? b.taxes : 0, markup: showMoney ? b.markup : 0,
-        serviceFee: showMoney ? b.serviceFee : 0,
-        sellingPrice: showMoney ? b.sellingPrice : 0, supplierCost: showMoney ? b.supplierCost : 0,supplierCostConfirmed:b.supplierCostConfirmed,travelScope:b.travelScope,passportValidityMonths:b.passportValidityMonths,requirementsNote:b.requirementsNote, currency: b.currency,
+        airlineChangeFee:internalFinance?b.airlineChangeFee:0,noShowFee:internalFinance?b.noShowFee:0,fare: internalFinance ? b.fare : 0, taxes: internalFinance ? b.taxes : 0, markup: internalFinance ? b.markup : 0,
+        serviceFee: internalFinance ? b.serviceFee : 0,
+        customerCharge:showMoney?bookingCharge(b):0,sellingPrice: showMoney ? b.sellingPrice : 0, supplierCost: internalFinance ? b.supplierCost : 0,supplierCostConfirmed:internalFinance&&b.supplierCostConfirmed,travelScope:b.travelScope,passportValidityMonths:b.passportValidityMonths,requirementsNote:b.requirementsNote, currency: b.currency,
         owner: b.owner.name, branch: b.branch.name,
         travellers: b.travellers.map((bt) => ({
           id: bt.traveller.id, fullName: bt.traveller.fullName, relation: bt.traveller.relation,
@@ -66,7 +69,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
         tickets: b.tickets.map((t) => ({
           id: t.id, travellerId: t.travellerId, ticketNo: t.ticketNo, passenger: t.passenger,
           issueDate: t.issueDate?.toISOString() ?? null, issuedBy: issuerNames.get(t.issuedBy ?? "") ?? t.issuedBy,
-          originalFare: showMoney ? t.originalFare : 0, status: t.status,
+          originalFare: internalFinance ? t.originalFare : 0, status: t.status,
         })),
         payments: showMoney ? b.payments.map((p) => ({ id: p.id, receiptNo: p.receiptNo, amount: p.amount, mode: p.mode, receivedOn: p.receivedOn.toISOString() })) : [],
         refunds: (showMoney ? b.refunds : []).map((r) => ({
@@ -74,7 +77,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
           requestedOn: r.requestedOn.toISOString(), paidOn: r.paidOn?.toISOString() ?? null,
         })),
         reissues: [...b.reissueChain, ...b.reissuesIssued].map((r) => ({
-          id: r.id, reason: r.reason, fareDifference: showMoney ? r.fareDifference : 0, penalty: showMoney ? r.penalty : 0,
+          id: r.id, reason: r.reason, fareDifference: internalFinance ? r.fareDifference : 0, penalty: internalFinance ? r.penalty : 0,
           supplier: r.supplier?.name ?? null, status: r.status,
           reissuedBooking: r.reissuedBookingId,
           createdAt: r.createdAt.toISOString(),
@@ -90,6 +93,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
         invoice: b.currency==="INR"&&b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "invoice:create"),
         reissue: b.currency==="INR"&&b.gdsSource !== "TRIPJACK_API" && can(user.permissions, "reissue:manage"),
         money: showMoney,
+        internalFinance,
         // Cancelling a sale that still holds customer money raises a refund, so it needs refund:manage.
         refund: b.currency==="INR"&&can(user.permissions, "refund:manage"),
       }}

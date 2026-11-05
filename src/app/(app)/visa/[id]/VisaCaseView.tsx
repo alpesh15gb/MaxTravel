@@ -54,7 +54,7 @@ type VC = {
 };
 
 type Stage = { id: string; key: string; name: string; seq: number };
-type Perms = {customerMaster:boolean; audit: boolean; edit: boolean; verify: boolean; reuseDocs: boolean; record: boolean; money: boolean };
+type Perms = {customerMaster:boolean; audit: boolean; edit: boolean; verify: boolean; reuseDocs: boolean; record: boolean; internalFinance: boolean; money: boolean };
 
 // Document states use the same tones as every other status badge in the app.
 const docTone = (s: string): Tone => {
@@ -329,7 +329,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
       </div>
 
       {showEdit && (
-        <EditCase vc={vc} suppliers={suppliers} canMoney={perms.money} onClose={() => setShowEdit(false)} />
+        <EditCase vc={vc} suppliers={suppliers} canMoney={perms.money && perms.record && perms.internalFinance} onClose={() => setShowEdit(false)} />
       )}
       {rejectTarget && <ActionDialog title={`Reject ${rejectTarget.docType}?`} description="Record what needs replacing. This does not send a message; contact the customer to request a replacement." fieldLabel="Reason for rejection" fieldType="textarea" required confirmLabel="Reject document" tone="danger" busy={busy} error={reviewError} onClose={() => { if (!busy) setRejectTarget(null); }} onConfirm={async reason => { if (await post("/api/documents/verify", { documentId: rejectTarget.id, decision: "REJECTED", reason }, "Document rejected. Contact the customer for a replacement.")) setRejectTarget(null); }} />}
       {toast}

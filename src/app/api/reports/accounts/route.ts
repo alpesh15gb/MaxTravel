@@ -1,3 +1,4 @@
+import {canViewInternalFinance} from "@/lib/finance-policy";
 import { prisma } from "@/lib/db";
 import { requireSession,assertCan,ApiError,jsonError } from "@/lib/guard";
 import { accountCustomerScope,buildAccountReport } from "@/lib/account-reports";
@@ -10,7 +11,7 @@ export async function GET(req:Request){try{
  if(params.get("options")==="1"){
   const [customers,suppliers,cutover,bookings,cases]=await Promise.all([
    prisma.customer.findMany({where:accountCustomerScope(user),select:{id:true,name:true,code:true},orderBy:{name:"asc"}}),
-   user.accessMode==="ALL"&&user.permissions.includes("supplier:view")?prisma.supplier.findMany({select:{id:true,name:true},orderBy:{name:"asc"}}):Promise.resolve([]),
+   canViewInternalFinance(user)&&user.accessMode==="ALL"&&user.permissions.includes("supplier:view")?prisma.supplier.findMany({select:{id:true,name:true},orderBy:{name:"asc"}}):Promise.resolve([]),
    prisma.settings.findUnique({where:{key:"financialJournal.cutover"}}),
    prisma.booking.findMany({where:{customer:{is:accountCustomerScope(user)}},select:{status:true,owner:{select:{id:true,name:true}}},distinct:["ownerId","status"]}),
    prisma.visaCase.findMany({where:{customer:{is:accountCustomerScope(user)}},select:{stage:{select:{name:true}},owner:{select:{id:true,name:true}}},distinct:["ownerId","stageId"]}),

@@ -136,7 +136,7 @@ export async function POST(req: Request) {
       const booking = await tx.booking.update({ where: { id: bookingId }, data: { status, travelScope, ...cancellation } });
       await tx.activity.create({ data: { customerId: b.customerId, actorId: user.id, type: "BOOKING", summary: `${b.bookingNo} → ${enumLabel(status)}`, link: `/ticketing/${bookingId}` } });
       await transactionAudit(tx, user, "STATUS", "Booking", bookingId, `${b.status} → ${status}${cancellation ? ` · supplier cancellation charge ${cancellation.cancellationSupplierCharge} · agency fee ${cancellation.cancellationAgencyFee} · ${cancellation.cancellationReason}` : ""}${refundNo ? ` · refund ${refundNo} requested` : ""}`);
-      return { booking, refundNo };
+      return { booking: { id: booking.id, status: booking.status }, refundNo };
     });
     return Response.json({ ok: true, ...result });
   } catch (e) { if(e instanceof z.ZodError)return Response.json({error:e.issues.map(i=>i.message).join(" ")},{status:400});return jsonError(e); }
