@@ -512,8 +512,8 @@ function Payments({ data }: { data: Data }) {
           {data.invoices.map((i) => (
             <tr key={i.id} className="border-t border-slate-100 bg-slate-50/60">
               <td className="px-4 py-3 font-mono text-xs"><Link href={`/payments?focus=${i.id}`} className="text-teal-700 hover:underline">{i.invoiceNo} · Open invoice</Link></td>
-              <td className="px-4 py-3 tabular-nums">{money(i.amount)} <span className="text-xs text-slate-500">/ paid {money(i.amountPaid)}</span></td>
-              <td className="px-4 py-3"><Status tone={toneOf(i.status)}>{i.status}</Status></td>
+              <td className="px-4 py-3 tabular-nums">{money(i.amount)} <span className="text-xs text-slate-500">{i.status === "CANCELLED" ? "· booking cancelled" : `/ paid ${money(i.amountPaid)}`}</span></td>
+              <td className="px-4 py-3"><Status tone={toneOf(i.status)}>{enumLabel(i.status)}</Status></td>
               <td className="max-w-52 truncate px-4 py-3 text-xs text-slate-500">{i.description ?? "—"}</td>
               <td className="px-4 py-3 text-xs text-slate-500">due {dOnly(i.dueDate)}</td>
             </tr>

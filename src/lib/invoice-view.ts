@@ -21,7 +21,8 @@ export function invoiceView(i: InvoiceViewInput): InvoiceView {
   else if (i.visaCase) due = balanceOf(i.visaCase.sellingPrice, i.visaCase.amountReceived);
   if (due === null) return { paid: i.amountPaid, balance: Math.max(0, round2(i.amount - i.amountPaid)), status: i.status };
   const balance = Math.min(i.amount, due), paid = round2(i.amount - balance);
-  if (i.booking && isWithdrawnBooking(i.booking.status)) return { paid, balance, status: "CANCELLED" };
+  // The invoice was replaced by the cancellation settlement, so no "paid" figure applies to it.
+  if (i.booking && isWithdrawnBooking(i.booking.status)) return { paid: 0, balance, status: "CANCELLED" };
   return { paid, balance, status: balance <= 0 ? "PAID" : paid > 0 ? "PARTIAL" : "UNPAID" };
 }
 

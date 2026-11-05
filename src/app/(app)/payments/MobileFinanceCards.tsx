@@ -11,7 +11,7 @@ type CreditNote = { id: string; creditNoteNo: string; amount: number };
 type Invoice = {
   collectionBlocked: boolean; id: string; invoiceNo: string; documentKind: string; creditNote: CreditNote | null;
   customer: string; customerId: string; bookingId: string | null; visaCaseId: string | null;
-  description: string | null; amount: number; amountPaid: number; status: string;
+  description: string | null; amount: number; amountPaid: number; balance: number; status: string;
   dueDate: string | null;
 };
 type Receipt = {
@@ -26,7 +26,7 @@ export function InvoiceCards({ rows, query, canCredit, canRecord, canAudit, focu
 }) {
   const visible = rows.filter(invoice => `${invoice.invoiceNo} ${invoice.customer} ${invoice.description ?? ""}`.toLowerCase().includes(query.toLowerCase()));
   return <div role="list" aria-label="Invoices and balances" className="grid gap-3 md:hidden">{visible.map(invoice => {
-    const balance = invoice.status === "CREDITED" ? 0 : Math.max(0, invoice.amount - invoice.amountPaid);
+    const balance = invoice.balance;
     return <article role="listitem" data-invoice-id={invoice.id} key={invoice.id} className={`panel p-4 ${focus === invoice.id ? "border-teal-300 bg-teal-50/40" : ""}`}>
       <div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="font-semibold">{invoice.invoiceNo}</span>{invoice.documentKind === "TAX_INVOICE" && <span className="ml-2 rounded-full bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-800">Tax invoice</span>}<Link href={`/masters/${invoice.customerId}`} className="mt-1 block text-sm text-teal-700">{invoice.customer}</Link></div><Status tone={invoice.status === "PAID" ? "success" : invoice.status === "PARTIAL" ? "warning" : "neutral"}>{enumLabel(invoice.status)}</Status></div>
       <p className="mt-3 break-words text-sm text-slate-600">{invoice.description || "No description"}</p>{invoice.collectionBlocked&&<p className="mt-2 text-xs text-amber-800">Historical invoice · trip closed. Review cancellation charges on the booking; collection is blocked here.</p>}

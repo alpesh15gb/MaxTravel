@@ -61,7 +61,7 @@ export default async function PrintDocumentPage({ searchParams }: { searchParams
             {tax&&<tr><td className="border border-slate-300 px-3 py-2">Taxable subtotal</td><td className="border border-slate-300 px-3 py-2">{money(tax.subtotalMinor/100)}</td></tr>}
             {tax?.components.map((component,index)=><tr key={`${component.label}-${index}`}><td className="border border-slate-300 px-3 py-2">{component.label} ({(component.rateBasisPoints/100).toFixed(2)}%)</td><td className="border border-slate-300 px-3 py-2">{money(component.amountMinor/100)}</td></tr>)}
             <tr><td className="border border-slate-300 px-3 py-2 font-bold">{tax?"Total": "Amount"}</td><td className="border border-slate-300 px-3 py-2 font-bold">{money(invoice.amount)}</td></tr>
-            <tr><td className="border border-slate-300 px-3 py-2">Received</td><td className="border border-slate-300 px-3 py-2">{money(position.paid)}</td></tr>
+            {position.status !== "CANCELLED" && <tr><td className="border border-slate-300 px-3 py-2">Received</td><td className="border border-slate-300 px-3 py-2">{money(position.paid)}</td></tr>}
             <tr><td className="border border-slate-300 px-3 py-2 font-bold">Balance due</td><td className="border border-slate-300 px-3 py-2 font-bold">{money(balance)}</td></tr>
           </tbody>
         </table>

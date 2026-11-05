@@ -14,7 +14,7 @@ assert.deepEqual(invoiceView({ ...inv, booking: booking({ payments: [{ amount: 6
 assert.equal(invoiceView({ ...inv, amount: 10000, booking: booking({}), visaCase: null }).balance, 10000);
 // Cancelled booking: the invoice is replaced by the cancellation settlement.
 const cancelled = booking({ status: "CANCELLED", cancellationSupplierCharge: 5000, cancellationAgencyFee: 1000, refunds: [{ amount: 14000, status: "PAID" }] });
-assert.deepEqual(invoiceView({ ...inv, booking: cancelled, visaCase: null }), { paid: 60000, balance: 0, status: "CANCELLED" });
+assert.deepEqual(invoiceView({ ...inv, booking: cancelled, visaCase: null }), { paid: 0, balance: 0, status: "CANCELLED" });
 // Linked to a visa.
 assert.deepEqual(invoiceView({ ...inv, amount: 8000, booking: null, visaCase: { sellingPrice: 8000, amountReceived: 3000 } }), { paid: 3000, balance: 5000, status: "PARTIAL" });
 console.log("Invoice view passed.");
