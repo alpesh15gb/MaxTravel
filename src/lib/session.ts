@@ -84,7 +84,7 @@ export async function getServerSession(): Promise<SessionUser | null> {
     const role = user.role.key as RoleKey;
     const mfa = await prisma.staffMfa.findUnique({where:{userId:user.id},select:{enabled:true}});
     const delegated = ROLE_ACCESS[role]==='ASSIGNED' ? await prisma.task.findMany({where:{unassigned:false,OR:[{ownerId:user.id},{reviewerId:user.id}]},select:{bookingId:true,visaCaseId:true,serviceCaseId:true,serviceWork:{select:{service:true}}}}) : [];
-    const quoteCases=delegated.filter(t=>t.serviceCaseId&&["FLIGHT","HOTEL"].includes(t.serviceWork?.service??""));
+    const quoteCases=delegated.filter(t=>t.serviceCaseId&&["FLIGHT","HOTEL","INSURANCE"].includes(t.serviceWork?.service??""));
     const quotes=ROLE_ACCESS[role]==="ASSIGNED"&&ROLE_PERMISSIONS[role].includes("ticketing:view")?await prisma.salesLead.findMany({where:{OR:[{serviceCase:{ownerId:user.id}},...quoteCases.map(t=>({serviceCaseId:t.serviceCaseId,product:t.serviceWork!.service}))]},select:{id:true}}):[];
     // A service assignment grants its work records, not the customer's entire master or other services.
     const bookingAssignments=delegated.filter(t=>t.serviceCaseId&&["FLIGHT","HOTEL","STAY","BUS","TRAIN","INSURANCE"].includes(t.serviceWork?.service??""));

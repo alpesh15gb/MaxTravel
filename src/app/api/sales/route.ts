@@ -20,7 +20,7 @@ class WithdrawalRevisionConflict extends ApiError {
  constructor(){super(409,"This withdrawal was not applied because the enquiry or proposal changed. Refresh and review the exact version and any customer acceptance before deciding whether to withdraw it.");}
 }
 const noStore = {"Cache-Control":"private, no-store"};
-const leadInput=z.object({customerId:z.string().min(1),title:z.string().trim().min(1).max(200),source:z.string().trim().min(1).max(100),product:z.enum(["FLIGHT","HOTEL"]),serviceCaseId:z.string().max(200).optional(),budgetMinor:z.number().int().min(0).max(2000000000),destination:z.string().max(200).optional(),travelDate:z.string().datetime().nullable().optional(),followUpAt:z.string().datetime().nullable().optional(),notes:z.string().max(4000).optional()}).strict();
+const leadInput=z.object({customerId:z.string().min(1),title:z.string().trim().min(1).max(200),source:z.string().trim().min(1).max(100),product:z.enum(["FLIGHT","HOTEL","INSURANCE"]),serviceCaseId:z.string().max(200).optional(),budgetMinor:z.number().int().min(0).max(2000000000),destination:z.string().max(200).optional(),travelDate:z.string().datetime().nullable().optional(),followUpAt:z.string().datetime().nullable().optional(),notes:z.string().max(4000).optional()}).strict();
 export async function GET(req:Request){try{
  const user=await requireSession("customer:view");
  const params=new URL(req.url).searchParams;

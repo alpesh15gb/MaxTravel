@@ -21,7 +21,7 @@ export default function NewTrip({ needs, initial, canAddCustomer }: { needs: Nee
   const [query, setQuery] = useState(""), [results, setResults] = useState<Customer[]>([]), [searching, setSearching] = useState(true);
   const [adding, setAdding] = useState(false), [form, setForm] = useState({ name: "", phone: "", email: "", city: "" });
   const [duplicate, setDuplicate] = useState<Customer | null>(null), allowDuplicate = useRef(false);
-  const [need, setNeed] = useState<NeedId | null>(null), [title, setTitle] = useState(""), [enquiryFor, setEnquiryFor] = useState<"FLIGHT" | "HOTEL">("FLIGHT");
+  const [need, setNeed] = useState<NeedId | null>(null), [title, setTitle] = useState(""), [enquiryFor, setEnquiryFor] = useState<"FLIGHT" | "HOTEL" | "INSURANCE">("FLIGHT");
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
 
   useEffect(() => {
@@ -96,7 +96,7 @@ export default function NewTrip({ needs, initial, canAddCustomer }: { needs: Nee
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5" role="radiogroup" aria-labelledby="what">
         {needs.map(id => { const n = NEEDS[id]; return <button key={id} type="button" role="radio" aria-checked={need === id} disabled={!customer} onClick={() => setNeed(id)} className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-left ${need === id ? "border-teal-700 bg-teal-50 ring-2 ring-teal-700" : "border-slate-200 hover:border-teal-600"}`}><Icon name={n.icon} size={20} className="text-teal-700" /><strong className="text-sm">{n.label}</strong><span className="text-xs text-slate-500">{n.hint}</span></button>; })}
       </div>
-      {customer && need === "ENQUIRY" && <Field label="Enquiry for" hint="The quote will be for this service. You can add other services to the trip later."><select value={enquiryFor} onChange={e => setEnquiryFor(e.target.value === "HOTEL" ? "HOTEL" : "FLIGHT")}><option value="FLIGHT">Flight</option><option value="HOTEL">Hotel</option></select></Field>}
+      {customer && need === "ENQUIRY" && <Field label="Enquiry for" hint="The quote will be for this service. You can add other services to the trip later."><select value={enquiryFor} onChange={e => setEnquiryFor(e.target.value === "HOTEL" ? "HOTEL" : e.target.value === "INSURANCE" ? "INSURANCE" : "FLIGHT")}><option value="FLIGHT">Flight</option><option value="HOTEL">Hotel</option><option value="INSURANCE">Insurance</option></select></Field>}
       {customer && need && <Field label="Trip name (optional)" hint={`If left empty: ${NEEDS[need].label} – ${customer.name}`}><input maxLength={200} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Dubai family holiday, Dec" /></Field>}
       <p className="text-sm text-slate-600">You can add more services (hotel, visa, insurance…) to the same trip afterwards.</p>
     </section>

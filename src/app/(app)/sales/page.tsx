@@ -7,7 +7,7 @@ export default async function Page({searchParams}:{searchParams:Promise<{lead?:s
  const user=await requirePage("customer:view");
  const {lead,action,case:caseId}=await searchParams;
  const journey=await caseEntryContext(prisma,user,caseId);
- const salesService=journey?(await prisma.serviceWork.findFirst({where:{caseId:journey.id,service:{in:["FLIGHT","HOTEL"]}},select:{service:true},orderBy:{createdAt:"asc"}}))?.service:null;
+ const salesService=journey?(await prisma.serviceWork.findFirst({where:{caseId:journey.id,service:{in:["FLIGHT","HOTEL","INSURANCE"]}},select:{service:true},orderBy:{createdAt:"asc"}}))?.service:null;
  const customer=journey?await prisma.customer.findFirst({where:{id:journey.customerId},select:{id:true,name:true,code:true}}):null;
  if(journey&&(!customer||!salesService||journey.closedAt))redirect(`/trips/${journey.id}`);
  const initialLeadId=typeof lead==="string"&&/^[A-Za-z0-9_-]{1,200}$/.test(lead)?lead:undefined;
