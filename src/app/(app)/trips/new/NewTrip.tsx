@@ -18,7 +18,7 @@ const NEEDS: Record<NeedId, { label: string; hint: string; icon: IconName; servi
 export default function NewTrip({ needs, initial, canAddCustomer }: { needs: NeedId[]; initial: Customer | null; canAddCustomer: boolean }) {
   const router = useRouter(), tripKey = useRef(""), customerKey = useRef("");
   const [customer, setCustomer] = useState<Customer | null>(initial);
-  const [query, setQuery] = useState(""), [results, setResults] = useState<Customer[]>([]), [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState(""), [results, setResults] = useState<Customer[]>([]), [searching, setSearching] = useState(true);
   const [adding, setAdding] = useState(false), [form, setForm] = useState({ name: "", phone: "", email: "", city: "" });
   const [duplicate, setDuplicate] = useState<Customer | null>(null), allowDuplicate = useRef(false);
   const [need, setNeed] = useState<NeedId | null>(null), [title, setTitle] = useState("");
@@ -27,8 +27,8 @@ export default function NewTrip({ needs, initial, canAddCustomer }: { needs: Nee
   useEffect(() => {
     if (customer || adding) return;
     const c = new AbortController();
+    setSearching(true);
     const t = setTimeout(() => {
-      setSearching(true);
       fetch(`/api/cases?q=${encodeURIComponent(query.trim())}`, { signal: c.signal })
         .then(async r => { const d = await r.json(); if (!r.ok) throw Error(d.error); setResults(d.customers); })
         .catch(e => { if (!c.signal.aborted) setError(e instanceof Error ? e.message : "Customer search failed."); })

@@ -216,7 +216,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
                             {d.expiryDate ? ` · exp ${dOnly(d.expiryDate)}` : ""}
                           </span>
                           <span className="ml-auto flex flex-wrap items-center gap-1.5">
-                            {perms.reuseDocs && ["REQUIRED", "REQUESTED", "REJECTED", "REUPLOAD_REQUESTED"].includes(d.status) && <button type="button" disabled={busy} onClick={() => setUploadTarget(d)} className="btn-primary min-h-9 px-3 py-2 text-xs">{d.hasFile ? "Replace file" : "Upload document"}</button>}
+                            {perms.reuseDocs && ["REQUIRED", "REQUESTED", "REJECTED", "REUPLOAD_REQUESTED"].includes(d.status) && <button type="button" disabled={busy} onClick={() => setUploadTarget(d)} className="btn-secondary min-h-9 px-3 py-2 text-xs">{d.hasFile ? "Replace file" : "Upload document"}</button>}
                             {perms.reuseDocs && !d.hasFile && d.onFile && <button type="button" disabled={busy} onClick={() => post("/api/documents/reuse", { requirementId: d.id, sourceId: d.onFile!.id }, `✓ Using ${d.onFile!.docNo}`)} className="btn-secondary min-h-7 px-2.5 py-1 text-small">Use on-file {d.onFile.docNo}{d.onFile.verified ? " (verified)" : ""}</button>}
                             {d.hasFile && (
                               <button
@@ -235,7 +235,7 @@ export default function VisaCaseView({ vc, stages, perms, suppliers }: {
                             )}
                             {perms.verify && (d.status === "RECEIVED" || d.status === "UNDER_REVIEW") && (
                               <>
-                                <button type="button" disabled={busy || !d.hasFile} onClick={() => post("/api/documents/verify", { documentId: d.id, decision: "ACCEPTED" }, "✓ Document accepted")} className="btn-primary min-h-7 px-2.5 py-1 text-small">Accept</button>
+                                <button type="button" disabled={busy || !d.hasFile} onClick={() => post("/api/documents/verify", { documentId: d.id, decision: "ACCEPTED" }, "✓ Document accepted")} className="btn-secondary min-h-7 px-2.5 py-1 text-small">Accept</button>
                                 <button type="button" disabled={busy || !d.hasFile} onClick={() => { setReviewError(""); setRejectTarget(d); }} className="btn-secondary min-h-7 border-rose-200 px-2.5 py-1 text-small text-rose-700">Reject</button>
                               </>
                             )}
