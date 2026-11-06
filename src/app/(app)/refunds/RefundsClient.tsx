@@ -142,7 +142,7 @@ export default function RefundsClient({ refunds, focus, canManage, canExport, ca
 
   function renderRow(r: R) {
     const next = PIPELINE[r.status];
-    return <li key={r.id} id={r.id} className={`grid gap-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_200px_auto] lg:items-center ${focus === r.id ? "bg-teal-50/60" : ""}`}>
+    return <li key={r.id} id={r.id} className={`grid gap-4 px-5 py-4 xl:grid-cols-[minmax(0,1fr)_180px_minmax(0,22rem)] xl:items-center ${focus === r.id ? "bg-teal-50/60" : ""}`}>
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="font-mono text-xs text-slate-500">{r.refundNo}</span>
@@ -164,7 +164,7 @@ export default function RefundsClient({ refunds, focus, canManage, canExport, ca
         <Status tone={toneOf(r.status)}>{enumLabel(r.status)}</Status>
         <Progress status={r.status} />
       </div>
-      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+      <div className="flex flex-wrap items-center gap-2 xl:justify-end">
         {r.externallyManaged && <div className="text-xs text-slate-600">Managed by booking platform. {canViewBookings && <Link href="/online-bookings" className="text-teal-700 underline">Open online bookings</Link>}</div>}
         <AuditTrailLink entity="Refund" entityId={r.id} allowed={canAudit} compact />
         {canManage && !r.externallyManaged && next && (next !== "APPROVED" || canApprove) && (
