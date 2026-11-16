@@ -32,6 +32,7 @@
     "test:imports": "node --import tsx tests/data-import.mts && node tests/data-import-browser.mjs",
     "test:crm-core": "tsx tests/staff-security.ts && tsx tests/sensitive-encryption.ts && tsx tests/customer-import.ts && tsx tests/upload-scan.mts && node --import tsx tests/maintenance.mts && node --import tsx tests/search-parity.mts && node --import tsx --test tests/deployment-protection.mts && npm run test:maintenance-worker && node --import ./scripts/standalone-server.mjs --import tsx tests/retired-contact-preference.mts",
     "test:staff-sales": "node --import ./scripts/standalone-server.mjs --import tsx tests/staff-sales-flow.mts",
+    "test:platform-enquiries": "node --import ./scripts/standalone-server.mjs --import tsx tests/platform-enquiries.mts",
     "test:journeys": "node tests/journey-suite.mjs",
     "test:cases": "node --import tsx tests/service-case-migration.mts && node tests/service-cases-browser.mjs",
     "test:workspace-revamp": "node --import tsx tests/workspace-guide.ts && node tests/workspace-revamp-browser.mjs",

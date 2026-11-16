@@ -1,4 +1,5 @@
 import {platformCancellationSummary} from "@/lib/platform-cancellation-tracking";
+import {receivePlatformEnquiry} from "@/lib/platform-enquiries";
 import {createServiceCase} from "@/lib/service-cases";
 import {recordCaseEventForEntity} from "@/lib/case-events";
 import { savePdf,removePdf,validatePdf,pdfFilename } from "@/lib/private-pdf";
@@ -17,7 +18,9 @@ export async function POST(req:Request){let staged:Awaited<ReturnType<typeof sav
  if(!/^\d+$/.test(timestamp)||Math.abs(Date.now()/1000-Number(timestamp))>300||!/^[a-f0-9]{64}$/i.test(supplied))throw new ApiError(401,"Invalid integration signature.");
  const reader=req.body?.getReader();if(!reader)throw new ApiError(400,"Body required.");const chunks:Uint8Array[]=[];let size=0;while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>1048576){await reader.cancel();throw new ApiError(413,"Event too large.");}chunks.push(value);}const raw=Buffer.concat(chunks).toString("utf8");
  const expected=createHmac("sha256",secret).update(`${timestamp}.${eventId}.${raw}`).digest();if(!timingSafeEqual(expected,Buffer.from(supplied,"hex")))throw new ApiError(401,"Invalid integration signature.");
- const event=schema.parse(JSON.parse(raw));if(event.eventId!==eventId||event.aggregateId!==event.payload.bookingId||event.revision!==event.payload.revision)throw new ApiError(400,"Event identity mismatch.");
+ const parsed=JSON.parse(raw);
+ if(parsed?.eventType==='enquiry.created')return Response.json(await receivePlatformEnquiry(parsed,raw,eventId),{headers:{"Cache-Control":"private, no-store"}});
+ const event=schema.parse(parsed);if(event.eventId!==eventId||event.aggregateId!==event.payload.bookingId||event.revision!==event.payload.revision)throw new ApiError(400,"Event identity mismatch.");
  const cancellationEvent=event.eventType.startsWith("cancellation.")||event.eventType==="booking.cancelled";
  const cancellationSummary=cancellationEvent?platformCancellationSummary(event.payload.itinerary.cancellationTracking):undefined;
  const hash=createHash("sha256").update(raw).digest("hex");

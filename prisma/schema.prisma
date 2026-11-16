@@ -1007,6 +1007,7 @@ model SalesLead {
   product       String       @default("FLIGHT")
   stage         String       @default("NEW")
   budgetMinor   Int          @default(0)
+  requestedBudgetJson String?
   destination   String?
   travelDate    DateTime?
   followUpAt    DateTime?
